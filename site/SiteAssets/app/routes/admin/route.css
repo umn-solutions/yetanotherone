@@ -1,0 +1,91 @@
+/* Admin route -- route-specific overrides only */
+
+/* Role edit dialog -- prevent content scrollbar and let ComboBox dropdown overlap */
+.nofbiz__dialog__content:has(.admin-role-dialog__content) {
+  overflow: visible;
+  min-width: 360px;
+}
+
+.admin-role-dialog__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-m);
+}
+
+.admin-role-dialog__content > :first-child {
+  font-size: var(--font-size-600);
+  font-weight: var(--font-weight-semibold);
+}
+
+.admin-role-dialog__content .nofbiz__combobox {
+  width: 100%;
+}
+
+.admin-role-dialog__content .nofbiz__combobox__dropdown {
+  position: absolute;
+  z-index: calc(var(--z-modal) + 1);
+}
+
+/* Dados filters row */
+.admin-filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  margin-bottom: 1rem;
+}
+
+.admin-filters-row .nofbiz__combobox {
+  min-width: 160px;
+  flex: 1;
+  max-width: 220px;
+  position: relative;
+  z-index: 1;
+}
+
+.admin-filters-row .nofbiz__textinput {
+  min-width: 180px;
+  flex: 1;
+  max-width: 280px;
+}
+
+/* Import result card */
+.admin-result-card {
+  border: 2px solid var(--color-brand-primary);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  margin-top: 16px;
+}
+
+.admin-result-card--error {
+  border-color: var(--color-danger-primary);
+  background: var(--color-danger-bg);
+}
+
+/* Hierarchy tree */
+.admin-tree-children {
+  padding-left: 20px;
+  border-left: 1px solid var(--color-stroke-subtle);
+  margin-left: 8px;
+}
+
+.admin-tree-leaf {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-stroke-subtle);
+}
+
+.admin-tree-leaf:last-child {
+  border-bottom: none;
+}
+
+.admin-tree-name {
+  font-weight: 500;
+}
+
+.admin-tree-dept {
+  font-size: 0.85rem;
+  color: var(--color-fg-tertiary);
+}

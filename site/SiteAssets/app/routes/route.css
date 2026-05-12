@@ -1,0 +1,64 @@
+/* Inicio route-specific styles */
+
+.pace-hero-badge {
+  display: block;
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--color-brand-hover);
+  margin-bottom: 12px;
+}
+
+.pace-hero__actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pace-hero-link-btn {
+  background: transparent !important;
+  border: 2px solid var(--color-brand-primary) !important;
+  color: var(--color-brand-hover) !important;
+  padding: 10px 20px; font-size: 14px; font-weight: 600;
+}
+.pace-hero-link-btn:hover {
+  background: var(--color-brand-primary) !important;
+  color: #fff !important;
+}
+
+/* PDCA wheel CSS-only visual */
+.pace-pdca-wheel {
+  width: 180px; height: 180px; position: relative; flex-shrink: 0;
+}
+.pace-pdca-seg {
+  position: absolute; width: 78px; height: 78px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; font-weight: 800; color: white;
+  border-radius: 10px; transition: transform 0.3s ease;
+}
+.pace-pdca-seg:hover { transform: scale(1.08); }
+.pace-pdca-seg--plan  { top: 0; left: 0; background: #9ac433; }
+.pace-pdca-seg--do    { top: 0; right: 0; background: #85b329; }
+.pace-pdca-seg--check { bottom: 0; right: 0; background: #6d9420; }
+.pace-pdca-seg--act   { bottom: 0; left: 0; background: #8bbd2a; }
+.pace-pdca-center {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 56px; height: 56px; background: white; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--color-brand-hover);
+  letter-spacing: 1px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* Home two-column grid */
+.pace-home-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 768px) {
+  .pace-home-grid { grid-template-columns: 1fr; }
+  .pace-hero { flex-direction: column; padding: 32px 24px; }
+  .pace-pdca-wheel { width: 140px; height: 140px; }
+  .pace-pdca-seg { width: 60px; height: 60px; font-size: 18px; }
+  .pace-pdca-center { width: 44px; height: 44px; font-size: 9px; }
+}

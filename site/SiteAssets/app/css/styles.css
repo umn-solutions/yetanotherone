@@ -1,0 +1,59 @@
+/* PACE Global Application Styles */
+
+:root {
+	/* Brand -- PACE green over nofbiz teal */
+	--color-brand-primary: #9ac433;
+	--color-brand-hover: #7da829;
+	--color-brand-active: #6a8b21;
+	--color-brand-selected: rgba(154, 196, 51, 0.12);
+	--color-brand-subtle: rgba(154, 196, 51, 0.08);
+	--color-brand-fg: #fff;
+	--color-brand-stroke: #9ac433;
+
+	/* Danger -- PACE red over nofbiz red */
+	--color-danger-primary: #ef4444;
+	--color-danger-hover: #dc2626;
+	--color-danger-bg: #fef2f2;
+	--color-danger-fg: #ef4444;
+
+	/* Warning -- PACE amber over nofbiz orange */
+	--color-warning-primary: #e8960c;
+	--color-warning-hover: #d4880b;
+	--color-warning-bg: #fef3c7;
+	--color-warning-fg: #e8960c;
+
+	/* Radius -- PACE 6px (nofbiz default is 8px) */
+	--radius-lg: 6px;
+
+	/* Readability bump: +2px on every font-size token */
+	--font-size-100: 12px;
+	--font-size-200: 14px;
+	--font-size-300: 16px;
+	--font-size-400: 18px;
+	--font-size-500: 20px;
+	--font-size-600: 22px;
+	--font-size-700: 26px;
+
+	/* Line-heights: bump proportionally */
+	--line-height-100: 18px;
+	--line-height-200: 20px;
+	--line-height-300: 24px;
+	--line-height-400: 26px;
+	--line-height-500: 28px;
+	--line-height-600: 32px;
+	--line-height-700: 36px;
+
+	/* Spacing tokens intentionally NOT bumped: pace-theme.css uses raw px gaps
+	   tuned to current text width; bumping space tokens compounds with font
+	   bump and breaks 2-column form rows inside modals. */
+}
+
+#root {
+	--header-footer-height: 6.625rem;
+	margin-top: var(--header-footer-height);
+	padding: 2rem 0;
+	padding-bottom: calc(var(--header-footer-height) * 2
+  );
+	/* height: 100svh;
+  overflow-y: auto; */
+}

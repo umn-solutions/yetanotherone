@@ -1,0 +1,68 @@
+/* Dashboard route-specific styles */
+
+.pace-dashboard-table {
+  min-width: 700px;
+}
+
+.pace-metric-team-th {
+  min-width: 130px;
+}
+
+.pace-metric-th {
+  text-align: center;
+  min-width: 80px;
+}
+
+.pace-metric-team-btn {
+  min-width: 120px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.85rem;
+  border: none;
+  background: transparent;
+  color: var(--color-brand-hover);
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.pace-metric-team-btn:hover {
+  text-decoration: underline;
+}
+
+.pace-team-row--expanded {
+  background: var(--color-brand-subtle);
+}
+
+.pace-totals-label {
+  font-weight: 700;
+  min-width: 120px;
+}
+
+.pace-totals-cell {
+  font-weight: 700;
+}
+
+.pace-drill-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.pace-drill-header .pace-sec-title {
+  margin: 0;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.pace-filter-count {
+  font-size: 0.82rem;
+  color: var(--color-fg-secondary);
+  white-space: nowrap;
+}
+
+.pace-empty {
+  font-size: 0.88rem;
+  color: var(--color-fg-tertiary);
+  padding: 16px 0;
+}
