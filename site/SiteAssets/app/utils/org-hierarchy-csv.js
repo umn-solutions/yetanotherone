@@ -1,4 +1,4 @@
-import { parseCSV } from '../libs/nofbiz/nofbiz.excelparser.js';
+import { parseCSV, parseXLSX } from '../libs/nofbiz/nofbiz.excelparser.js';
 
 /**
  * Canonical required CSV headers -- exactly the keys read by mapCSVRow.
@@ -54,7 +54,7 @@ export function mapCSVRow(row) {
 }
 
 /**
- * Validates a CSV string for org hierarchy import.
+ * Validates an org hierarchy file (CSV string or XLSX ArrayBuffer).
  *
  * Returns one of:
  *   { ok: true,  persons: Map<string, Object>, rootId: string, warnings: string[] }
@@ -63,21 +63,23 @@ export function mapCSVRow(row) {
  * Fatal errors prevent any SharePoint writes. Warnings are informational
  * (skipped rows, non-blocking issues) and are forwarded to the caller.
  *
- * @param {string} csvContent - Raw CSV string
- * @returns {{ ok: boolean, persons?: Map, rootId?: string, fatal?: string[], warnings: string[] }}
+ * @param {string|ArrayBuffer|Uint8Array} input - CSV text or XLSX binary
+ * @returns {Promise<{ ok: boolean, persons?: Map, rootId?: string, fatal?: string[], warnings: string[] }>}
  */
-export function validateOrgCSV(csvContent) {
+export async function validateOrgCSV(input) {
   const fatal = [];
   const warnings = [];
 
-  // 1. Parse
+  // 1. Parse (CSV string or XLSX binary)
   let data, headers;
   try {
-    const parsed = parseCSV(csvContent);
+    const parsed = typeof input === 'string'
+      ? parseCSV(input)
+      : await parseXLSX(input);
     data = parsed.data;
     headers = parsed.headers;
   } catch (err) {
-    return { ok: false, fatal: [`Não foi possível ler o CSV: ${err.message}`], warnings };
+    return { ok: false, fatal: [`Não foi possível ler o ficheiro: ${err.message}`], warnings };
   }
 
   if (!data || data.length === 0) {

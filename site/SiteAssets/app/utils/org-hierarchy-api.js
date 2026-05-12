@@ -1,5 +1,5 @@
 import { SiteApi, SystemError } from '../libs/nofbiz/nofbiz.base.js';
-import { GESTOR_CATEGORIES } from './constants.js';
+import { GESTOR_CATEGORIES, MENTOR_OUIDS } from './constants.js';
 import { validateOrgCSV } from './org-hierarchy-csv.js';
 import { FULL_SCAN } from './sp-paging.js';
 
@@ -19,16 +19,16 @@ const CATEGORY_RANK = {
 };
 
 /**
- * Imports organizational hierarchy from CSV content.
- * Full refresh: deletes all existing items and recreates from CSV.
+ * Imports organizational hierarchy from CSV string or XLSX binary.
+ * Full refresh: deletes all existing items and recreates from file.
  *
- * @param {string} csvContent - Raw CSV string
+ * @param {string|ArrayBuffer|Uint8Array} input - CSV text or XLSX binary
  * @param {(current: number, total: number) => void} [onProgress] - Progress callback for writes
  * @returns {Promise<{ success: number, failed: number, errors: string[] }>}
  */
-export async function importFromCSV(csvContent, onProgress) {
-  // 1. Validate CSV (schema, rows, structure) -- aborts before any SP writes on fatal errors
-  const validation = validateOrgCSV(csvContent);
+export async function importFromCSV(input, onProgress) {
+  // 1. Validate input (schema, rows, structure) -- aborts before any SP writes on fatal errors
+  const validation = await validateOrgCSV(input);
 
   if (!validation.ok) {
     return { success: 0, failed: 0, errors: [...validation.fatal, ...validation.warnings] };
@@ -81,6 +81,7 @@ export async function importFromCSV(csvContent, onProgress) {
       AncestorPath: ancestorPaths.get(id) || id,
       DeptAncestorPath: personDeptPaths.get(id) || person.OUID || '',
       Depth: personDepths.get(id) || '0',
+      AppRole: MENTOR_OUIDS.includes(person.OUID) ? 'mentor' : '',
     });
   }
 

@@ -22,6 +22,9 @@ export const EVENT_TYPES = {
 // OrgHierarchy Category values that grant gestor role
 export const GESTOR_CATEGORIES = ['Executive', 'Top Management', 'Management'];
 
+// OrgHierarchy OUID values whose members are flagged as mentors on CSV import
+export const MENTOR_OUIDS = ['COM-BKP'];
+
 // SharePoint group that grants bootstrap admin access when OrgHierarchy is empty
 export const BOOTSTRAP_ADMIN_GROUP = 'PACE Owners';
 

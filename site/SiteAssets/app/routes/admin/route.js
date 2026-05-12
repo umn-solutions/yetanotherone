@@ -18,7 +18,7 @@ export default defineRoute((config) => {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   }
 
-  function openFileDialog(accept = '.csv') {
+  function openFileDialog(accept = '.csv,.xlsx') {
     return new Promise((resolve, reject) => {
       const input = document.createElement('input');
       input.type = 'file';
@@ -32,6 +32,7 @@ export default defineRoute((config) => {
           reject(new SystemError('NoFileSelected', 'Nenhum ficheiro seleccionado', { breaksFlow: false }));
           return;
         }
+        const isXLSX = /\.xlsx$/i.test(file.name);
         const reader = new FileReader();
         reader.onload = e => {
           document.body.removeChild(input);
@@ -41,7 +42,8 @@ export default defineRoute((config) => {
           document.body.removeChild(input);
           reject(new SystemError('FileReadError', 'Erro ao ler o ficheiro'));
         };
-        reader.readAsText(file, 'windows-1252');
+        if (isXLSX) reader.readAsArrayBuffer(file);
+        else reader.readAsText(file, 'windows-1252');
       });
       input.addEventListener('cancel', () => {
         document.body.removeChild(input);
@@ -173,7 +175,7 @@ export default defineRoute((config) => {
 
   async function handleSelectFile() {
     try {
-      const file = await openFileDialog('.csv');
+      const file = await openFileDialog('.csv,.xlsx');
       if (!file) return;
       selectedFile = file;
       showFileSelectedState();
