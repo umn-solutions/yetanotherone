@@ -59,7 +59,8 @@ function flattenCategory(payloadJson, categoryKey, timePeriod) {
   if (typeof payload !== 'object') return 0;
 
   const asIsTotal  = computePhaseTotalFromJson(categoryKey, payload.asIs);
-  const toBeTotal  = computePhaseTotalFromJson(categoryKey, payload.toBe);
+  // Legacy compatibility: early records used `estimated` for the projected phase.
+  const toBeTotal  = computePhaseTotalFromJson(categoryKey, payload.toBe || payload.estimated);
 
   const direction = CATEGORY_DIRECTIONS[categoryKey];
   const realizedPeriod = direction === 'decrease'
@@ -245,7 +246,8 @@ export function createExportButton({ getRows, filenamePrefix, label = 'Exportar'
         downloadFile(csv, filename);
 
         loading.success(`${rows.length} iniciativa(s) exportada(s).`);
-      } catch (_err) {
+      } catch (err) {
+        console.error('[initiatives-export] failed', err);
         loading.error('Erro ao exportar.');
       } finally {
         btn.isLoading = false;

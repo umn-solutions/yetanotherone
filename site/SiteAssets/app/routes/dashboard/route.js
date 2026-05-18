@@ -84,6 +84,7 @@ export default defineRoute((config) => {
       loading.dismiss();
       buildUI();
     } catch (error) {
+      console.error('[dashboard/loadData] failed', error);
       loading.error('Erro ao carregar dados');
     }
   }

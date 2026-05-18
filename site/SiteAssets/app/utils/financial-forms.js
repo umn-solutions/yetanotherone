@@ -16,6 +16,7 @@ import {
 import {
   ANNUALIZATION_FACTORS,
   SAVING_CATEGORIES,
+  HARD_CATEGORIES,
   CATEGORY_KEYS,
   CATEGORY_LABELS,
   CATEGORY_DIRECTIONS,
@@ -257,6 +258,14 @@ export function getPhaseEditability(status) {
   }
 }
 
+// Legacy compatibility: early records seeded the projected phase under
+// `estimated` before the schema was finalized as `toBe`. Treat it as a
+// transparent fallback so existing rows do not get stuck in EM_REVISAO.
+function getToBePhase(payload) {
+  if (!payload) return null;
+  return payload.toBe || payload.estimated || null;
+}
+
 /**
  * Validates that every enabled category has a complete toBe phase
  * (all input fields present and > 0). Used as the gate for transitions
@@ -275,8 +284,9 @@ export function assertToBeComplete(financials) {
     const fieldName = CATEGORY_FIELD_NAMES[key];
     const payload = financials[fieldName];
     const inputKeys = INPUT_KEYS_BY_CATEGORY[key] || [];
-    const incomplete = !payload || !payload.toBe || inputKeys.some(ik => {
-      const v = payload.toBe[ik];
+    const toBe = getToBePhase(payload);
+    const incomplete = !toBe || inputKeys.some(ik => {
+      const v = toBe[ik];
       return v == null || v === '' || !(parseFloat(v) > 0);
     });
     if (incomplete) {
@@ -317,7 +327,7 @@ export function computeAnnualizedToBeTotalEur(financials) {
     if (!CATEGORY_KEYS.includes(key)) continue;
     const fieldName = CATEGORY_FIELD_NAMES[key];
     const payload = financials[fieldName];
-    const raw = computeRawPhaseTotal(key, payload && payload.toBe);
+    const raw = computeRawPhaseTotal(key, getToBePhase(payload));
     if (key === 'eficiencia') {
       // Eficiencia raw is minutes per period -> annualized minutes -> FTE-years -> EUR
       totalEur += ((raw * factor) / 120960) * fteCost;
@@ -347,9 +357,10 @@ export function createCategoryState(key, storedPayload, editability) {
   const inputKeys = INPUT_KEYS_BY_CATEGORY[key];
 
   function makePhase(phase) {
+    const source = phase === 'toBe' ? getToBePhase(payload) : payload[phase];
     const obj = {};
     for (const ik of inputKeys) {
-      obj[ik] = new FormField({ value: parseInitial(payload[phase] && payload[phase][ik]) });
+      obj[ik] = new FormField({ value: parseInitial(source && source[ik]) });
     }
     return obj;
   }
@@ -893,10 +904,10 @@ const TIME_PERIOD_LABELS = {
   Mensal: 'Mensal',
 };
 const SAVING_CAT_LABELS = {
-  'Outros Beneficios Qualitativos': 'Outros Beneficios Qualitativos',
-  'Reducao de custos': 'Redução de custos',
+  'Outros Benefícios Qualitativos': 'Outros Benefícios Qualitativos',
+  'Redução de custos': 'Redução de custos',
   'Aumento de receita': 'Aumento de receita',
-  'Reducao de risco': 'Redução de risco',
+  'Redução de risco': 'Redução de risco',
   'Custos e riscos evitados': 'Custos e riscos evitados',
   'Melhoria de qualidade': 'Melhoria de qualidade',
 };
@@ -915,20 +926,21 @@ export function buildSharedFinancialSchema(financials, opts = {}) {
   const { isMentorOrGestor = false, readOnly = false } = opts;
   const z = __zod;
 
-  // TimePeriod -- defaults to 'Mensal' for new initiatives
-  const existingPeriod = financials?.TimePeriod || 'Mensal';
+  // TimePeriod -- empty for new initiatives so financials remain opt-in;
+  // pre-fills from existing financials on edit.
+  const existingPeriod = financials?.TimePeriod || '';
   const timePeriodField = new FormField({
-    value: { label: TIME_PERIOD_LABELS[existingPeriod] || existingPeriod, value: existingPeriod },
-    validatorCallback: (v) => !!(v && (typeof v === 'object' ? v.value : v)),
+    value: existingPeriod
+      ? { label: TIME_PERIOD_LABELS[existingPeriod] || existingPeriod, value: existingPeriod }
+      : '',
   });
 
-  // SavingCategory
+  // SavingCategory -- empty for new initiatives (no auto-touch of financials).
   const rawCats = financials?.SavingCategory;
   const existingCats = Array.isArray(rawCats) ? rawCats : (rawCats ? [rawCats] : []);
-  const initialCats = financials ? existingCats.slice() : ['Outros Beneficios Qualitativos'];
+  const initialCats = financials ? existingCats.slice() : [];
   const savingCategoryField = new FormField({
     value: initialCats,
-    validatorCallback: (v) => Array.isArray(v) && v.length >= 1,
   });
 
   const schemaFields = { timePeriod: timePeriodField, savingCategory: savingCategoryField };
@@ -958,10 +970,10 @@ export function buildSharedFinancialSchema(financials, opts = {}) {
   } else {
     components.push(
       new Container([
-        new FieldLabel('Categorias de Savings', createTagsToggle(savingCategoryField, { items: SAVING_CATEGORIES }), { class: 'pace-required' }),
+        new FieldLabel('Categorias de Savings', createTagsToggle(savingCategoryField, { items: SAVING_CATEGORIES, dangerItems: HARD_CATEGORIES }), { class: 'pace-required' }),
         new Container([
           buildReadOnlyRow('Classificação do Tipo de Saving', savingTypeTxt),
-          new Text('Nota: "Outros Beneficios Qualitativos" pode não conter dados financeiros. Nesses casos, os campos quantitativos abaixo são opcionais.', { type: 'p', class: 'pace-field-callout' }),
+          new Text('Nota: "Outros Benefícios Qualitativos" pode não conter dados financeiros. Nesses casos, os campos quantitativos abaixo são opcionais.', { type: 'p', class: 'pace-field-callout' }),
         ], { class: 'pace-field-callout-row' }),
       ], { class: 'pace-saving-cat-group' }),
       new Container([], { as: 'hr', class: 'pace-form-divider' }),

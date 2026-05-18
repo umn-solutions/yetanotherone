@@ -37,10 +37,10 @@ const TIME_PERIOD_DISPLAY = {
   Mensal: 'Mensal',
 };
 const SAVING_CAT_DISPLAY = {
-  'Outros Beneficios Qualitativos': 'Outros Beneficios Qualitativos',
-  'Reducao de custos': 'Redução de custos',
+  'Outros Benefícios Qualitativos': 'Outros Benefícios Qualitativos',
+  'Redução de custos': 'Redução de custos',
   'Aumento de receita': 'Aumento de receita',
-  'Reducao de risco': 'Redução de risco',
+  'Redução de risco': 'Redução de risco',
   'Custos e riscos evitados': 'Custos e riscos evitados',
   'Melhoria de qualidade': 'Melhoria de qualidade',
 };
@@ -69,12 +69,12 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
   try {
     const results = await getByUUID(initiative.UUID);
     if (results && results[0]) initiative = results[0];
-  } catch (_) { /* non-critical -- proceed with cached copy */ }
+  } catch (error) { console.error('[openInitiativeDetail] getByUUID refresh failed', error); /* non-critical -- proceed with cached copy */ }
 
   const user = ContextStore.get('currentUser');
   const currentEmail = user.get('email');
   const isOwner = initiative.SubmittedByEmail === currentEmail;
-  const shareType = await getShareAccessType(initiative.UUID, currentEmail).catch(() => null);
+  const shareType = await getShareAccessType(initiative.UUID, currentEmail).catch(err => { console.error('[openInitiativeDetail] getShareAccessType failed', err); return null; });
   const isSharedUser = shareType !== null;
   const isCollaborator = shareType === 'collaborate';
   const hasWriteAccess = isOwner || isCollaborator;
@@ -84,7 +84,7 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
   let financials = null;
   try {
     financials = await getFinancials(initiative.UUID);
-  } catch (_) { /* non-critical */ }
+  } catch (error) { console.error('[openInitiativeDetail] getFinancials failed', error); /* non-critical */ }
 
   // -- Header chips --
   const headerChips = [
@@ -258,7 +258,7 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
     let events = [];
     try {
       events = await getEvents(initiative.UUID);
-    } catch (_) { /* non-critical */ }
+    } catch (error) { console.error('[openInitiativeDetail] getEvents failed', error); /* non-critical */ }
 
     events.sort((a, b) => (a.Date || '').localeCompare(b.Date || ''));
 
@@ -343,7 +343,7 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
     let comments = [];
     try {
       comments = await getComments(initiative.UUID);
-    } catch (_) { /* non-critical */ }
+    } catch (error) { console.error('[openInitiativeDetail] getComments failed', error); /* non-critical */ }
 
     comments.sort((a, b) => (b.CommentDate || '').localeCompare(a.CommentDate || ''));
 
@@ -386,10 +386,11 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
             commentField.value = '';
             // Re-fetch and rebuild comments display
             let updatedComments = [];
-            try { updatedComments = await getComments(initiative.UUID); } catch (_) {}
+            try { updatedComments = await getComments(initiative.UUID); } catch (error) { console.error('[openInitiativeDetail] post-comment getComments failed', error); }
             updatedComments.sort((a, b) => (b.CommentDate || '').localeCompare(a.CommentDate || ''));
             commentListContainer.children = buildCommentList(updatedComments);
-          } catch (_) {
+          } catch (error) {
+            console.error('[openInitiativeDetail] createComment failed', error);
             loading.error('Erro ao enviar comentário.');
           } finally {
             sendBtn.isLoading = false;
@@ -422,11 +423,19 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
     content,
     footer: footerContainer,
     width: '600px',
-    closeOnFocusLoss: true,
+    closeOnFocusLoss: false,
   });
 
-  // Dispose financial subscriptions when panel closes
+  // Click-outside-to-close (replaces focusout-based default which mis-fires on DOM refresh)
+  const outsideClickHandler = (e) => {
+    const root = panel.instance?.[0];
+    if (!root) return;
+    if (!root.contains(e.target)) panel.close();
+  };
+
+  // Dispose financial subscriptions and outside-click listener when panel closes
   panel.onCloseHandler = () => {
+    document.removeEventListener('mousedown', outsideClickHandler, true);
     for (const disposer of financialDisposers) disposer();
   };
 
@@ -447,6 +456,10 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
 
   panel.render();
   panel.open();
+  // Bind after open() so the opening click doesn't immediately close it
+  setTimeout(() => {
+    document.addEventListener('mousedown', outsideClickHandler, true);
+  }, 0);
   return panel;
 
   } finally {

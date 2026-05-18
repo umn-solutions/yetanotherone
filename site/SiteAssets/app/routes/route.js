@@ -27,6 +27,7 @@ export default defineRoute(async (config) => {
   try {
     recentNotifications = await getRecentForUser(user.get('email'), 14);
   } catch (error) {
+    console.error('[home/getRecentForUser] failed', error);
     Toast.error('Erro ao carregar notificações.');
   }
 

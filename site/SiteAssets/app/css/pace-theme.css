@@ -349,6 +349,27 @@
 	margin-top: 4px;
 }
 
+.pace-pending-item-comment {
+	display: block;
+	margin: 8px 0 0 0;
+	padding-top: 8px;
+	border-top: 1px dashed var(--color-stroke-subtle);
+	font-size: 0.9rem;
+	color: var(--color-fg-primary);
+	font-weight: 500;
+	white-space: pre-wrap;
+}
+
+.pace-pending-item-comment::before {
+	content: 'Motivo: ';
+	font-weight: 600;
+	color: var(--color-danger-primary);
+	text-transform: uppercase;
+	font-size: 0.75rem;
+	letter-spacing: 0.04em;
+	margin-right: 6px;
+}
+
 /* --- Validation columns --- */
 
 .pace-validation-col {
@@ -1315,6 +1336,18 @@
 .pace-tags-grid .nofbiz__button--primary:hover {
 	background-color: #d0eddf;
 	border-color: var(--color-brand-hover);
+}
+
+.pace-tags-grid .nofbiz__button--danger {
+	background-color: var(--color-danger-bg);
+	border-color: var(--color-danger-primary);
+	color: var(--color-danger-primary);
+}
+
+.pace-tags-grid .nofbiz__button--danger:hover {
+	background-color: #f3cccc;
+	border-color: var(--color-danger-primary);
+	color: var(--color-danger-primary);
 }
 
 .pace-segmented-toggle {

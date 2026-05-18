@@ -336,7 +336,7 @@ export default defineRoute((config) => {
         try {
           const fetched = await getByUUIDs(sharedRecords.map((r) => r.InitiativeUUID));
           colabItems = fetched.filter((i) => !assignedUUIDs.has(i.UUID));
-        } catch (_) { /* non-critical */ }
+        } catch (error) { console.error('[gestor/loadData] getByUUIDs failed', error); }
       }
 
       loading.dismiss();
@@ -350,6 +350,7 @@ export default defineRoute((config) => {
         filtersSubscribed = true;
       }
     } catch (error) {
+      console.error('[gestor/loadData] failed', error);
       loading.error('Erro ao carregar iniciativas');
     }
   }

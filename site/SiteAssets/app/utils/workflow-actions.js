@@ -13,6 +13,7 @@ import {
   extractComboBoxValue,
   UserIdentity,
   SystemError,
+  __dayjs,
 } from '../libs/nofbiz/nofbiz.base.js';
 
 import { STATUS, canTransitionTo, statusLabel } from './status-helpers.js';
@@ -171,7 +172,7 @@ function confirmWithComment(title, message, opts = {}) {
  * Returns the date string on confirm, or null on cancel/empty input.
  * @param {string} title
  * @param {string} message
- * @param {{ confirmLabel?: string, cancelLabel?: string, variant?: 'info'|'warning'|'error', label?: string, placeholder?: string }} [opts]
+ * @param {{ confirmLabel?: string, cancelLabel?: string, variant?: 'info'|'warning'|'error', label?: string, placeholder?: string, defaultValue?: string }} [opts]
  * @returns {Promise<string|null>}
  */
 export function confirmWithDate(title, message, opts = {}) {
@@ -181,9 +182,10 @@ export function confirmWithDate(title, message, opts = {}) {
     variant = 'info',
     label = 'Data prevista de conclusão',
     placeholder = 'AAAA-MM-DD',
+    defaultValue = '',
   } = opts;
 
-  const dateField = new FormField({ value: '' });
+  const dateField = new FormField({ value: defaultValue });
   const dateInput = new DateInput(dateField, { placeholder });
 
   return new Promise((resolve) => {
@@ -946,34 +948,57 @@ export async function approveSavings(initiative, button, onSuccess) {
 }
 
 /**
- * Mentor final validation: VALIDADO_GESTOR -> VALIDADO_FINAL
+ * Mentor final validation: VALIDADO_GESTOR -> IMPLEMENTADO (single click, date-picker).
+ * Logs two events (MENTOR_FINAL_VALIDATION + OWNER_IMPLEMENTATION) so the timeline
+ * preserves the full narrative. Legacy VALIDADO_FINAL items keep their own
+ * markAsImplemented path (unchanged below).
  */
 export async function mentorFinalValidation(initiative, button, onSuccess) {
-  if (!canTransitionTo(initiative.Status, STATUS.VALIDADO_FINAL)) {
+  if (!canTransitionTo(initiative.Status, STATUS.IMPLEMENTADO)) {
     Toast.error('Transição de estado inválida.');
     return;
   }
 
-  const confirmed = await confirm(
-    'Confirmar Savings',
-    'Tem a certeza que deseja confirmar os savings desta iniciativa?',
+  const pickedDate = await confirmWithDate(
+    'Confirmar Savings e Implementar',
+    'Confirma os savings desta iniciativa e indique a data de implementação.',
+    {
+      defaultValue: __dayjs().format('YYYY-MM-DD'),
+      label: 'Data de implementação',
+      confirmLabel: 'Confirmar',
+    },
   );
-  if (!confirmed) return;
+  if (!pickedDate) return;
 
   button.isLoading = true;
-  const loading = Toast.loading('A confirmar savings...');
+  const loading = Toast.loading('A confirmar savings e implementar...');
   try {
-    await transitionStatus(initiative.Id, STATUS.VALIDADO_FINAL, initiative['odata.etag']);
+    await transitionStatus(initiative.Id, STATUS.IMPLEMENTADO, initiative['odata.etag'], {
+      ImplementedDate: __dayjs(pickedDate).toISOString(),
+    });
+
+    // Log both transition steps so the timeline reflects the full narrative.
     await createEvent(initiative.UUID, EVENT_TYPES.MENTOR_FINAL_VALIDATION, STATUS.VALIDADO_GESTOR, STATUS.VALIDADO_FINAL);
-    if (initiative.SubmittedByEmail) {
+    await createEvent(initiative.UUID, EVENT_TYPES.OWNER_IMPLEMENTATION, STATUS.VALIDADO_FINAL, STATUS.IMPLEMENTADO);
+
+    const actorEmail = ContextStore.get('currentUser').get('email');
+    const recipients = [
+      initiative.SubmittedByEmail,
+      initiative.GestorValidatorEmail,
+    ].filter(email => email && email !== actorEmail);
+    const seen = new Set();
+    for (const email of recipients) {
+      if (seen.has(email)) continue;
+      seen.add(email);
       await createNotification(
         initiative.UUID,
-        initiative.SubmittedByEmail,
-        'Savings validados pelo mentor. Pode marcar a iniciativa como implementada.',
+        email,
+        'Iniciativa marcada como implementada.',
         'state_change',
       );
     }
-    loading.success('Savings confirmados.');
+
+    loading.success('Iniciativa implementada.');
     if (onSuccess) onSuccess();
   } catch (error) {
     console.error(error);

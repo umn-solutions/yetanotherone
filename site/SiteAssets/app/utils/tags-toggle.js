@@ -1,12 +1,13 @@
 import { Container, Button } from '../libs/nofbiz/nofbiz.base.js';
 import { INITIATIVE_TAGS } from './constants.js';
 
-export function createTagsToggle(field, { items = INITIATIVE_TAGS, isDisabled = false, gridClass = 'pace-tags-grid' } = {}) {
+export function createTagsToggle(field, { items = INITIATIVE_TAGS, dangerItems = [], isDisabled = false, gridClass = 'pace-tags-grid' } = {}) {
   function buildButtons() {
     return items.map(tag => {
       const selected = (field.value ?? []).includes(tag);
+      const isDanger = dangerItems.includes(tag);
       return new Button(tag, {
-        variant: selected ? 'primary' : 'secondary',
+        variant: selected ? (isDanger ? 'danger' : 'primary') : 'secondary',
         isOutlined: !selected,
         isDisabled,
         onClickHandler: () => {

@@ -72,7 +72,10 @@ export async function openEditInitiativeModal(initiative, onSuccess, opts = {}) 
   if (initiative.UUID) {
     try {
       financials = await getFinancials(initiative.UUID);
-    } catch (_) { /* non-critical -- proceed without financials */ }
+    } catch (error) {
+      console.error('[openEditInitiativeModal] getFinancials failed', error);
+      // non-critical -- proceed without financials
+    }
   }
   const teamOptions = await getTeamOptions();
   return buildInitiativeModal(initiative, financials, onSuccess, null, teamOptions, opts);
@@ -90,7 +93,10 @@ export async function openReplicateInitiativeModal(sourceInitiative, onSuccess) 
   if (sourceInitiative.UUID) {
     try {
       financials = await getFinancials(sourceInitiative.UUID);
-    } catch (_) { /* non-critical -- proceed without financials */ }
+    } catch (error) {
+      console.error('[openReplicateInitiativeModal] getFinancials failed', error);
+      // non-critical -- proceed without financials
+    }
   }
   const teamOptions = await getTeamOptions();
   return buildInitiativeModal(null, financials, onSuccess, sourceInitiative, teamOptions);
@@ -159,11 +165,22 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     isMentorOrGestor: showFte,
   });
 
-  // -- Validation helpers for Sim path --
+  // -- Touched check: user engaged with financials if they added a category tab or selected a saving category --
+  const userTouchedFinancials = () =>
+    categoryStates.size > 0
+    || extractCategoryLabels(sharedFinancial.schema.get('savingCategory')).length > 0;
+
+  // -- Validation helpers --
   function getFinancialsErrors() {
     const errs = [];
 
     const cats = extractCategoryLabels(sharedFinancial.schema.get('savingCategory'));
+
+    // If user has not engaged with financials at all, skip all validation
+    if (cats.length === 0 && categoryStates.size === 0) {
+      return errs;
+    }
+
     if (cats.length === 0) {
       errs.push('Selecione pelo menos uma categoria de savings.');
       return errs;
@@ -251,7 +268,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
   const hideOverlay = () => { if (overlay.isAlive) overlay.remove(); };
 
   // -- Save functions --
-  const saveAsDraft = async (btn, hasFinancials = false) => {
+  const saveAsDraft = async (btn) => {
     if (!schema.isValid) {
       schema.focusOnFirstInvalid();
       Toast.error('Preencha o título e seleccione a equipa.');
@@ -272,18 +289,20 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
         try {
           await update(initiative.Id, fields, initiative['odata.etag']);
         } catch (err) {
+          console.error('[saveAsDraft] update failed', err);
           if (err && err.name === 'ConcurrencyConflict') {
             loading.error('Outra pessoa editou esta iniciativa. Feche e reabra para recarregar.');
             return;
           }
           throw err;
         }
-        if (hasFinancials) {
+        if (userTouchedFinancials()) {
           const finFields = collectFinancialFields();
           if (financials) {
             try {
               await updateFinancials(financials.Id, finFields, financials['odata.etag']);
             } catch (err) {
+              console.error('[saveAsDraft] updateFinancials failed', err);
               if (err && err.name === 'ConcurrencyConflict') {
                 loading.error('Outra pessoa editou estes dados. A recarregar...');
                 const fresh = await getFinancials(initiative.UUID);
@@ -307,7 +326,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
           SubmittedByEmail: currentUser.get('email'),
         });
         await createEvent(uuid, EVENT_TYPES.CREATION, '', STATUS.RASCUNHO);
-        if (hasFinancials) {
+        if (userTouchedFinancials()) {
           await createFinancials(uuid, collectFinancialFields());
         }
       }
@@ -326,7 +345,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     }
   };
 
-  const submitInitiative = async (btn, hasFinancials = false) => {
+  const submitInitiative = async (btn) => {
     if (!schema.isValid) {
       schema.focusOnFirstInvalid();
       Toast.error('Preencha o título e seleccione a equipa.');
@@ -342,7 +361,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
       return;
     }
 
-    if (hasFinancials) {
+    if (userTouchedFinancials()) {
       const errs = getFinancialsErrors();
       if (errs.length > 0) {
         sharedFinancial.schema.focusOnFirstInvalid();
@@ -373,18 +392,20 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
         try {
           await update(initiative.Id, fields, initiative['odata.etag']);
         } catch (err) {
+          console.error('[submitInitiative] update failed', err);
           if (err && err.name === 'ConcurrencyConflict') {
             loading.error('Outra pessoa editou esta iniciativa. Feche e reabra para recarregar.');
             return;
           }
           throw err;
         }
-        if (hasFinancials) {
+        if (userTouchedFinancials()) {
           const finFields = collectFinancialFields();
           if (financials) {
             try {
               await updateFinancials(financials.Id, finFields, financials['odata.etag']);
             } catch (err) {
+              console.error('[submitInitiative] updateFinancials failed', err);
               if (err && err.name === 'ConcurrencyConflict') {
                 loading.error('Outra pessoa editou estes dados. A recarregar...');
                 const fresh = await getFinancials(initiative.UUID);
@@ -409,7 +430,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
           SubmittedByEmail: currentUser.get('email'),
         });
         await createEvent(uuid, EVENT_TYPES.CREATION, '', STATUS.RASCUNHO);
-        if (hasFinancials) {
+        if (userTouchedFinancials()) {
           await createFinancials(uuid, collectFinancialFields());
         }
         finalUUID = uuid;
@@ -426,6 +447,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
       modal.close();
       if (onSuccess) onSuccess();
     } catch (error) {
+      console.error('[submitInitiative] failed', error);
       loading.error('Erro ao submeter iniciativa');
     } finally {
       btn.isLoading = false;
@@ -434,13 +456,13 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
   };
 
   // -- Re-submit from wizard (EM_REVISAO -> previous status, with toBe gate + gestor re-attribution) --
-  const resubmitFromWizard = async (btn, hasFinancials = false) => {
+  const resubmitFromWizard = async (btn) => {
     if (!schema.isValid) {
       schema.focusOnFirstInvalid();
       Toast.error('Preencha o título e seleccione a equipa.');
       return;
     }
-    if (hasFinancials) {
+    if (userTouchedFinancials()) {
       const errs = getFinancialsErrors();
       if (errs.length > 0) {
         sharedFinancial.schema.focusOnFirstInvalid();
@@ -457,7 +479,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
       const baseFields = collectBaseFields();
       await update(initiative.Id, { ...baseFields, Status: initiative.Status }, initiative['odata.etag']);
 
-      if (hasFinancials) {
+      if (userTouchedFinancials()) {
         const finFields = collectFinancialFields();
         if (financials) {
           await updateFinancials(financials.Id, finFields, financials['odata.etag']);
@@ -523,7 +545,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
         Toast.error('Preencha o título e seleccione a equipa.');
         return;
       }
-      wizard.setView(asApprover ? 'step2b' : 'step2');
+      wizard.setView('step2b');
     },
   });
 
@@ -567,70 +589,6 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     ),
   ]);
 
-  // ===== STEP 2 -- Quantification Question =====
-
-  const step2NaoDraftBtn = new Button(draftLabel, {
-    variant: 'secondary',
-    onClickHandler: () => saveAsDraft(step2NaoDraftBtn, false),
-  });
-
-  const step2BackBtn = new Button('Voltar', {
-    variant: 'secondary',
-    isOutlined: true,
-    onClickHandler: () => {
-      resetStep2Choice();
-      wizard.setView('step1');
-    },
-  });
-
-  const step2SimBtn = new Button('Sim', {
-    variant: 'secondary',
-    isOutlined: true,
-    onClickHandler: () => wizard.setView('step2b'),
-  });
-
-  const step2NaoSubmitBtn = new Button('Submeter', {
-    variant: 'primary',
-    onClickHandler: () => submitInitiative(step2NaoSubmitBtn, false),
-  });
-
-  const step2QuestionFooter = [];
-  const step2NaoFooter = isPostSubmission
-    ? [step2BackBtn, step2NaoDraftBtn]
-    : [step2BackBtn, step2NaoDraftBtn, ...(canAccess('submeter') ? [step2NaoSubmitBtn] : [])];
-
-  const step2FooterContainer = new Container(step2QuestionFooter, { class: 'pace-modal-footer' });
-
-  const step2NaoBtn = new Button('Não', {
-    variant: 'secondary',
-    isOutlined: true,
-    onClickHandler: () => {
-      step2SwapContainer.children = [step2HintNode];
-      step2FooterContainer.children = step2NaoFooter;
-    },
-  });
-
-  const step2ChoiceRow = new Container([step2NaoBtn, step2SimBtn], { class: 'pace-wizard-choice' });
-  const step2HintNode = new Text(
-    'Sem problema -- o seu mentor irá ajudá-lo a quantificar a iniciativa após submissão.',
-    { type: 'p', class: 'pace-wizard-hint' },
-  );
-  const step2SwapContainer = new Container([step2ChoiceRow], { class: 'pace-wizard-swap' });
-
-  function resetStep2Choice() {
-    step2SwapContainer.children = [step2ChoiceRow];
-    step2FooterContainer.children = step2QuestionFooter;
-  }
-
-  const step2View = new View([
-    new Container([
-      new Text('Consegue quantificar/tipificar a iniciativa?', { type: 'h4', class: 'pace-form-section-title' }),
-      new Text('Esta informação ajuda a medir o impacto da sua iniciativa. Caso responda "Sim", o passo seguinte irá recolher dados financeiros (período de medição, categorias de savings) e métricas detalhadas (eficiência, produção e/ou gastos gerais) para quantificar os ganhos esperados.', { type: 'p' }),
-      step2SwapContainer,
-      step2FooterContainer,
-    ], { class: 'pace-wizard-question' }),
-  ]);
-
   // ===== STEP 2b -- Multi-category financial form (replaces old Step 2b + Step 3) =====
   // Layout: shared general fields (TimePeriod, SavingCategory) + tabbed section with add/remove + totals
 
@@ -638,33 +596,29 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     variant: 'secondary',
     isOutlined: true,
     onClickHandler: () => {
-      if (asApprover) {
-        wizard.setView('step1');
-        return;
-      }
-      resetStep2Choice();
-      wizard.setView('step2');
+      wizard.setView('step1');
     },
   });
 
   const step2bDraftBtn = new Button(draftLabel, {
     variant: 'secondary',
-    onClickHandler: () => saveAsDraft(step2bDraftBtn, true),
+    onClickHandler: () => saveAsDraft(step2bDraftBtn),
   });
 
   const step2bSubmitBtn = new Button('Submeter', {
     variant: 'primary',
-    onClickHandler: () => submitInitiative(step2bSubmitBtn, true),
+    onClickHandler: () => submitInitiative(step2bSubmitBtn),
   });
 
   const step2bResubmitBtn = isEmRevisao ? new Button('Re-submeter', {
     variant: 'primary',
-    onClickHandler: () => resubmitFromWizard(step2bResubmitBtn, true),
+    onClickHandler: () => resubmitFromWizard(step2bResubmitBtn),
   }) : null;
 
   // Wire submit button disabled state to changeCounter + schema validity
+  // When user has not touched financials, the button is always enabled (financials are optional)
   function refreshSubmitBtnState() {
-    step2bSubmitBtn.disabled = !isFinancialsValid();
+    step2bSubmitBtn.disabled = userTouchedFinancials() && !isFinancialsValid();
   }
   refreshSubmitBtnState();
   tabbedSection.changeCounter.subscribe(refreshSubmitBtnState);
@@ -697,7 +651,6 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
 
   const wizard = new ViewSwitcher([
     ['step1', step1View],
-    ['step2', step2View],
     ['step2b', step2bView],
   ], {
     selectedViewName,

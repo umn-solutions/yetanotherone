@@ -355,7 +355,7 @@ export default defineRoute((config) => {
         }
         try {
           colabItems = await getByUUIDs(sharedRecords.map((r) => r.InitiativeUUID));
-        } catch (_) { /* non-critical */ }
+        } catch (error) { console.error('[mentoria/loadData] getByUUIDs failed', error); }
       }
 
       loading.dismiss();
@@ -369,6 +369,7 @@ export default defineRoute((config) => {
         filtersSubscribed = true;
       }
     } catch (error) {
+      console.error('[mentoria/loadData] failed', error);
       loading.error('Erro ao carregar iniciativas');
     }
   }

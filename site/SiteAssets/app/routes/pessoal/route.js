@@ -22,9 +22,10 @@ import { createPageLayout } from '../../utils/navbar.js';
 import { mentorName, gestorName, buildKpi } from '../../utils/format-helpers.js';
 import { createSortableTable } from '../../utils/table-helpers.js';
 import { getTeamOptions } from '../../utils/org-hierarchy-api.js';
-import { INITIATIVE_TAGS } from '../../utils/constants.js';
+import { INITIATIVE_TAGS, EVENT_TYPES } from '../../utils/constants.js';
 import { canAccess } from '../../utils/roles.js';
 import { createExportButton } from '../../utils/initiatives-export.js';
+import { getByEventType } from '../../utils/initiative-events-api.js';
 
 export default defineRoute((config) => {
   config.setRouteTitle('Pessoal');
@@ -257,7 +258,8 @@ export default defineRoute((config) => {
     let sharedRecords = [];
     try {
       sharedRecords = await getSharedWithMe(currentEmail);
-    } catch (_) {
+    } catch (error) {
+      console.error('[pessoal/loadData] getSharedWithMe failed', error);
       // Non-critical, continue without shared items
     }
 
@@ -270,7 +272,8 @@ export default defineRoute((config) => {
         getPersonalAndShared(currentEmail, sharedUUIDs),
         getTeamOptions(),
       ]);
-    } catch (_) {
+    } catch (error) {
+      console.error('[pessoal/loadData] failed', error);
       Toast.error('Erro ao carregar iniciativas pessoais.');
     }
 
@@ -318,6 +321,18 @@ export default defineRoute((config) => {
     // -- Revision section (unfiltered) --
     const revisionItems = allMyItems.filter((item) => item.Status === STATUS.EM_REVISAO);
     if (revisionItems.length > 0) {
+      // Fetch latest REVIEW_REQUEST event per initiative (for inline reason comment)
+      let latestRevisionComment = new Map();
+      try {
+        const revisionEvents = await getByEventType(EVENT_TYPES.REVIEW_REQUEST);
+        for (const ev of revisionEvents) {
+          const prev = latestRevisionComment.get(ev.InitiativeUUID);
+          if (!prev || (ev.Date || '').localeCompare(prev.Date || '') > 0) {
+            latestRevisionComment.set(ev.InitiativeUUID, ev);
+          }
+        }
+      } catch (error) { console.error('[pessoal] revision events fetch failed', error); /* non-critical */ }
+
       const revCards = revisionItems.map((item) => {
         const daysSince = __dayjs().diff(__dayjs(item.Modified || item.Created), 'day');
         const urgent = daysSince > 7;
@@ -325,23 +340,30 @@ export default defineRoute((config) => {
           ? 'pace-pending-item pace-pending-item--urgent pace-revision-item'
           : 'pace-pending-item pace-revision-item';
 
-        const container = new Container([
+        const reviewEv = latestRevisionComment.get(item.UUID);
+        const reviewComment = reviewEv?.Comment?.trim();
+
+        const cardChildren = [
           new Container([
             new Text(item.Title || 'Sem título', { type: 'span', class: 'pace-pending-item-title' }),
           ]),
           new Text('Revisão solicitada pelo mentor/gestor.', { type: 'p', class: 'pace-pending-item-meta' }),
-          new Container([
-            new Text(`${daysSince} dia${daysSince !== 1 ? 's' : ''}`, { type: 'span', class: 'pace-pending-item-meta' }),
-            ...(canAccess('editar') ? [new Button('Rever', {
-              variant: 'secondary',
-              onClickHandler: (e) => {
-                e.stopPropagation();
-                openEditInitiativeModal(item, loadData, { context: 'pessoal', currentEmail });
-              },
-            })] : []),
-          ], { class: 'pace-pending-item-actions' }),
-        ], { class: itemClass });
+        ];
+        if (reviewComment) {
+          cardChildren.push(new Text(reviewComment, { type: 'p', class: 'pace-pending-item-comment' }));
+        }
+        cardChildren.push(new Container([
+          new Text(`${daysSince} dia${daysSince !== 1 ? 's' : ''}`, { type: 'span', class: 'pace-pending-item-meta' }),
+          ...(canAccess('editar') ? [new Button('Rever', {
+            variant: 'secondary',
+            onClickHandler: (e) => {
+              e.stopPropagation();
+              openEditInitiativeModal(item, loadData, { context: 'pessoal', currentEmail });
+            },
+          })] : []),
+        ], { class: 'pace-pending-item-actions' }));
 
+        const container = new Container(cardChildren, { class: itemClass });
         container.setEventHandler('click', () => openInitiativeDetail(item, 'pessoal', loadData));
         return container;
       });

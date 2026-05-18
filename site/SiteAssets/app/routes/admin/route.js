@@ -142,6 +142,7 @@ export default defineRoute((config) => {
         buildKpi(String(maxDepth), 'Níveis'),
       ];
     } catch (err) {
+      console.error('[admin/refreshStats] failed', err);
       statsRow.children = [
         new Text('Erro ao carregar estatísticas.', { type: 'p' }),
       ];
@@ -180,6 +181,7 @@ export default defineRoute((config) => {
       selectedFile = file;
       showFileSelectedState();
     } catch (err) {
+      console.error('[admin/handleSelectFile] failed', err);
       Toast.error('Erro ao ler o ficheiro.');
     }
   }
@@ -271,6 +273,7 @@ export default defineRoute((config) => {
       showResult(result);
       await refreshStats();
     } catch (err) {
+      console.error('[admin/runImport] failed', err);
       loading.error('Erro ao importar hierarquia.');
       resultSection.children = [
         new Container(
@@ -455,6 +458,7 @@ export default defineRoute((config) => {
             await loadDadosTab();
           }
         } catch (err) {
+          console.error('[admin/updateEmployeeRole] failed', err);
           loading.error('Erro ao actualizar perfil.');
         } finally {
           saveBtn.isLoading = false;
@@ -496,6 +500,7 @@ export default defineRoute((config) => {
       dadosView.children = [filtersRow, dadosCountText, dadosList];
       dadosLoaded = true;
     } catch (err) {
+      console.error('[admin/loadDadosTab] failed', err);
       dadosView.children = [new Text('Erro ao carregar dados.', { type: 'p' })];
     }
   }
@@ -565,6 +570,7 @@ export default defineRoute((config) => {
       ];
       hierarquiaLoaded = true;
     } catch (err) {
+      console.error('[admin/loadHierarquiaTab] failed', err);
       hierarquiaView.children = [
         new Text('Erro ao carregar hierarquia.', { type: 'p' }),
       ];

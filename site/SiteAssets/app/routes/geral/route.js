@@ -164,7 +164,8 @@ export default defineRoute((config) => {
         const items = await getByStatuses(ONGOING_STATUSES);
         allData = items.filter((i) => !i.IsConfidential);
         loading.dismiss();
-      } catch (_) {
+      } catch (error) {
+        console.error('[geral/loadOthers] failed', error);
         loading.error('Erro ao carregar iniciativas.');
       } finally {
         othersLoading = false;
@@ -270,7 +271,8 @@ export default defineRoute((config) => {
         tagFilterField.subscribe(refresh);
         filtersSubscribed = true;
       }
-    } catch (_) {
+    } catch (error) {
+      console.error('[geral/loadInitial] failed', error);
       loading.error('Erro ao carregar iniciativas.');
     }
   }

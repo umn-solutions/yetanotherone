@@ -31,18 +31,18 @@ export const BOOTSTRAP_ADMIN_GROUP = 'PACE Owners';
 // -- Saving Categories (client matrix) --
 
 export const SAVING_CATEGORIES = [
+  'Redução de custos',
   'Aumento de receita',
+  'Redução de risco',
   'Custos e riscos evitados',
   'Melhoria de qualidade',
-  'Outros Beneficios Qualitativos',
-  'Reducao de custos',
-  'Reducao de risco',
+  'Outros Benefícios Qualitativos',
 ];
 
-export const HARD_CATEGORIES = ['Reducao de custos', 'Aumento de receita', 'Reducao de risco'];
+export const HARD_CATEGORIES = ['Redução de custos', 'Aumento de receita', 'Redução de risco'];
 export const SOFT_CATEGORIES = ['Custos e riscos evitados', 'Melhoria de qualidade'];
 
-export const NO_FINANCIALS_CATEGORIES = ['Outros Beneficios Qualitativos', 'Melhoria de qualidade'];
+export const NO_FINANCIALS_CATEGORIES = ['Outros Benefícios Qualitativos', 'Melhoria de qualidade'];
 
 /**
  * Returns true if at least one selected category requires financial data.
@@ -55,10 +55,10 @@ export function hasFinancialData(categories) {
 }
 
 export const SAVING_CATEGORY_GUIDANCE = {
-  'Outros Beneficios Qualitativos': 'Iniciativa sem impacto financeiro directo.',
-  'Reducao de custos': 'Redução de FTE, contratos temporários, despesas de prestadores, horas extra, material de escritório. Comparação com custos N-1 ou orçamento do Ano N.',
+  'Outros Benefícios Qualitativos': 'Iniciativa sem impacto financeiro directo.',
+  'Redução de custos': 'Redução de FTE, contratos temporários, despesas de prestadores, horas extra, material de escritório. Comparação com custos N-1 ou orçamento do Ano N.',
   'Aumento de receita': 'Aumento de PNB via crescimento de vendas. Créditos, seguros, produtos complementares.',
-  'Reducao de risco': 'Melhoria de eficiência de cobrança, redução de taxa de reincidência.',
+  'Redução de risco': 'Melhoria de eficiência de cobrança, redução de taxa de reincidência.',
   'Custos e riscos evitados': 'Recrutamento evitado, coimas/penalizações/custos evitados, riscos evitados. Despesas previstas, não orçamentadas e não incorridas.',
   'Melhoria de qualidade': 'Aumento de satisfação do cliente. Fidelização e imagem.',
 };
@@ -67,13 +67,13 @@ export const SAVING_CATEGORY_GUIDANCE = {
  * Derives SavingType from SavingCategory (string or array of strings).
  * Priority: Hard > Soft > Outros.
  * @param {string | string[]} category
- * @returns {'Outros Beneficios Qualitativos' | 'Hard Cost' | 'Soft Cost'}
+ * @returns {'Outros Benefícios Qualitativos' | 'Hard Cost' | 'Soft Cost'}
  */
 export function deriveSavingType(category) {
   const cats = Array.isArray(category) ? category : (category ? [category] : []);
   if (cats.some(c => HARD_CATEGORIES.includes(c))) return 'Hard Cost';
   if (cats.some(c => SOFT_CATEGORIES.includes(c))) return 'Soft Cost';
-  return 'Outros Beneficios Qualitativos';
+  return 'Outros Benefícios Qualitativos';
 }
 
 // -- Annualization --
@@ -110,18 +110,18 @@ export const STATUS_DESCRIPTIONS = {
 };
 
 export const INITIATIVE_TAGS = [
-  'Automacao de processos',
-  'Conhecimento e formacao',
+  'Automação de processos',
+  'Conhecimento e formação',
   'Excel, VBA e PowerBI',
-  'Gestao de dados',
-  'Gestao de incidentes',
-  'IA (Inteligencia Artificial)',
+  'Gestão de dados',
+  'Gestão de incidentes',
+  'IA (Inteligência Artificial)',
   'Indicadores de Desempenho',
-  'Organizacao',
-  'Padronizacao',
+  'Organização',
+  'Padronização',
   'Procedimentos',
-  'Reducao de erros',
-  'Reputacao e satisfacao do cliente',
+  'Redução de erros',
+  'Reputação e satisfação do cliente',
 ];
 
 // -- Multi-category financial forms metadata --

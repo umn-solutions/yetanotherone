@@ -899,15 +899,15 @@ var _spMockData = {
 
     'InitiativesFinancials': {
       items: [
-        // uuid-009: Eficiencia, Em Revisao (post-Gestor), asIs + estimated populated
+        // uuid-009: Eficiencia, Em Revisao (post-Gestor), asIs + toBe populated
         {
           Id: 23, UUID: 'fin-uuid-023', Title: 'uuid-009', InitiativeUUID: 'uuid-009',
           TimePeriod: 'Mensal', SavingType: 'Hard Cost',
-          SavingCategory: JSON.stringify(['Reducao de custos']),
+          SavingCategory: JSON.stringify(['Redução de custos']),
           EnabledCategories: JSON.stringify(['eficiencia']),
           EficienciaData: JSON.stringify({
-            asIs:      { vp: 180, tu: 14 },
-            estimated: { vp: 180, tu: 6 },
+            asIs: { vp: 180, tu: 14 },
+            toBe: { vp: 180, tu: 6 },
           }),
           ProducaoData: '', GastosGeraisData: '',
           FTEAnnualCost: '38000',
@@ -955,7 +955,7 @@ var _spMockData = {
         {
           Id: 3, UUID: 'fin-uuid-003', Title: 'uuid-011', InitiativeUUID: 'uuid-011',
           TimePeriod: 'Mensal', SavingType: 'Hard Cost',
-          SavingCategory: JSON.stringify(['Reducao de custos']),
+          SavingCategory: JSON.stringify(['Redução de custos']),
           EnabledCategories: JSON.stringify(['eficiencia', 'producao', 'gastos']),
           EficienciaData: JSON.stringify({
             asIs: { vp: 300, tu: 15 },
@@ -978,7 +978,7 @@ var _spMockData = {
         {
           Id: 4, UUID: 'fin-uuid-004', Title: 'uuid-012', InitiativeUUID: 'uuid-012',
           TimePeriod: 'Mensal', SavingType: 'Hard Cost',
-          SavingCategory: JSON.stringify(['Reducao de custos']),
+          SavingCategory: JSON.stringify(['Redução de custos']),
           EnabledCategories: JSON.stringify(['eficiencia']),
           EficienciaData: JSON.stringify({
             asIs: { vp: 250, tu: 10 },
@@ -1069,7 +1069,7 @@ var _spMockData = {
         {
           Id: 9, UUID: 'fin-uuid-009', Title: 'uuid-022', InitiativeUUID: 'uuid-022',
           TimePeriod: 'Mensal', SavingType: 'Hard Cost',
-          SavingCategory: JSON.stringify(['Reducao de custos']),
+          SavingCategory: JSON.stringify(['Redução de custos']),
           EnabledCategories: JSON.stringify(['eficiencia', 'producao', 'gastos']),
           EficienciaData: JSON.stringify({
             asIs: { vp: 350, tu: 7 },
@@ -1092,7 +1092,7 @@ var _spMockData = {
         {
           Id: 10, UUID: 'fin-uuid-010', Title: 'uuid-023', InitiativeUUID: 'uuid-023',
           TimePeriod: 'Mensal', SavingType: 'Hard Cost',
-          SavingCategory: JSON.stringify(['Reducao de custos']),
+          SavingCategory: JSON.stringify(['Redução de custos']),
           EnabledCategories: JSON.stringify(['eficiencia']),
           EficienciaData: JSON.stringify({
             asIs: { vp: 500, tu: 6 },
@@ -1121,7 +1121,7 @@ var _spMockData = {
         {
           Id: 12, UUID: 'fin-uuid-012', Title: 'uuid-025', InitiativeUUID: 'uuid-025',
           TimePeriod: 'Mensal', SavingType: 'Hard Cost',
-          SavingCategory: JSON.stringify(['Reducao de custos']),
+          SavingCategory: JSON.stringify(['Redução de custos']),
           EnabledCategories: JSON.stringify(['eficiencia']),
           EficienciaData: JSON.stringify({ asIs: { vp: 160, tu: 14 } }),
           ProducaoData: '', GastosGeraisData: '',
@@ -1134,7 +1134,7 @@ var _spMockData = {
         {
           Id: 13, UUID: 'fin-uuid-013', Title: 'uuid-026', InitiativeUUID: 'uuid-026',
           TimePeriod: 'Mensal', SavingType: 'Hard Cost',
-          SavingCategory: JSON.stringify(['Reducao de custos']),
+          SavingCategory: JSON.stringify(['Redução de custos']),
           EnabledCategories: JSON.stringify(['eficiencia']),
           EficienciaData: JSON.stringify({ asIs: { vp: 280, tu: 9 } }),
           ProducaoData: '', GastosGeraisData: '',
@@ -1147,7 +1147,7 @@ var _spMockData = {
         {
           Id: 14, UUID: 'fin-uuid-014', Title: 'uuid-027', InitiativeUUID: 'uuid-027',
           TimePeriod: 'Mensal', SavingType: 'Soft Cost',
-          SavingCategory: JSON.stringify(['Reducao de custos']),
+          SavingCategory: JSON.stringify(['Redução de custos']),
           EnabledCategories: JSON.stringify(['eficiencia']),
           EficienciaData: JSON.stringify({ asIs: { vp: 120, tu: 22 } }),
           ProducaoData: '', GastosGeraisData: '',
@@ -1160,7 +1160,7 @@ var _spMockData = {
         {
           Id: 15, UUID: 'fin-uuid-015', Title: 'uuid-028', InitiativeUUID: 'uuid-028',
           TimePeriod: 'Mensal', SavingType: 'Hard Cost',
-          SavingCategory: JSON.stringify(['Reducao de custos']),
+          SavingCategory: JSON.stringify(['Redução de custos']),
           EnabledCategories: JSON.stringify(['eficiencia']),
           EficienciaData: JSON.stringify({ asIs: { vp: 190, tu: 11 } }),
           ProducaoData: '', GastosGeraisData: '',
@@ -1186,7 +1186,7 @@ var _spMockData = {
         {
           Id: 17, UUID: 'fin-uuid-017', Title: 'uuid-030', InitiativeUUID: 'uuid-030',
           TimePeriod: 'Mensal', SavingType: 'Hard Cost',
-          SavingCategory: JSON.stringify(['Reducao de custos']),
+          SavingCategory: JSON.stringify(['Redução de custos']),
           EnabledCategories: JSON.stringify(['eficiencia']),
           EficienciaData: JSON.stringify({ asIs: { vp: 270, tu: 10 } }),
           ProducaoData: '', GastosGeraisData: '',
@@ -1212,7 +1212,7 @@ var _spMockData = {
         {
           Id: 19, UUID: 'fin-uuid-019', Title: 'uuid-032', InitiativeUUID: 'uuid-032',
           TimePeriod: 'Mensal', SavingType: 'Hard Cost',
-          SavingCategory: JSON.stringify(['Reducao de custos']),
+          SavingCategory: JSON.stringify(['Redução de custos']),
           EnabledCategories: JSON.stringify(['eficiencia']),
           EficienciaData: JSON.stringify({
             asIs: { vp: 320, tu: 8 },
@@ -1228,7 +1228,7 @@ var _spMockData = {
         {
           Id: 20, UUID: 'finan-uuid-multi-1', Title: 'uuid-003', InitiativeUUID: 'uuid-003',
           TimePeriod: 'Mensal', SavingType: 'Hard Cost',
-          SavingCategory: JSON.stringify(['Reducao de custos']),
+          SavingCategory: JSON.stringify(['Redução de custos']),
           EnabledCategories: JSON.stringify(['eficiencia', 'gastos']),
           EficienciaData: JSON.stringify({ asIs: { vp: 100, tu: 15 } }),
           ProducaoData: '',
@@ -1242,7 +1242,7 @@ var _spMockData = {
         {
           Id: 21, UUID: 'finan-uuid-multi-2', Title: 'uuid-018', InitiativeUUID: 'uuid-018',
           TimePeriod: 'Mensal', SavingType: 'Hard Cost',
-          SavingCategory: JSON.stringify(['Reducao de custos', 'Aumento de receita']),
+          SavingCategory: JSON.stringify(['Redução de custos', 'Aumento de receita']),
           EnabledCategories: JSON.stringify(['eficiencia', 'producao', 'gastos']),
           EficienciaData: JSON.stringify({
             asIs:      { vp: 200, tu: 12 },

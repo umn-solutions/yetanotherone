@@ -31,7 +31,7 @@ export async function importFromCSV(input, onProgress) {
   const validation = await validateOrgCSV(input);
 
   if (!validation.ok) {
-    return { success: 0, failed: 0, errors: [...validation.fatal, ...validation.warnings] };
+    return { success: 0, failed: 0, errors: [...(validation.fatal || []), ...(validation.warnings || [])] };
   }
 
   const { persons: personMap, rootId, warnings } = validation;

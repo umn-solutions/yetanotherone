@@ -79,6 +79,7 @@ export async function validateOrgCSV(input) {
     data = parsed.data;
     headers = parsed.headers;
   } catch (err) {
+    console.error('[org-hierarchy-csv] parse failed', err);
     return { ok: false, fatal: [`Não foi possível ler o ficheiro: ${err.message}`], warnings };
   }
 

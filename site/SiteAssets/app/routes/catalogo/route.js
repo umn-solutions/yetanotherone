@@ -144,6 +144,7 @@ export default defineRoute((config) => {
         filtersSubscribed = true;
       }
     } catch (error) {
+      console.error('[catalogo/loadData] failed', error);
       loading.error('Erro ao carregar catálogo');
     }
   }
