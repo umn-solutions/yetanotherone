@@ -1,3 +1,4 @@
+import { Container, Text } from '../libs/nofbiz/nofbiz.base.js';
 import { STATUS_DESCRIPTIONS } from './constants.js';
 
 export const STATUS = {
@@ -29,7 +30,7 @@ export const STATUS_FLOW = [
 /** Display-friendly labels for the UI (Portuguese). */
 export const STATUS_LABELS = {
   [STATUS.RASCUNHO]: 'Rascunho',
-  [STATUS.SUBMETIDO]: 'Em Validação Projecto',
+  [STATUS.SUBMETIDO]: 'Em Validação',
   [STATUS.VALIDADO_MENTOR]: 'Validado Mentor',
   [STATUS.EM_EXECUCAO]: 'Em Execução',
   [STATUS.POR_VALIDAR]: 'Em Validação Savings',
@@ -135,6 +136,30 @@ export function chipClass(status) {
   if (status === STATUS.IMPLEMENTADO) return 'pace-chip--done';
   if (status === STATUS.CANCELADO || status === STATUS.RASCUNHO) return 'pace-chip--inactive';
   if (status === STATUS.EM_REVISAO || status === STATUS.REJEITADO) return 'pace-chip--revision';
-  if (status === STATUS.SUBMETIDO || status === STATUS.POR_VALIDAR) return 'pace-chip--pending';
+  if (status === STATUS.SUBMETIDO || status === STATUS.POR_VALIDAR || status === STATUS.VALIDADO_FINAL) return 'pace-chip--pending';
   return 'pace-chip--active';
+}
+
+/**
+ * Returns a Container with the initiative's status chip and, if FinalValidationLabel
+ * is set, a second chip showing that label.
+ * @param {Object} initiative
+ * @returns {Container}
+ */
+export function renderStatusCell(initiative) {
+  const status = initiative.Status;
+  const chips = [
+    new Text(statusLabel(status), { type: 'span', class: `pace-chip ${chipClass(status)}` }),
+  ];
+
+  const label = initiative.FinalValidationLabel;
+  if (label) {
+    const labelClass = label === 'Validado pela equipa PLACE'
+      ? 'pace-chip pace-chip--final-place'
+      : 'pace-chip pace-chip--final-finance';
+
+    chips.push(new Text(label, { type: 'span', class: labelClass }));
+  }
+
+  return new Container(chips, { class: 'pace-status-cell' });
 }

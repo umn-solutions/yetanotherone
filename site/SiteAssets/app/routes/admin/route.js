@@ -1,11 +1,15 @@
 import {
   Text, Container, Button, Dialog, Toast, View, Loader, List,
-  TabGroup, AccordionItem, FormField, TextInput, ComboBox, defineRoute,
+  TabGroup, AccordionItem, FormField, TextInput, ComboBox, NumberInput, FieldLabel, defineRoute,
   SystemError, ContextStore,
 } from '../../libs/nofbiz/nofbiz.base.js';
 import { createPageLayout } from '../../utils/navbar.js';
 import { importFromCSV, getAllEmployees, deriveRoles, updateEmployeeRole } from '../../utils/org-hierarchy-api.js';
 import { buildKpi } from '../../utils/format-helpers.js';
+import {
+  getAllTargets, getTargetByYear, createTarget, updateTarget, deleteTarget,
+  computeTargetTotals, FINANCIAL_CATEGORIES, getCategoryType,
+} from '../../utils/savings-targets-api.js';
 
 export default defineRoute((config) => {
   config.setRouteTitle('Admin');
@@ -58,6 +62,7 @@ export default defineRoute((config) => {
     { label: 'Colaborador', value: 'colaborador' },
     { label: 'Gestor', value: 'gestor' },
     { label: 'Mentor', value: 'mentor' },
+    { label: 'Mentor Manager', value: 'mentor-manager' },
   ];
 
   // -- shared employee cache --
@@ -232,6 +237,7 @@ export default defineRoute((config) => {
 
     const confirmDialog = new Dialog({
       title: 'Confirmar Importação',
+      class: 'pt-v2',
       content: new Text(
         'Esta acção irá substituir TODOS os dados da hierarquia organizacional. Esta operação não pode ser revertida. Tem a certeza?',
         { type: 'p' }
@@ -299,6 +305,8 @@ export default defineRoute((config) => {
 
   const hierarquiaView = new View([], { showOnRender: true });
 
+  const configView = new View([], { showOnRender: true });
+
   // -- Tab 2: Dados (Employee Table) --
 
   const rowKeyToTitle = new Map();
@@ -341,7 +349,7 @@ export default defineRoute((config) => {
   );
 
   function employeeToRow(emp) {
-    const role = deriveRoles(emp)[0];
+    const role = deriveRoles(emp, allEmployeeRows)[0];
     const isOverride = emp.AppRole && emp.AppRole !== '';
     return [
       emp.ShortName,
@@ -360,7 +368,7 @@ export default defineRoute((config) => {
   }
 
   function populateFilterOptions(employees) {
-    perfilCombo.dataset = buildFilterOptions(employees.map(e => deriveRoles(e)[0]));
+    perfilCombo.dataset = buildFilterOptions(employees.map(e => deriveRoles(e, employees)[0]));
     catCombo.dataset = buildFilterOptions(employees.map(e => e.Category));
     direcaoCombo.dataset = buildFilterOptions(employees.map(e => e.Direcao));
     departamentoCombo.dataset = buildFilterOptions(employees.map(e => e.Departamento));
@@ -387,7 +395,7 @@ export default defineRoute((config) => {
     if (query) {
       filtered = filtered.filter(emp => (emp.ShortName || '').toLowerCase().includes(query));
     }
-    if (perfilVal) filtered = filtered.filter(emp => deriveRoles(emp)[0] === perfilVal);
+    if (perfilVal) filtered = filtered.filter(emp => deriveRoles(emp, allEmployeeRows)[0] === perfilVal);
     if (catVal) filtered = filtered.filter(emp => emp.Category === catVal);
     if (direcaoVal) filtered = filtered.filter(emp => emp.Direcao === direcaoVal);
     if (departamentoVal) filtered = filtered.filter(emp => emp.Departamento === departamentoVal);
@@ -468,7 +476,7 @@ export default defineRoute((config) => {
 
     const roleDialog = new Dialog({
       title: 'Alterar Perfil',
-      class: 'pace-dialog--overflow-visible',
+      class: 'pace-dialog--overflow-visible pt-v2',
       content: new Container([
         new Text(`${emp.ShortName}`, { type: 'p' }),
         new Text(`Perfil actual: ${currentRole}${currentAppRole ? ' (manual)' : ''}`, { type: 'p' }),
@@ -577,17 +585,349 @@ export default defineRoute((config) => {
     }
   }
 
+  // -- Tab 4: Configurações (Savings Targets) --
+
+  let configLoaded = false;
+  let configTargets = [];
+
+  /**
+   * Formats a number as a compact Euro string (e.g. 80000 -> "€ 80.0k").
+   */
+  function formatEuro(value) {
+    const num = parseFloat(value) || 0;
+    if (num >= 1000) return '€ ' + (num / 1000).toFixed(1) + 'k';
+    return '€ ' + num.toLocaleString('pt-PT');
+  }
+
+  /**
+   * Builds the targets list rows from the cached configTargets array.
+   */
+  function buildTargetsListData() {
+    return configTargets.map((t) => {
+      const { hardTotal, softTotal, total } = computeTargetTotals(t.CategoryTargets);
+      return [
+        t.Title,
+        String(t.FTETarget),
+        formatEuro(hardTotal),
+        formatEuro(softTotal),
+        formatEuro(total),
+      ];
+    });
+  }
+
+  const targetsList = new List({
+    headers: ['Ano', 'FTE', 'Hard (€)', 'Soft (€)', 'Total (€)'],
+    data: [],
+    emptyListMessage: 'Nenhum objectivo definido. Clique em "Adicionar Ano" para começar.',
+    onItemSelectHandler: (rowData) => {
+      const year = rowData[0];
+      const target = configTargets.find((t) => t.Title === year);
+      if (target) showTargetDialog(target);
+    },
+  });
+
+  async function refreshConfigList() {
+    try {
+      configTargets = await getAllTargets();
+      targetsList.data = buildTargetsListData();
+    } catch (err) {
+      console.error('[admin/refreshConfigList] failed', err);
+      Toast.error('Erro ao carregar objectivos de poupança.');
+    }
+  }
+
+  async function loadConfigTab() {
+    if (configLoaded) return;
+    configView.children = [new Loader([], {})];
+    try {
+      await refreshConfigList();
+
+      const configCtaBanner = new Container(
+        [
+          new Container(
+            [
+              new Text('Objectivos Anuais de Poupança', {
+                type: 'span',
+                class: 'pace-cta-text',
+              }),
+              new Text(
+                'Defina as metas anuais de poupança esperadas por categoria financeira e por FTE. Um registo por ano.',
+                { type: 'p', class: 'pace-cta-text' }
+              ),
+            ],
+            { as: 'div' }
+          ),
+        ],
+        { class: 'pace-cta' }
+      );
+
+      const addBtn = new Button('Adicionar Ano', {
+        onClickHandler: () => showTargetDialog(null),
+      });
+
+      configView.children = [configCtaBanner, addBtn, targetsList];
+      configLoaded = true;
+    } catch (err) {
+      console.error('[admin/loadConfigTab] failed', err);
+      configView.children = [new Text('Erro ao carregar configurações.', { type: 'p' })];
+    }
+  }
+
+  /**
+   * Builds a live-updating totals summary container.
+   * Returns { summaryContainer, refreshSummary }.
+   */
+  function buildTotalsSummary(categoryFields) {
+    const hardText = new Text('€ 0', { type: 'span', class: 'pace-kpi-value' });
+    const softText = new Text('€ 0', { type: 'span', class: 'pace-kpi-value' });
+    const totalText = new Text('€ 0', { type: 'span', class: 'pace-kpi-value' });
+
+    const summaryContainer = new Container(
+      [
+        new Container(
+          [hardText, new Text('Hard Cost', { type: 'span', class: 'pace-kpi-label' })],
+          { class: 'pace-kpi' }
+        ),
+        new Container(
+          [softText, new Text('Soft Cost', { type: 'span', class: 'pace-kpi-label' })],
+          { class: 'pace-kpi' }
+        ),
+        new Container(
+          [totalText, new Text('Total', { type: 'span', class: 'pace-kpi-label' })],
+          { class: 'pace-kpi' }
+        ),
+      ],
+      { class: 'pace-kpi-row' }
+    );
+
+    function refreshSummary() {
+      const snapshot = {};
+      for (const [cat, field] of Object.entries(categoryFields)) {
+        snapshot[cat] = parseFloat(field.value) || 0;
+      }
+      const { hardTotal, softTotal, total } = computeTargetTotals(snapshot);
+      hardText.children = [formatEuro(hardTotal)];
+      softText.children = [formatEuro(softTotal)];
+      totalText.children = [formatEuro(total)];
+    }
+
+    return { summaryContainer, refreshSummary };
+  }
+
+  /**
+   * Opens the create/edit dialog for a savings target.
+   * @param {object|null} target - Existing target for edit, or null for create.
+   */
+  function showTargetDialog(target) {
+    const isEdit = target !== null;
+
+    // -- Year field --
+    const yearField = new FormField(isEdit ? parseFloat(target.Title) : null);
+    const yearInput = new NumberInput(yearField, {
+      placeholder: 'Ex: 2027',
+      min: 2020,
+      max: 2100,
+      step: 1,
+    });
+    const yearLabel = new FieldLabel('Ano', yearInput, { position: 'top' });
+
+    // -- FTE field --
+    const fteField = new FormField(isEdit ? target.FTETarget : 0);
+    const fteInput = new NumberInput(fteField, {
+      placeholder: 'Número de FTE',
+      min: 0,
+      step: 0.1,
+    });
+    const fteLabel = new FieldLabel('Objectivo FTE', fteInput, { position: 'top' });
+
+    // -- Category fields (one per financial category) --
+    const categoryFields = {};
+    const categoryFieldLabels = [];
+    for (const cat of FINANCIAL_CATEGORIES) {
+      const existingVal = isEdit && target.CategoryTargets ? (parseFloat(target.CategoryTargets[cat]) || 0) : 0;
+      const field = new FormField(existingVal);
+      categoryFields[cat] = field;
+      const type = getCategoryType(cat);
+      const input = new NumberInput(field, { placeholder: '0', min: 0, step: 100 });
+      const label = new FieldLabel(`${cat} (${type})`, input, { position: 'top' });
+      categoryFieldLabels.push(label);
+    }
+
+    // -- Live totals summary --
+    const { summaryContainer, refreshSummary } = buildTotalsSummary(categoryFields);
+    refreshSummary();
+
+    // Subscribe all category fields to update the summary on change
+    const unsubscribers = Object.values(categoryFields).map((f) =>
+      f.subscribe(refreshSummary)
+    );
+
+    // -- Dialog buttons --
+    const cancelBtn = new Button('Cancelar', {
+      variant: 'secondary',
+      onClickHandler: () => {
+        unsubscribers.forEach((u) => u());
+        dialog.close();
+        dialog.remove();
+      },
+    });
+
+    const saveBtn = new Button(isEdit ? 'Guardar' : 'Adicionar', {
+      onClickHandler: async () => {
+        const year = yearField.value;
+        const fte = parseFloat(fteField.value) || 0;
+
+        if (!year || isNaN(year) || year < 2020 || year > 2100) {
+          Toast.error('Introduza um ano válido (ex: 2026).');
+          return;
+        }
+
+        const catTargets = {};
+        for (const [cat, field] of Object.entries(categoryFields)) {
+          catTargets[cat] = parseFloat(field.value) || 0;
+        }
+
+        saveBtn.isLoading = true;
+        const loading = Toast.loading(isEdit ? 'A guardar objectivo...' : 'A criar objectivo...');
+
+        try {
+          if (isEdit) {
+            // Re-fetch the item to get the current etag before updating
+            const fresh = await getTargetByYear(target.Title);
+            if (!fresh) throw new SystemError('NotFound', `Objectivo para ${target.Title} não encontrado.`, { breaksFlow: false });
+            await updateTarget(fresh.Id, { fteTarget: fte, categoryTargets: catTargets }, fresh['odata.etag']);
+            loading.success('Objectivo actualizado com sucesso.');
+          } else {
+            await createTarget({ year, fteTarget: fte, categoryTargets: catTargets });
+            loading.success('Objectivo criado com sucesso.');
+          }
+          unsubscribers.forEach((u) => u());
+          dialog.close();
+          dialog.remove();
+          configLoaded = false;
+          await refreshConfigList();
+          // Re-mark as loaded so the tab doesn't re-fetch on switch back (already refreshed)
+          configLoaded = true;
+        } catch (err) {
+          console.error('[admin/saveTarget] failed', err);
+          loading.error(err.message || 'Erro ao guardar objectivo.');
+        } finally {
+          saveBtn.isLoading = false;
+        }
+      },
+    });
+
+    const footerButtons = [cancelBtn];
+
+    // Delete button only in edit mode
+    if (isEdit) {
+      const deleteBtn = new Button('Eliminar', {
+        variant: 'danger',
+        onClickHandler: () => {
+          showDeleteConfirmDialog(target, dialog, unsubscribers);
+        },
+      });
+      footerButtons.push(deleteBtn);
+    }
+
+    footerButtons.push(saveBtn);
+
+    const dialogContent = new Container(
+      [
+        ...(isEdit ? [] : [yearLabel]),
+        fteLabel,
+        new Text('Metas por Categoria (€)', { type: 'p', class: 'pace-cta-text' }),
+        ...categoryFieldLabels,
+        new Text('Resumo Derivado', { type: 'p', class: 'pace-filter-count' }),
+        summaryContainer,
+      ],
+      { class: 'admin-target-dialog__content' }
+    );
+
+    const dialogTitle = isEdit
+      ? `Editar Objectivo — ${target.Title}`
+      : 'Novo Objectivo Anual';
+
+    const dialog = new Dialog({
+      title: dialogTitle,
+      class: 'pt-v2',
+      content: dialogContent,
+      footer: footerButtons,
+      variant: 'default',
+      closeOnFocusLoss: false,
+      containerSelector: 'body',
+    });
+
+    dialog.render();
+    dialog.open();
+  }
+
+  /**
+   * Shows a confirm-before-delete dialog.
+   */
+  function showDeleteConfirmDialog(target, parentDialog, parentUnsubscribers) {
+    const cancelBtn = new Button('Cancelar', {
+      variant: 'secondary',
+      onClickHandler: () => { confirmDialog.close(); confirmDialog.remove(); },
+    });
+
+    const confirmBtn = new Button('Confirmar Eliminação', {
+      variant: 'danger',
+      onClickHandler: async () => {
+        confirmBtn.isLoading = true;
+        const loading = Toast.loading('A eliminar objectivo...');
+        try {
+          const fresh = await getTargetByYear(target.Title);
+          if (!fresh) throw new SystemError('NotFound', `Objectivo para ${target.Title} não encontrado.`, { breaksFlow: false });
+          await deleteTarget(fresh.Id, fresh['odata.etag']);
+          loading.success('Objectivo eliminado com sucesso.');
+          parentUnsubscribers.forEach((u) => u());
+          confirmDialog.close();
+          confirmDialog.remove();
+          parentDialog.close();
+          parentDialog.remove();
+          configLoaded = false;
+          await refreshConfigList();
+          configLoaded = true;
+        } catch (err) {
+          console.error('[admin/deleteTarget] failed', err);
+          loading.error(err.message || 'Erro ao eliminar objectivo.');
+        } finally {
+          confirmBtn.isLoading = false;
+        }
+      },
+    });
+
+    const confirmDialog = new Dialog({
+      title: 'Confirmar Eliminação',
+      class: 'pt-v2',
+      content: new Text(
+        `Tem a certeza que pretende eliminar o objectivo do ano ${target.Title}? Esta acção não pode ser revertida.`,
+        { type: 'p' }
+      ),
+      footer: [cancelBtn, confirmBtn],
+      variant: 'warning',
+      closeOnFocusLoss: false,
+      containerSelector: 'body',
+    });
+
+    confirmDialog.render();
+    confirmDialog.open();
+  }
+
   // -- Tab assembly --
 
   const tabs = new TabGroup([
     { key: 'importar', label: 'Importar', view: importView },
     { key: 'dados', label: 'Dados', view: dadosView },
     { key: 'hierarquia', label: 'Hierarquia', view: hierarquiaView },
+    { key: 'config', label: 'Configurações', view: configView },
   ], {
     selectedTabKey: 'importar',
     onTabChangeHandler: (tabConfig) => {
       if (tabConfig.key === 'dados') loadDadosTab();
       if (tabConfig.key === 'hierarquia') loadHierarquiaTab();
+      if (tabConfig.key === 'config') loadConfigTab();
     },
   });
 
@@ -600,5 +940,5 @@ export default defineRoute((config) => {
 
   initialize();
 
-  return createPageLayout([tabs]);
+  return createPageLayout([tabs], { contentClass: 'pt-v2' });
 });

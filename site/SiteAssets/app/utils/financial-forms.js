@@ -10,6 +10,7 @@ import {
   TabGroup,
   View,
   SystemError,
+  extractComboBoxValue,
   __zod,
 } from '../libs/nofbiz/nofbiz.base.js';
 
@@ -17,11 +18,14 @@ import {
   ANNUALIZATION_FACTORS,
   SAVING_CATEGORIES,
   HARD_CATEGORIES,
+  SOFT_CATEGORIES,
   CATEGORY_KEYS,
   CATEGORY_LABELS,
   CATEGORY_DIRECTIONS,
   CATEGORY_FIELD_NAMES,
   deriveSavingType,
+  SOFT_SAVINGS_THRESHOLD_EUR,
+  MENTOR_MANAGER_LABELS,
 } from './constants.js';
 
 import { createTagsToggle, createSegmentedToggle } from './tags-toggle.js';
@@ -41,14 +45,18 @@ export const FINANCIAL_TYPES = {
 
 /**
  * Per-category input field keys.
- * Eficiencia: vp (Volume processado), tu (Tempo tratamento unitario)
- * Producao:   vp (Volume), mu (Montante medio unitario), tt (Taxa de transformacao %)
- * Gastos:     v  (Volume), c  (Custo unitario)
+ * Eficiencia:    vp (Volume processado), tu (Tempo tratamento unitario)
+ * Producao:      vp (Volume), mu (Montante medio unitario), tt (Taxa de transformacao %)
+ * Gastos:        v  (Volume), c  (Custo unitario)
+ * ReducaoRisco:  exp (Exposição ao risco), taxa (Taxa de provisionamento %)
+ * ReducaoCusto:  co (Custos operacionais)
  */
 const INPUT_KEYS_BY_CATEGORY = {
-  eficiencia: ['vp', 'tu'],
-  producao:   ['vp', 'mu', 'tt'],
-  gastos:     ['v', 'c'],
+  eficiencia:    ['vp', 'tu'],
+  producao:      ['vp', 'mu', 'tt'],
+  gastos:        ['v', 'c'],
+  reducao_risco: ['exp', 'taxa'],
+  reducao_custo: ['co'],
 };
 
 /** Human-readable labels for each input field, keyed by category then input key. */
@@ -59,27 +67,52 @@ const INPUT_LABELS_BY_CATEGORY = {
   },
   producao: {
     vp: 'Volume de Unidades',
-    mu: 'Valor Médio por Unidade (EUR)',
+    mu: 'Valor Médio por Unidade (€)',
     tt: 'Taxa de Transformação (%)',
   },
   gastos: {
     v: 'Volume de Unidades',
-    c: 'Custo Unitário (EUR)',
+    c: 'Custo Unitário (€)',
+  },
+  reducao_risco: {
+    exp:  'Exposição ao risco (€)',
+    taxa: 'Taxa de provisionamento (%)',
+  },
+  reducao_custo: {
+    co: 'Custos operacionais (€)',
   },
 };
 
 /** Per-input unit suffix. Empty string = no unit (raw counts/volumes). */
 const INPUT_UNITS_BY_CATEGORY = {
-  eficiencia: { vp: '',  tu: 'min' },
-  producao:   { vp: '',  mu: 'Eur', tt: '%' },
-  gastos:     { v:  '',  c:  'Eur' },
+  eficiencia:    { vp: '',  tu: 'min' },
+  producao:      { vp: '',  mu: '€', tt: '%' },
+  gastos:        { v:  '',  c:  '€' },
+  reducao_risco: { exp: '€', taxa: '%' },
+  reducao_custo: { co: '€' },
 };
 
 /** Per-category total unit. */
 const CATEGORY_TOTAL_UNIT = {
-  eficiencia: 'min',
-  producao:   'Eur',
-  gastos:     'Eur',
+  eficiencia:    'min',
+  producao:      '€',
+  gastos:        '€',
+  reducao_risco: '€',
+  reducao_custo: '€',
+};
+
+/**
+ * Categories that carry a mode toggle (e.g. evitado/reduzido for reducao_risco).
+ * Each entry defines the default option value and the available options.
+ */
+const CATEGORY_MODE_CONFIG = {
+  reducao_risco: {
+    default: 'reduzido',
+    options: [
+      { label: 'Risco reduzido', value: 'reduzido' },
+      { label: 'Risco evitado',  value: 'evitado'  },
+    ],
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -109,7 +142,7 @@ export function displayValue(val) {
 export function displayValueWithUnit(val, unit) {
   const formatted = displayValue(val);
   if (formatted === '-' || !unit) return formatted;
-  return formatted + ' ' + unit;
+  return formatted + ' ' + unit;
 }
 
 /**
@@ -170,13 +203,13 @@ export function formatFte(val) {
 }
 
 /**
- * Formats a EUR monetary value with 2 decimal places.
+ * Formats a € monetary value with 2 decimal places.
  * @param {number} val
  * @returns {string}
  */
 export function formatEur(val) {
-  if (!val || isNaN(val)) return '0,00 Eur';
-  return val.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Eur';
+  if (!val || isNaN(val)) return '0,00 €';
+  return val.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
 }
 
 /**
@@ -226,9 +259,11 @@ function num(v) {
  * @returns {number}
  */
 function computePhaseTotal(key, phase) {
-  if (key === 'eficiencia') return num(phase.vp.value) * num(phase.tu.value);
-  if (key === 'producao')   return num(phase.vp.value) * num(phase.mu.value) * (num(phase.tt.value) / 100);
-  if (key === 'gastos')     return num(phase.v.value) * num(phase.c.value);
+  if (key === 'eficiencia')    return num(phase.vp.value) * num(phase.tu.value);
+  if (key === 'producao')      return num(phase.vp.value) * num(phase.mu.value) * (num(phase.tt.value) / 100);
+  if (key === 'gastos')        return num(phase.v.value) * num(phase.c.value);
+  if (key === 'reducao_risco') return num(phase.exp.value) * num(phase.taxa.value) / 100;
+  if (key === 'reducao_custo') return num(phase.co.value);
   return 0;
 }
 
@@ -303,18 +338,20 @@ export function assertToBeComplete(financials) {
 function computeRawPhaseTotal(key, phaseObj) {
   if (!phaseObj) return 0;
   const v = (x) => parseFloat(x) || 0;
-  if (key === 'eficiencia') return v(phaseObj.vp) * v(phaseObj.tu);
-  if (key === 'producao')   return v(phaseObj.vp) * v(phaseObj.mu) * (v(phaseObj.tt) / 100);
-  if (key === 'gastos')     return v(phaseObj.v)  * v(phaseObj.c);
+  if (key === 'eficiencia')    return v(phaseObj.vp) * v(phaseObj.tu);
+  if (key === 'producao')      return v(phaseObj.vp) * v(phaseObj.mu) * (v(phaseObj.tt) / 100);
+  if (key === 'gastos')        return v(phaseObj.v)  * v(phaseObj.c);
+  if (key === 'reducao_risco') return v(phaseObj.exp) * v(phaseObj.taxa) / 100;
+  if (key === 'reducao_custo') return v(phaseObj.co);
   return 0;
 }
 
 /**
- * Computes the annualized toBe total in EUR across all enabled categories.
+ * Computes the annualized toBe total in € across all enabled categories.
  * Used by routing rules to decide gestor assignment based on financial impact.
  *
  * @param {Object|null} financials - Financials row from SP (auto-parsed)
- * @returns {number} Annualized EUR total (0 if no data)
+ * @returns {number} Annualized € total (0 if no data)
  */
 export function computeAnnualizedToBeTotalEur(financials) {
   if (!financials) return 0;
@@ -329,13 +366,43 @@ export function computeAnnualizedToBeTotalEur(financials) {
     const payload = financials[fieldName];
     const raw = computeRawPhaseTotal(key, getToBePhase(payload));
     if (key === 'eficiencia') {
-      // Eficiencia raw is minutes per period -> annualized minutes -> FTE-years -> EUR
+      // Eficiencia raw is minutes per period -> annualized minutes -> FTE-years -> €
       totalEur += ((raw * factor) / 120960) * fteCost;
     } else {
       totalEur += raw * factor;
     }
   }
   return totalEur;
+}
+
+/**
+ * Resolves the final validation label for an initiative based on its saving
+ * category and annualized total.
+ *
+ * Logic:
+ *  - isSoft = SavingCategory is a string in SOFT_CATEGORIES, or an array
+ *    whose EVERY entry is in SOFT_CATEGORIES (any hard category present = not soft).
+ *  - If isSoft AND annualized total < SOFT_SAVINGS_THRESHOLD_EUR => PLACE label.
+ *  - All other cases => AREA_FINANCEIRA label.
+ *
+ * @param {Object} initiative - Initiative row (only SavingCategory is read from here,
+ *   but callers can pass the initiative object directly for convenience).
+ * @param {Object|null} financials - Financials row (used for annualized total computation).
+ * @returns {string}
+ */
+export function resolveFinalValidationLabel(initiative, financials) {
+  const rawCategory = (financials && financials.SavingCategory) || (initiative && initiative.SavingCategory);
+  const cats = Array.isArray(rawCategory)
+    ? rawCategory
+    : (rawCategory ? [rawCategory] : []);
+
+  const isSoft = cats.length > 0 && cats.every(c => SOFT_CATEGORIES.includes(c));
+  const annualEur = computeAnnualizedToBeTotalEur(financials);
+
+  if (isSoft && annualEur < SOFT_SAVINGS_THRESHOLD_EUR) {
+    return MENTOR_MANAGER_LABELS.PLACE;
+  }
+  return MENTOR_MANAGER_LABELS.AREA_FINANCEIRA;
 }
 
 // ---------------------------------------------------------------------------
@@ -379,13 +446,24 @@ export function createCategoryState(key, storedPayload, editability) {
     },
   };
 
+  // Mode toggle (e.g. evitado/reduzido for reducao_risco)
+  let mode = null;
+  const modeConfig = CATEGORY_MODE_CONFIG[key];
+  if (modeConfig) {
+    const storedMode = payload.mode;
+    const matchingOption = modeConfig.options.find(o => o.value === storedMode);
+    const initialOption = matchingOption || modeConfig.options.find(o => o.value === modeConfig.default);
+    mode = new FormField({ value: initialOption });
+  }
+
   function dispose() {
     [asIs, toBe].forEach(phase => {
       Object.values(phase).forEach(field => field.dispose());
     });
+    if (mode) mode.dispose();
   }
 
-  return { key, asIs, toBe, computed, dispose, editability };
+  return { key, asIs, toBe, computed, dispose, editability, ...(mode ? { mode } : {}) };
 }
 
 // ---------------------------------------------------------------------------
@@ -419,6 +497,9 @@ export function serializeCategory(state) {
     });
     if (hasValue) payload[phase] = collected;
   });
+  if (state.mode) {
+    payload.mode = extractComboBoxValue(state.mode.value);
+  }
   return JSON.stringify(payload);
 }
 
@@ -619,6 +700,15 @@ export function buildCategoryDisplay(state, opts = {}) {
     ...sectionRows,
   ];
 
+  // Mode sub-label (e.g. "Tipo de risco: Risco reduzido" for reducao_risco)
+  if (state.mode) {
+    const modeConfig = CATEGORY_MODE_CONFIG[state.key];
+    const currentModeValue = extractComboBoxValue(state.mode.value);
+    const modeOption = modeConfig && modeConfig.options.find(o => o.value === currentModeValue);
+    const modeTxt = new Text(modeOption ? modeOption.label : currentModeValue || '-', { type: 'span', class: 'pace-detail-value' });
+    components.push(buildReadOnlyRow('Tipo de risco', modeTxt));
+  }
+
   if (showToBe) {
     const savingTxt = new Text(displayValue(state.computed.realizedSaving()), { type: 'span', class: 'pace-detail-value' });
     const refreshSaving = () => { savingTxt.children = displayValue(state.computed.realizedSaving()); };
@@ -686,21 +776,28 @@ export function buildTotalsPanel(categoryStates, opts = {}) {
     return 0;
   }
 
-  // -- Per-period block text nodes --
-  const pEurProducaoTxt = new Text('', { type: 'span', class: 'pace-detail-value' });
-  const pEurGastosTxt   = new Text('', { type: 'span', class: 'pace-detail-value' });
-  const pEurTotalTxt    = new Text('', { type: 'span', class: 'pace-detail-value' });
-  const pTimeTxt        = new Text('', { type: 'span', class: 'pace-detail-value' });
-  const pFteTxt         = new Text('', { type: 'span', class: 'pace-detail-value' });
-  const pFteCostTxt     = new Text('', { type: 'span', class: 'pace-detail-value' });
+  // -- Static text nodes for totals and eficiencia-specific rows --
+  const pEurTotalTxt = new Text('', { type: 'span', class: 'pace-detail-value' });
+  const pTimeTxt     = new Text('', { type: 'span', class: 'pace-detail-value' });
+  const pFteTxt      = new Text('', { type: 'span', class: 'pace-detail-value' });
+  const pFteCostTxt  = new Text('', { type: 'span', class: 'pace-detail-value' });
 
-  // -- Annualised block text nodes --
-  const aEurProducaoTxt = new Text('', { type: 'span', class: 'pace-detail-value' });
-  const aEurGastosTxt   = new Text('', { type: 'span', class: 'pace-detail-value' });
-  const aEurTotalTxt    = new Text('', { type: 'span', class: 'pace-detail-value' });
-  const aTimeTxt        = new Text('', { type: 'span', class: 'pace-detail-value' });
-  const fteTxt          = new Text('', { type: 'span', class: 'pace-detail-value' });
-  const fteCostTxt      = new Text('', { type: 'span', class: 'pace-detail-value' });
+  const aEurTotalTxt = new Text('', { type: 'span', class: 'pace-detail-value' });
+  const aTimeTxt     = new Text('', { type: 'span', class: 'pace-detail-value' });
+  const fteTxt       = new Text('', { type: 'span', class: 'pace-detail-value' });
+  const fteCostTxt   = new Text('', { type: 'span', class: 'pace-detail-value' });
+
+  // -- Per-category € text nodes (one pair per enabled € category, keyed by category key) --
+  // These are created once per buildTotalsPanel call for all currently-enabled € categories.
+  const pEurCatTxts = new Map(); // key -> Text node (per-period)
+  const aEurCatTxts = new Map(); // key -> Text node (annual)
+  for (const key of CATEGORY_KEYS) {
+    if (key === 'eficiencia') continue; // handled separately via FTE conversion
+    if (CATEGORY_TOTAL_UNIT[key] === '€' && categoryStates.has(key)) {
+      pEurCatTxts.set(key, new Text('', { type: 'span', class: 'pace-detail-value' }));
+      aEurCatTxts.set(key, new Text('', { type: 'span', class: 'pace-detail-value' }));
+    }
+  }
 
   // -- Period header label text node (updates when timePeriod field changes) --
   const periodHeaderTxt = new Text('', { type: 'h4', class: 'pace-totals-title' });
@@ -710,47 +807,51 @@ export function buildTotalsPanel(categoryStates, opts = {}) {
     const factor = getAnnualizationFactor(period) || 1;
     const fteCost = getFteCost();
 
-    const rawProducao   = getStateValue('producao');
-    const rawGastos     = getStateValue('gastos');
     const rawEficiencia = getStateValue('eficiencia');
 
-    // Per-period values (no factor)
-    const pProducao = rawProducao;
-    const pGastos   = rawGastos;
-    const pTime     = rawEficiencia;
+    // Per-period eficiencia values
+    const pTime         = rawEficiencia;
     const pEficienciaEur = (pTime * fteCost) / 120960;
-    const pEurTotal = pProducao + pGastos + pEficienciaEur;
 
-    // Annualised values (multiply by factor)
-    const aProducao  = rawProducao   * factor;
-    const aGastos    = rawGastos     * factor;
-    const aTime      = rawEficiencia * factor;
-    const fte        = aTime / 120960;
+    // Annualised eficiencia values
+    const aTime         = rawEficiencia * factor;
+    const fte           = aTime / 120960;
     const aEficienciaEur = fte * fteCost;
-    const aEurTotal  = aProducao + aGastos + aEficienciaEur;
+
+    // Sum up all € categories (excluding eficiencia which goes via FTE)
+    let pEurCatTotal = 0;
+    let aEurCatTotal = 0;
+    for (const [key, pTxt] of pEurCatTxts) {
+      const raw = getStateValue(key);
+      const pVal = raw;
+      const aVal = raw * factor;
+      pEurCatTotal += pVal;
+      aEurCatTotal += aVal;
+      pTxt.children = formatEur(pVal);
+      aEurCatTxts.get(key).children = formatEur(aVal);
+    }
+
+    const pEurTotal = pEurCatTotal + pEficienciaEur;
+    const aEurTotal = aEurCatTotal + aEficienciaEur;
 
     // Period header
     const periodLabel = period || 'sem período';
     periodHeaderTxt.children = 'Totais (' + periodLabel + ')';
 
     // Per-period block
-    pEurProducaoTxt.children = formatEur(pProducao);
-    pEurGastosTxt.children   = formatEur(pGastos);
-    pEurTotalTxt.children    = formatEur(pEurTotal);
-    pTimeTxt.children        = displayValue(pTime) + ' min';
-    pFteTxt.children         = formatFte(fte);
-    pFteCostTxt.children     = formatEur(pEficienciaEur);
+    pEurTotalTxt.children = formatEur(pEurTotal);
+    pTimeTxt.children     = displayValue(pTime) + ' min';
+    pFteTxt.children      = formatFte(fte);
+    pFteCostTxt.children  = formatEur(pEficienciaEur);
 
     // Annualised block
-    aEurProducaoTxt.children = formatEur(aProducao);
-    aEurGastosTxt.children   = formatEur(aGastos);
-    aEurTotalTxt.children    = formatEur(aEurTotal);
-    aTimeTxt.children        = displayValue(aTime) + ' min';
-    fteTxt.children          = formatFte(fte);
-    fteCostTxt.children      = formatEur(aEficienciaEur);
+    aEurTotalTxt.children = formatEur(aEurTotal);
+    aTimeTxt.children     = displayValue(aTime) + ' min';
+    fteTxt.children       = formatFte(fte);
+    fteCostTxt.children   = formatEur(aEficienciaEur);
   }
 
-  // Subscribe to all FormFields across enabled categories
+  // Subscribe to all FormFields across enabled categories (numeric fields only, not mode)
   for (const state of categoryStates.values()) {
     for (const phaseObj of [state.asIs, state.toBe]) {
       for (const field of Object.values(phaseObj)) {
@@ -769,27 +870,22 @@ export function buildTotalsPanel(categoryStates, opts = {}) {
     unsubs.push(fteOpt.subscribe(refresh));
   }
 
-  // -- Per-period block children (only show rows for enabled categories) --
+  // -- Build block children --
   const hasEficiencia = categoryStates.has('eficiencia');
   const showEficienciaEurRow = hasEficiencia && (isFteField || parseFloat(fteOpt) > 0);
-  const hasEur = categoryStates.has('producao') || categoryStates.has('gastos') || showEficienciaEurRow;
+  const hasEur = pEurCatTxts.size > 0 || showEficienciaEurRow;
 
+  // Per-period € block
   const pEurBlockChildren = [
     new Container([
       new Text('Impacto Financeiro', { type: 'span', class: 'pace-detail-label' }),
       pEurTotalTxt,
     ], { class: 'pace-detail-row pace-detail-row--total' }),
   ];
-  if (categoryStates.has('producao')) {
+  for (const [key, pTxt] of pEurCatTxts) {
     pEurBlockChildren.push(new Container([
-      new Text('Produção', { type: 'span', class: 'pace-detail-label' }),
-      pEurProducaoTxt,
-    ], { class: 'pace-detail-row pace-detail-row--indent' }));
-  }
-  if (categoryStates.has('gastos')) {
-    pEurBlockChildren.push(new Container([
-      new Text('Gastos Gerais', { type: 'span', class: 'pace-detail-label' }),
-      pEurGastosTxt,
+      new Text(CATEGORY_LABELS[key], { type: 'span', class: 'pace-detail-label' }),
+      pTxt,
     ], { class: 'pace-detail-row pace-detail-row--indent' }));
   }
   if (showEficienciaEurRow) {
@@ -803,7 +899,7 @@ export function buildTotalsPanel(categoryStates, opts = {}) {
   if (hasEficiencia) {
     pTimeBlockChildren.push(
       new Container([
-        new Text('Tempo Recuperado', { type: 'span', class: 'pace-detail-label' }),
+        new Text('Tempo', { type: 'span', class: 'pace-detail-label' }),
         pTimeTxt,
       ], { class: 'pace-detail-row pace-detail-row--total' }),
       new Container([
@@ -821,23 +917,17 @@ export function buildTotalsPanel(categoryStates, opts = {}) {
     periodBlockChildren.push(new Container(pTimeBlockChildren, { class: 'pace-totals-block-inner' }));
   }
 
-  // -- Annualised block children --
+  // Annualised € block
   const aEurBlockChildren = [
     new Container([
       new Text('Impacto Financeiro', { type: 'span', class: 'pace-detail-label' }),
       aEurTotalTxt,
     ], { class: 'pace-detail-row pace-detail-row--total' }),
   ];
-  if (categoryStates.has('producao')) {
+  for (const [key, aTxt] of aEurCatTxts) {
     aEurBlockChildren.push(new Container([
-      new Text('Produção', { type: 'span', class: 'pace-detail-label' }),
-      aEurProducaoTxt,
-    ], { class: 'pace-detail-row pace-detail-row--indent' }));
-  }
-  if (categoryStates.has('gastos')) {
-    aEurBlockChildren.push(new Container([
-      new Text('Gastos Gerais', { type: 'span', class: 'pace-detail-label' }),
-      aEurGastosTxt,
+      new Text(CATEGORY_LABELS[key], { type: 'span', class: 'pace-detail-label' }),
+      aTxt,
     ], { class: 'pace-detail-row pace-detail-row--indent' }));
   }
   if (showEficienciaEurRow) {
@@ -851,7 +941,7 @@ export function buildTotalsPanel(categoryStates, opts = {}) {
   if (hasEficiencia) {
     aTimeBlockChildren.push(
       new Container([
-        new Text('Tempo Recuperado', { type: 'span', class: 'pace-detail-label' }),
+        new Text('Tempo', { type: 'span', class: 'pace-detail-label' }),
         aTimeTxt,
       ], { class: 'pace-detail-row pace-detail-row--total' }),
       new Container([
@@ -895,6 +985,157 @@ export function buildTotalsPanel(categoryStates, opts = {}) {
   };
 }
 
+/**
+ * Builds the "Impacto Financeiro Projectado" summary: the To-Be − As-Is
+ * difference for both the per-period and the annualised financial totals.
+ * Mirrors buildTotalsPanel's € computation (producao + gastos + eficiência·FTE)
+ * so the numbers reconcile with the As-Is / To-Be cards. Reactive to category
+ * fields, timePeriod, and fteAnnualCost.
+ *
+ * @param {Map<string, CategoryState>} categoryStates
+ * @param {{ timePeriod?: string|FormField, fteAnnualCost?: number|FormField }} opts
+ * @returns {{ component: Container, refresh: () => void, dispose: () => void }}
+ */
+export function buildImpactSummaryPanel(categoryStates, opts = {}) {
+  const unsubs = [];
+
+  const timePeriodOpt = opts.timePeriod;
+  const isTimePeriodField = timePeriodOpt != null
+    && typeof timePeriodOpt === 'object'
+    && typeof timePeriodOpt.subscribe === 'function';
+  const getPeriod = isTimePeriodField
+    ? () => extractComboValue(timePeriodOpt)
+    : () => (timePeriodOpt || '');
+
+  const fteOpt = opts.fteAnnualCost;
+  const isFteField = fteOpt != null
+    && typeof fteOpt === 'object'
+    && typeof fteOpt.subscribe === 'function';
+  const getFteCost = isFteField
+    ? () => parseFloat(fteOpt.value) || 0
+    : () => parseFloat(fteOpt) || 0;
+
+  const catVal = (key, phaseKey) => {
+    const s = categoryStates.get(key);
+    if (!s) return 0;
+    return phaseKey === 'toBe' ? s.computed.toBeTotal() : s.computed.asIsTotal();
+  };
+
+  /**
+   * Computes the total € for all non-eficiencia categories in the given phase.
+   * Each category's direction determines its contribution sign.
+   * - 'increase' (producao, reducao_risco, reducao_custo): benefit = toBe - asIs
+   * - 'decrease' (gastos): benefit = asIs - toBe
+   * Eficiencia is excluded here (handled via FTE conversion separately).
+   */
+  const phaseEur = (phaseKey, fteCost) => {
+    let total = 0;
+    for (const key of CATEGORY_KEYS) {
+      if (key === 'eficiencia') continue;
+      if (CATEGORY_TOTAL_UNIT[key] !== '€') continue;
+      if (!categoryStates.has(key)) continue;
+      total += catVal(key, phaseKey);
+    }
+    return total + (catVal('eficiencia', phaseKey) * fteCost) / 120960;
+  };
+
+  const signClass = (v) => (v >= 0 ? 'pace-impact--pos' : 'pace-impact--neg');
+  const fmtSigned = (v) => (v > 0 ? '+' : '') + formatEur(v);
+
+  /**
+   * Computes the net benefit (€) across all categories. A positive value means the
+   * change is beneficial. Direction defines what "better" means per category:
+   * - 'increase' = gain (more is better) -> benefit = toBe - asIs
+   * - 'decrease' = saving (less is better) -> benefit = asIs - toBe
+   * Eficiencia uses its FTE cost conversion.
+   */
+  const benefitEur = (fteCost) => {
+    let benefit = 0;
+    for (const key of CATEGORY_KEYS) {
+      if (key === 'eficiencia') continue;
+      if (CATEGORY_TOTAL_UNIT[key] !== '€') continue;
+      if (!categoryStates.has(key)) continue;
+      const dir = CATEGORY_DIRECTIONS[key];
+      benefit += dir === 'increase'
+        ? catVal(key, 'toBe') - catVal(key, 'asIs')
+        : catVal(key, 'asIs') - catVal(key, 'toBe');
+    }
+    benefit += ((catVal('eficiencia', 'asIs') - catVal('eficiencia', 'toBe')) * fteCost) / 120960;
+    return benefit;
+  };
+
+  const hasEficiencia = categoryStates.has('eficiencia');
+  const periodPill = new Container([], { class: 'pace-impact-pill' });
+  const annualPill = new Container([], { class: 'pace-impact-pill' });
+  const timePeriodPill = new Container([], { class: 'pace-impact-pill' });
+  const timeAnnualPill = new Container([], { class: 'pace-impact-pill' });
+  const fmtTime = (v) => (v > 0 ? '+' : '') + displayValue(v) + ' min';
+
+  function refresh() {
+    const period = getPeriod();
+    const factor = getAnnualizationFactor(period) || 1;
+    const fteCost = getFteCost();
+
+    const periodDiff = phaseEur('toBe', fteCost) - phaseEur('asIs', fteCost);
+    const annualDiff = periodDiff * factor;
+
+    // Colour by benefit, not by the raw diff sign (a cost reduction shows a
+    // negative diff but is a positive outcome -> green). Annual shares the sign.
+    const benefit = benefitEur(fteCost);
+    const colour = signClass(benefit);
+
+    periodPill.children = [
+      new Text(period || 'Período', { type: 'span', class: 'pace-impact-pill-label' }),
+      new Text(fmtSigned(periodDiff), { type: 'span', class: 'pace-impact-pill-value ' + colour }),
+    ];
+    annualPill.children = [
+      new Text('Anual', { type: 'span', class: 'pace-impact-pill-label' }),
+      new Text(fmtSigned(annualDiff), { type: 'span', class: 'pace-impact-pill-value ' + colour }),
+    ];
+
+    if (hasEficiencia) {
+      // Allocated-time difference (minutes). Less time is better -> green.
+      const periodTimeDiff = catVal('eficiencia', 'toBe') - catVal('eficiencia', 'asIs');
+      const annualTimeDiff = periodTimeDiff * factor;
+      const timeColour = signClass(-periodTimeDiff);
+      timePeriodPill.children = [
+        new Text('Tempo (' + (period || 'Período') + ')', { type: 'span', class: 'pace-impact-pill-label' }),
+        new Text(fmtTime(periodTimeDiff), { type: 'span', class: 'pace-impact-pill-value ' + timeColour }),
+      ];
+      timeAnnualPill.children = [
+        new Text('Tempo (Anual)', { type: 'span', class: 'pace-impact-pill-label' }),
+        new Text(fmtTime(annualTimeDiff), { type: 'span', class: 'pace-impact-pill-value ' + timeColour }),
+      ];
+    }
+  }
+
+  for (const state of categoryStates.values()) {
+    for (const phaseObj of [state.asIs, state.toBe]) {
+      for (const field of Object.values(phaseObj)) {
+        unsubs.push(field.subscribe(refresh));
+      }
+    }
+  }
+  if (isTimePeriodField) unsubs.push(timePeriodOpt.subscribe(refresh));
+  if (isFteField) unsubs.push(fteOpt.subscribe(refresh));
+
+  const component = new Container([
+    new Text('Impacto Financeiro Projectado', { type: 'span', class: 'pace-impact-title' }),
+    new Container([
+      new Container([periodPill, annualPill], { class: 'pace-impact-group' }),
+      ...(hasEficiencia ? [new Container([timePeriodPill, timeAnnualPill], { class: 'pace-impact-group' })] : []),
+    ], { class: 'pace-impact-row' }),
+  ], { class: 'pace-impact-summary' });
+
+  refresh();
+
+  return {
+    component,
+    refresh,
+    dispose: () => { unsubs.forEach(u => u && u()); },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Shared financial schema factory (DRY across modals)
 // ---------------------------------------------------------------------------
@@ -906,10 +1147,10 @@ const TIME_PERIOD_LABELS = {
 const SAVING_CAT_LABELS = {
   'Outros Benefícios Qualitativos': 'Outros Benefícios Qualitativos',
   'Redução de custos': 'Redução de custos',
-  'Aumento de receita': 'Aumento de receita',
+  'Aumento de Vendas(NBI)': 'Aumento de Vendas(NBI)',
   'Redução de risco': 'Redução de risco',
   'Custos e riscos evitados': 'Custos e riscos evitados',
-  'Melhoria de qualidade': 'Melhoria de qualidade',
+  'Redução de tempo de execução de tarefas': 'Redução de tempo de execução de tarefas',
 };
 const TIME_PERIOD_OPTIONS = Object.keys(ANNUALIZATION_FACTORS).map(k => ({ label: TIME_PERIOD_LABELS[k] || k, value: k }));
 
@@ -926,13 +1167,11 @@ export function buildSharedFinancialSchema(financials, opts = {}) {
   const { isMentorOrGestor = false, readOnly = false } = opts;
   const z = __zod;
 
-  // TimePeriod -- empty for new initiatives so financials remain opt-in;
-  // pre-fills from existing financials on edit.
-  const existingPeriod = financials?.TimePeriod || '';
+  // TimePeriod -- defaults to Mensal for new initiatives; pre-fills from existing
+  // financials on edit. (Period alone does not mark financials as "touched".)
+  const existingPeriod = financials?.TimePeriod || 'Mensal';
   const timePeriodField = new FormField({
-    value: existingPeriod
-      ? { label: TIME_PERIOD_LABELS[existingPeriod] || existingPeriod, value: existingPeriod }
-      : '',
+    value: { label: TIME_PERIOD_LABELS[existingPeriod] || existingPeriod, value: existingPeriod },
   });
 
   // SavingCategory -- empty for new initiatives (no auto-touch of financials).
@@ -970,7 +1209,7 @@ export function buildSharedFinancialSchema(financials, opts = {}) {
   } else {
     components.push(
       new Container([
-        new FieldLabel('Categorias de Savings', createTagsToggle(savingCategoryField, { items: SAVING_CATEGORIES, dangerItems: HARD_CATEGORIES }), { class: 'pace-required' }),
+        new FieldLabel('Categorias de Savings', createTagsToggle(savingCategoryField, { items: SAVING_CATEGORIES, dangerItems: HARD_CATEGORIES, gridClass: 'pace-tags-grid pace-savings-grid' }), { class: 'pace-required' }),
         new Container([
           buildReadOnlyRow('Classificação do Tipo de Saving', savingTypeTxt),
           new Text('Nota: "Outros Benefícios Qualitativos" pode não conter dados financeiros. Nesses casos, os campos quantitativos abaixo são opcionais.', { type: 'p', class: 'pace-field-callout' }),
@@ -1040,12 +1279,13 @@ export function buildCategoryTabbedSection(categoryStates, opts = {}) {
   // -- Totals panels (rebuilt on category changes) --
   let asIsTotalsResult = buildTotalsPanel(categoryStates, { phase: 'asIs', timePeriod, fteAnnualCost });
   let toBeTotalsResult = buildTotalsPanel(categoryStates, { phase: 'toBe', timePeriod, fteAnnualCost });
+  let impactSummaryResult = buildImpactSummaryPanel(categoryStates, { timePeriod, fteAnnualCost });
 
   // -- Tab content builder --
   function buildTabView(key, state) {
     // FTE Anual cost input lives inside the Eficiencia tab inputs row (mentor/gestor only)
     const extraInputs = (key === 'eficiencia' && isMentorOrGestor && fteAnnualCostIsField)
-      ? [new FieldLabel('Custo Anual por FTE (EUR)', new NumberInput(fteAnnualCost, { placeholder: '0', min: 0 }))]
+      ? [new FieldLabel('Custo Anual por FTE (€)', new NumberInput(fteAnnualCost, { placeholder: '0', min: 0 }))]
       : [];
 
     const asIsResult = buildCategoryAsIsForm(state, { timePeriod, extraInputs });
@@ -1054,8 +1294,18 @@ export function buildCategoryTabbedSection(categoryStates, opts = {}) {
       dispose: () => { asIsResult.dispose(); toBeResult.dispose(); },
     });
 
+    // Mode toggle (e.g. evitado/reduzido for reducao_risco)
+    const modeToggleChildren = [];
+    if (state.mode) {
+      const modeConfig = CATEGORY_MODE_CONFIG[key];
+      modeToggleChildren.push(
+        new FieldLabel('Tipo de risco', createSegmentedToggle(state.mode, modeConfig.options, { isDisabled: !canModify })),
+      );
+    }
+
     const tabChildren = [
       new Container([
+        ...modeToggleChildren,
         new Text('As-Is (situação actual)', { type: 'h5', class: 'pace-form-section-title' }),
         ...asIsResult.components,
         new Text('To-Be (situação futura)', { type: 'h5', class: 'pace-form-section-title' }),
@@ -1128,7 +1378,7 @@ export function buildCategoryTabbedSection(categoryStates, opts = {}) {
 
     function refreshAddControls() {
       const available = CATEGORY_KEYS.filter(k => !categoryStates.has(k));
-      const isFull = categoryStates.size >= 3;
+      const isFull = categoryStates.size >= CATEGORY_KEYS.length;
 
       if (available.length === 0 || isFull) {
         addContainer.children = [];
@@ -1172,6 +1422,7 @@ export function buildCategoryTabbedSection(categoryStates, opts = {}) {
     return [
       buildAsIsTitle(), asIsTotalsResult.component,
       buildToBeTitle(), toBeTotalsResult.component,
+      impactSummaryResult.component,
     ];
   }
 
@@ -1180,8 +1431,10 @@ export function buildCategoryTabbedSection(categoryStates, opts = {}) {
     buildTabGroupFresh();
     asIsTotalsResult.dispose();
     toBeTotalsResult.dispose();
+    impactSummaryResult.dispose();
     asIsTotalsResult = buildTotalsPanel(categoryStates, { phase: 'asIs', timePeriod, fteAnnualCost });
     toBeTotalsResult = buildTotalsPanel(categoryStates, { phase: 'toBe', timePeriod, fteAnnualCost });
+    impactSummaryResult = buildImpactSummaryPanel(categoryStates, { timePeriod, fteAnnualCost });
     totalsAreaContainer.children = totalsAreaChildren();
   });
   unsubs.push(tabUnsub);
@@ -1205,6 +1458,7 @@ export function buildCategoryTabbedSection(categoryStates, opts = {}) {
     builderResults.clear();
     asIsTotalsResult.dispose();
     toBeTotalsResult.dispose();
+    impactSummaryResult.dispose();
     changeCounter.dispose();
   }
 

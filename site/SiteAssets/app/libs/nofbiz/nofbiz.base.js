@@ -2252,7 +2252,7 @@ function parseFieldValues(item) {
     return result;
 }
 
-var _CurrentUser_instances, _a$3, _CurrentUser_instance, _CurrentUser_data, _CurrentUser_group, _CurrentUser_initialized, _CurrentUser_resolveGroup, _CurrentUser_assertInitialized;
+var _CurrentUser_instances, _a$3, _CurrentUser_instance, _CurrentUser_data, _CurrentUser_group, _CurrentUser_initialized, _CurrentUser_resolveGroupByEmail, _CurrentUser_assertInitialized;
 
 class CurrentUser {
     constructor() {
@@ -2270,7 +2270,7 @@ class CurrentUser {
             const loginName = options?.targetUser ?? _spPageContextInfo.userLoginName;
             const data = await getFullUserDetails(loginName, siteApi);
             __classPrivateFieldSet(this, _CurrentUser_data, data, "f");
-            __classPrivateFieldSet(this, _CurrentUser_group, groupHierarchy ? __classPrivateFieldGet(this, _CurrentUser_instances, "m", _CurrentUser_resolveGroup).call(this, data.groups, groupHierarchy) : null, "f");
+            __classPrivateFieldSet(this, _CurrentUser_group, groupHierarchy.length ? await __classPrivateFieldGet(this, _CurrentUser_instances, "m", _CurrentUser_resolveGroupByEmail).call(this, groupHierarchy, data.email, siteApi) : null, "f");
             __classPrivateFieldSet(this, _CurrentUser_initialized, true, "f");
             return this;
         } catch (error) {
@@ -2318,16 +2318,48 @@ class CurrentUser {
 }
 
 _a$3 = CurrentUser, _CurrentUser_data = new WeakMap, _CurrentUser_group = new WeakMap, 
-_CurrentUser_initialized = new WeakMap, _CurrentUser_instances = new WeakSet, _CurrentUser_resolveGroup = function _CurrentUser_resolveGroup(userGroups, hierarchy) {
+_CurrentUser_initialized = new WeakMap, _CurrentUser_instances = new WeakSet, _CurrentUser_resolveGroupByEmail = async function _CurrentUser_resolveGroupByEmail(hierarchy, email, siteApi) {
+    if (!email) {
+        const ctxEmail = _spPageContextInfo?.userEmail;
+        if (!ctxEmail || typeof ctxEmail !== "string") {
+            console.warn("[CurrentUser] no email available for access resolution -- group hierarchy will not be applied");
+            return null;
+        }
+        email = ctxEmail;
+    }
+    const results = await Promise.all(hierarchy.map(entry => siteApi.isUserInGroup(entry.groupTitle, email)));
+    let matchedEntry = null;
     for (let i = hierarchy.length - 1; i >= 0; i--) {
-        const entry = hierarchy[i];
-        const match = userGroups.find(g => g.Title.toLowerCase() === entry.groupTitle.toLowerCase());
-        if (match) return {
-            entry: entry,
-            spGroup: match
+        if (results[i]) {
+            matchedEntry = hierarchy[i];
+            break;
+        }
+    }
+    if (!matchedEntry) return null;
+    let spGroup = null;
+    try {
+        const allGroups = await siteApi.getSiteGroups();
+        spGroup = allGroups.find(g => g.Title.toLowerCase() === matchedEntry.groupTitle.toLowerCase()) ?? null;
+    } catch (err) {
+        console.warn("[CurrentUser] getSiteGroups failed; group getter will hold a minimal stub", {
+            err: err
+        });
+    }
+    if (!spGroup) {
+        console.warn("[CurrentUser] matched hierarchy entry but SPGroup not found in getSiteGroups -- using stub", {
+            groupTitle: matchedEntry.groupTitle
+        });
+        spGroup = {
+            Id: 0,
+            Title: matchedEntry.groupTitle,
+            Description: "",
+            OwnerTitle: ""
         };
     }
-    return null;
+    return {
+        entry: matchedEntry,
+        spGroup: spGroup
+    };
 }, _CurrentUser_assertInitialized = function _CurrentUser_assertInitialized() {
     if (!__classPrivateFieldGet(this, _CurrentUser_initialized, "f")) {
         throw new SystemError("CurrentUserNotInitialized", "CurrentUser.initialize() must be awaited before accessing user data.");
@@ -2811,19 +2843,28 @@ function sanitizeQuery(fields) {
     return Object.keys(result).length > 0 ? result : undefined;
 }
 
-var _a$2, _SiteApi_instances, _SiteApi_url, _SiteApi_lists;
+const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const normalizeEmail = e => String(e ?? "").trim().toLowerCase();
+
+const isValidEmail = e => EMAIL_RX.test(normalizeEmail(e));
+
+const escapeODataStr = s => String(s).replace(/'/g, "''");
+
+var _SiteApi_instances, _a$2, _SiteApi_instances_1, _SiteApi_url, _SiteApi_lists, _SiteApi_groupSelector;
 
 class SiteApi {
     constructor(absoluteUrl) {
+        _SiteApi_instances.add(this);
         _SiteApi_url.set(this, void 0);
         _SiteApi_lists.set(this, void 0);
         const url = absoluteUrl ?? _spPageContextInfo.webAbsoluteUrl;
         const key = normalizeUrl(url);
-        const existing = __classPrivateFieldGet(_a$2, _a$2, "f", _SiteApi_instances).get(key);
+        const existing = __classPrivateFieldGet(_a$2, _a$2, "f", _SiteApi_instances_1).get(key);
         if (existing) return existing;
         __classPrivateFieldSet(this, _SiteApi_url, url, "f");
         __classPrivateFieldSet(this, _SiteApi_lists, new Map, "f");
-        __classPrivateFieldGet(_a$2, _a$2, "f", _SiteApi_instances).set(key, this);
+        __classPrivateFieldGet(_a$2, _a$2, "f", _SiteApi_instances_1).set(key, this);
     }
     list(title, options) {
         const key = title.toLowerCase();
@@ -2861,9 +2902,18 @@ class SiteApi {
         return response.value;
     }
     async getGroupUsers(group, options) {
-        const selector = typeof group === "number" ? `getbyid(${group})` : `getbyname('${group.replace(/'/g, "''")}')`;
+        const selector = __classPrivateFieldGet(this, _SiteApi_instances, "m", _SiteApi_groupSelector).call(this, group);
         const response = await spGET(`${__classPrivateFieldGet(this, _SiteApi_url, "f")}/_api/web/sitegroups/${selector}/users`);
-        const users = response.value;
+        const seen = new Map;
+        for (const user of response.value) {
+            if (!isValidEmail(user.Email)) continue;
+            const key = normalizeEmail(user.Email);
+            const existing = seen.get(key);
+            if (!existing || !existing.Title && user.Title) {
+                seen.set(key, user);
+            }
+        }
+        const users = Array.from(seen.values());
         if (!options?.enrich) return users;
         return Promise.all(users.map(async user => {
             const profile = await getUserProfile(user.LoginName);
@@ -2872,6 +2922,23 @@ class SiteApi {
                 ...profile
             };
         }));
+    }
+    async getGroupUsersByEmail(group, email) {
+        const normalized = normalizeEmail(email);
+        if (!normalized || !isValidEmail(normalized)) {
+            console.warn("[SiteApi.getGroupUsersByEmail] empty/invalid email -- skipping request", {
+                email: email
+            });
+            return [];
+        }
+        const selector = __classPrivateFieldGet(this, _SiteApi_instances, "m", _SiteApi_groupSelector).call(this, group);
+        const filter = `Email eq '${escapeODataStr(normalized)}'`;
+        const url = `${__classPrivateFieldGet(this, _SiteApi_url, "f")}/_api/web/sitegroups/${selector}/users` + `?$filter=${encodeURIComponent(filter)}` + `&$select=Id,LoginName,Title,Email`;
+        const response = await spGET(url);
+        return response.value;
+    }
+    async isUserInGroup(group, email) {
+        return (await this.getGroupUsersByEmail(group, email)).length > 0;
     }
     getWebInfo() {
         return spGET(`${__classPrivateFieldGet(this, _SiteApi_url, "f")}/_api/web`);
@@ -2917,9 +2984,12 @@ class SiteApi {
     }
 }
 
-_a$2 = SiteApi, _SiteApi_url = new WeakMap, _SiteApi_lists = new WeakMap;
+_a$2 = SiteApi, _SiteApi_url = new WeakMap, _SiteApi_lists = new WeakMap, _SiteApi_instances = new WeakSet, 
+_SiteApi_groupSelector = function _SiteApi_groupSelector(group) {
+    return typeof group === "number" ? `getbyid(${group})` : `getbyname('${escapeODataStr(String(group))}')`;
+};
 
-_SiteApi_instances = {
+_SiteApi_instances_1 = {
     value: new Map
 };
 
@@ -2949,7 +3019,7 @@ function _unwrapD(data) {
     return data;
 }
 
-function _unwrapCollection(data) {
+function _unwrapCollection$1(data) {
     if (!data) return [];
     if (Array.isArray(data)) return data;
     if (typeof data === "object") {
@@ -2960,23 +3030,60 @@ function _unwrapCollection(data) {
     return [];
 }
 
+function _scoreResult(r) {
+    let score = 0;
+    if (r.DisplayText) score++;
+    if (r.EntityData?.Email) score++;
+    if (r.EntityData?.Title) score++;
+    if (r.EntityData?.Department) score++;
+    if (r.EntityData?.MobilePhone) score++;
+    if (r.EntityData?.SIPAddress) score++;
+    if (r.EntityData?.PrincipalType) score++;
+    return score;
+}
+
+function _normalizeResults(results) {
+    const flat = [];
+    for (const r of results) {
+        flat.push(r);
+        if (Array.isArray(r.MultipleMatches) && r.MultipleMatches.length) {
+            flat.push(...r.MultipleMatches);
+        }
+    }
+    const resolved = flat.filter(r => r.IsResolved === true);
+    const map = new Map;
+    for (const r of resolved) {
+        const rawKey = r.EntityData?.Email || parseEmployeeId(r.Key);
+        const key = rawKey.toLowerCase();
+        if (!key) {
+            console.warn("[searchUsers] dropping result with no email or login key", r);
+            continue;
+        }
+        const existing = map.get(key);
+        if (!existing || _scoreResult(r) > _scoreResult(existing)) {
+            map.set(key, r);
+        }
+    }
+    return [ ...map.values() ];
+}
+
 async function _resolveLoginName(login) {
     if (login.startsWith("i:")) return login;
-    const results = await searchUsers(login, {
-        maximumSuggestions: 10
+    const allResults = await searchUsers(login, {
+        maximumSuggestions: 10,
+        raw: true
     });
-    if (results.length === 0) return login;
-    if (results.length === 1) return results[0].Key;
+    const resolved = allResults.filter(r => r.IsResolved);
+    if (resolved.length === 0) return login;
+    if (resolved.length === 1) return resolved[0].Key;
     const currentLogin = _spPageContextInfo?.userLoginName ?? "";
     const prefixMatch = currentLogin.match(/^(i:[^|]+\|)/);
     if (prefixMatch) {
         const currentPrefix = prefixMatch[1];
-        const sameProvider = results.find(r => r.Key.startsWith(currentPrefix) && r.IsResolved);
+        const sameProvider = resolved.find(r => r.Key.startsWith(currentPrefix) && r.IsResolved);
         if (sameProvider) return sameProvider.Key;
     }
-    const resolved = results.find(r => r.IsResolved);
-    if (resolved) return resolved.Key;
-    return results[0].Key;
+    return resolved[0].Key;
 }
 
 async function _fetchProfile(loginName, siteUrl) {
@@ -3001,7 +3108,7 @@ async function _ensureUser(loginName, siteApi) {
 async function _fetchUserGroups(userId, siteUrl) {
     const endpoint = `${siteUrl}/_api/web/getuserbyid(${userId})/groups`;
     const data = await spGET(endpoint);
-    return _unwrapCollection(_unwrapD(data));
+    return _unwrapCollection$1(_unwrapD(data));
 }
 
 function parseEmployeeId(loginName) {
@@ -3018,8 +3125,9 @@ async function searchUsers(query, options = {}) {
         requestDigest: digest
     });
     const unwrapped = _unwrapD(data);
-    const raw = typeof unwrapped === "string" ? unwrapped : unwrapped.ClientPeoplePickerSearchUser;
-    return JSON.parse(raw);
+    const rawJson = typeof unwrapped === "string" ? unwrapped : unwrapped.ClientPeoplePickerSearchUser;
+    const parsed = JSON.parse(rawJson);
+    return options.raw ? parsed : _normalizeResults(parsed);
 }
 
 async function getUserProfile(loginName) {
@@ -3033,10 +3141,10 @@ async function getUserProfile(loginName) {
         jobTitle: profile.Title ?? "",
         pictureUrl: profile.PictureUrl ?? "",
         personalUrl: profile.PersonalUrl ?? "",
-        directReports: _unwrapCollection(profile.DirectReports),
-        managers: _unwrapCollection(profile.ExtendedManagers),
-        peers: _unwrapCollection(profile.Peers),
-        profileProperties: Object.fromEntries(_unwrapCollection(profile.UserProfileProperties).filter(p => p.Value).map(p => [ p.Key, p.Value ]))
+        directReports: _unwrapCollection$1(profile.DirectReports),
+        managers: _unwrapCollection$1(profile.ExtendedManagers),
+        peers: _unwrapCollection$1(profile.Peers),
+        profileProperties: Object.fromEntries(_unwrapCollection$1(profile.UserProfileProperties).filter(p => p.Value).map(p => [ p.Key, p.Value ]))
     };
 }
 
@@ -3046,11 +3154,21 @@ async function getFullUserDetails(loginName, siteApi = new SiteApi) {
     let groups = [];
     try {
         groups = await _fetchUserGroups(spUser.Id, siteApi.url);
-    } catch {}
+    } catch (err) {
+        console.warn("[getFullUserDetails] failed to fetch groups, continuing without them", {
+            userId: spUser.Id,
+            err: err
+        });
+    }
     let profile = null;
     try {
         profile = await _fetchProfile(normalizedLogin, siteApi.url);
-    } catch {}
+    } catch (err) {
+        console.warn("[getFullUserDetails] failed to fetch profile, continuing without it", {
+            loginName: normalizedLogin,
+            err: err
+        });
+    }
     return {
         employeeId: parseEmployeeId(spUser.LoginName),
         loginName: spUser.LoginName,
@@ -3060,11 +3178,11 @@ async function getFullUserDetails(loginName, siteApi = new SiteApi) {
         jobTitle: profile?.Title ?? "",
         pictureUrl: profile?.PictureUrl ?? "",
         personalUrl: profile?.PersonalUrl ?? "",
-        directReports: _unwrapCollection(profile?.DirectReports),
-        managers: _unwrapCollection(profile?.ExtendedManagers),
-        peers: _unwrapCollection(profile?.Peers),
+        directReports: _unwrapCollection$1(profile?.DirectReports),
+        managers: _unwrapCollection$1(profile?.ExtendedManagers),
+        peers: _unwrapCollection$1(profile?.Peers),
         groups: groups,
-        profileProperties: Object.fromEntries(_unwrapCollection(profile?.UserProfileProperties).filter(p => p.Value).map(p => [ p.Key, p.Value ]))
+        profileProperties: Object.fromEntries(_unwrapCollection$1(profile?.UserProfileProperties).filter(p => p.Value).map(p => [ p.Key, p.Value ]))
     };
 }
 
@@ -4746,6 +4864,190 @@ async function defineRoute(closureCallback) {
     return route;
 }
 
+const MAX_RECIPIENTS_PER_CALL = 50;
+
+const _webUrl = () => (_spPageContextInfo?.webAbsoluteUrl ?? location.origin).replace(/\/$/, "");
+
+function _unwrapCollection(data) {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    if (typeof data === "object") {
+        const obj = data;
+        if (Array.isArray(obj.results)) return obj.results;
+        if (Array.isArray(obj.value)) return obj.value;
+        if ("d" in obj) return _unwrapCollection(obj.d);
+    }
+    return [];
+}
+
+function _rethrow(name, message, cause, details) {
+    if (cause instanceof SystemError) throw cause;
+    const err = new SystemError(name, message, {
+        breaksFlow: false
+    });
+    err.cause = cause;
+    err.details = details ?? null;
+    throw err;
+}
+
+async function _ensureUserSafe(loginNameOrEmail) {
+    try {
+        const url = `${_webUrl()}/_api/web/ensureUser`;
+        const result = await spPOST(url, {
+            data: {
+                logonName: loginNameOrEmail
+            }
+        });
+        if (!result || typeof result !== "object") return null;
+        const obj = result;
+        const user = "d" in obj ? obj.d : obj;
+        return user ?? null;
+    } catch {
+        return null;
+    }
+}
+
+async function resolveEmailsToLogins(emails) {
+    const cleaned = [ ...new Set((emails ?? []).map(normalizeEmail).filter(Boolean)) ];
+    const valid = cleaned.filter(isValidEmail);
+    const invalid = cleaned.filter(e => !isValidEmail(e));
+    const resolved = new Map;
+    if (!valid.length) return {
+        resolved: resolved,
+        unresolved: [],
+        invalid: invalid
+    };
+    const filter = valid.map(e => `Email eq '${escapeODataStr(e)}'`).join(" or ");
+    const url = `${_webUrl()}/_api/web/siteUsers` + `?$filter=${encodeURIComponent(filter)}` + `&$select=Email,LoginName` + `&$top=${valid.length}`;
+    let data;
+    try {
+        data = await spGET(url);
+    } catch (cause) {
+        _rethrow("EmailResolutionFailed", `Failed to resolve ${valid.length} email(s) to login names via siteUsers query.`, cause, {
+            count: valid.length
+        });
+    }
+    const rows = _unwrapCollection(data);
+    for (const r of rows) {
+        const e = normalizeEmail(r.Email);
+        if (e && r.LoginName) resolved.set(e, r.LoginName);
+    }
+    const unresolved = valid.filter(e => !resolved.has(e));
+    return {
+        resolved: resolved,
+        unresolved: unresolved,
+        invalid: invalid
+    };
+}
+
+async function sendEmail({to: to, cc: cc, bcc: bcc, subject: subject, body: body, from: from}) {
+    if (!subject || typeof subject !== "string") {
+        throw new SystemError("EmailValidation", "sendEmail: `subject` is required and must be a non-empty string.");
+    }
+    if (!body || typeof body !== "string") {
+        throw new SystemError("EmailValidation", "sendEmail: `body` is required and must be a non-empty string.");
+    }
+    const toList = [].concat(to ?? []).map(normalizeEmail).filter(Boolean);
+    const ccList = [].concat(cc ?? []).map(normalizeEmail).filter(Boolean);
+    const bccList = [].concat(bcc ?? []).map(normalizeEmail).filter(Boolean);
+    const allDedup = [ ...new Set([ ...toList, ...ccList, ...bccList ]) ];
+    if (!allDedup.length) {
+        throw new SystemError("EmailValidation", "sendEmail: at least one recipient is required.");
+    }
+    if (allDedup.length > MAX_RECIPIENTS_PER_CALL) {
+        const err = new SystemError("EmailTooManyRecipients", `sendEmail: recipient count ${allDedup.length} exceeds max ${MAX_RECIPIENTS_PER_CALL}. ` + `Split into batches of <= ${MAX_RECIPIENTS_PER_CALL} and call sendEmail once per batch.`, {
+            breaksFlow: false
+        });
+        err.details = {
+            count: allDedup.length,
+            max: MAX_RECIPIENTS_PER_CALL
+        };
+        throw err;
+    }
+    let resolution;
+    try {
+        resolution = await resolveEmailsToLogins(allDedup);
+    } catch (cause) {
+        _rethrow("EmailResolutionFailed", "sendEmail: unable to resolve recipient emails to claim logins.", cause, {
+            recipientCount: allDedup.length
+        });
+    }
+    if (resolution.invalid.length) {
+        const err = new SystemError("EmailInvalid", `sendEmail: malformed email address(es): ${resolution.invalid.join(", ")}`, {
+            breaksFlow: false
+        });
+        err.details = {
+            invalid: resolution.invalid
+        };
+        throw err;
+    }
+    if (resolution.unresolved.length) {
+        const stillMissing = [];
+        for (const email of resolution.unresolved) {
+            const user = await _ensureUserSafe(email);
+            if (user?.LoginName) {
+                resolution.resolved.set(email, user.LoginName);
+            } else {
+                stillMissing.push(email);
+            }
+        }
+        resolution.unresolved = stillMissing;
+    }
+    if (resolution.unresolved.length) {
+        const err = new SystemError("EmailUnresolved", `sendEmail: ${resolution.unresolved.length} recipient(s) could not be resolved ` + `even after ensureUser fallback: ${resolution.unresolved.join(", ")}. Each user must have visited or been granted ` + `access to this site collection before they can receive mail from it.`, {
+            breaksFlow: false
+        });
+        err.details = {
+            unresolved: resolution.unresolved
+        };
+        throw err;
+    }
+    const _mapToLogins = list => list.map(e => resolution.resolved.get(e)).filter(v => v !== undefined);
+    const properties = {
+        __metadata: {
+            type: "SP.Utilities.EmailProperties"
+        },
+        To: {
+            results: _mapToLogins(toList)
+        },
+        Subject: subject,
+        Body: body
+    };
+    if (ccList.length) properties.Cc = {
+        results: _mapToLogins(ccList)
+    };
+    if (bccList.length) properties.Bcc = {
+        results: _mapToLogins(bccList)
+    };
+    if (from) properties.From = from;
+    const toResults = properties.To.results;
+    if (!toResults.length) {
+        const fallback = _mapToLogins(bccList)[0] ?? _mapToLogins(ccList)[0] ?? from;
+        if (!fallback) {
+            throw new SystemError("EmailValidation", "sendEmail: no resolvable To recipient available.");
+        }
+        properties.To = {
+            results: [ fallback ]
+        };
+    }
+    const url = `${_webUrl()}/_api/SP.Utilities.Utility.SendEmail`;
+    try {
+        await spPOST(url, {
+            data: {
+                properties: properties
+            }
+        });
+    } catch (cause) {
+        _rethrow("EmailSendFailed", `sendEmail: SP.Utilities.Utility.SendEmail rejected the request -- ` + `${cause?.message ?? "(no message)"}`, cause, {
+            recipientCount: allDedup.length
+        });
+    }
+    return {
+        ok: true,
+        recipientCount: allDedup.length
+    };
+}
+
 var _RoleManager_roles, _RoleManager_loaded;
 
 class RoleManager {
@@ -5048,5 +5350,5 @@ class FieldLabel extends HTMDElement {
     }
 }
 
-export { AccordionGroup, AccordionItem, Button, Card, CheckBox, ComboBox, Container, ContextStore, CurrentUser, DateInput, DateRangeInput, Dialog, ErrorBoundary, FORMAT_MAP, FieldLabel, FormControl, FormField, FormSchema, Fragment, HTMDElement, Image, LinkButton, List, Loader, Modal, NavigationEvent, NumberInput, PeoplePicker, RoleManager, Router, SP_ACCEPT_MINIMAL, SidePanel, SimpleElapsedTimeBenchmark, SiteApi, StyleResource, SystemError, TabGroup, Text, TextArea, TextInput, Toast, UserIdentity, View, ViewSwitcher, dayjs as __dayjs, Fuse as __fuse, copyToClipboard, defineRoute, enforceStrictObject, escapeAttr, escapeHtml, extractComboBoxValue, fromFieldValue, generateRuntimeUID, generateUUIDv4, getFullUserDetails, getIcon, getUserProfile, isComboBoxOption, listIcons, pageReset, refreshRequestDigest, registerIcons, resolvePath, sanitizeQuery, searchUsers, spDELETE, spGET, spMERGE, spPOST, startDigestTimer, stopDigestTimer, toFieldValue };
+export { AccordionGroup, AccordionItem, Button, Card, CheckBox, ComboBox, Container, ContextStore, CurrentUser, DateInput, DateRangeInput, Dialog, ErrorBoundary, FORMAT_MAP, FieldLabel, FormControl, FormField, FormSchema, Fragment, HTMDElement, Image, LinkButton, List, Loader, MAX_RECIPIENTS_PER_CALL, Modal, NavigationEvent, NumberInput, PeoplePicker, RoleManager, Router, SP_ACCEPT_MINIMAL, SidePanel, SimpleElapsedTimeBenchmark, SiteApi, StyleResource, SystemError, TabGroup, Text, TextArea, TextInput, Toast, UserIdentity, View, ViewSwitcher, dayjs as __dayjs, Fuse as __fuse, copyToClipboard, defineRoute, enforceStrictObject, escapeAttr, escapeHtml, extractComboBoxValue, fromFieldValue, generateRuntimeUID, generateUUIDv4, getFullUserDetails, getIcon, getUserProfile, isComboBoxOption, listIcons, pageReset, refreshRequestDigest, registerIcons, resolveEmailsToLogins, resolvePath, sanitizeQuery, searchUsers, sendEmail, spDELETE, spGET, spMERGE, spPOST, startDigestTimer, stopDigestTimer, toFieldValue };
 //# sourceMappingURL=nofbiz.base.js.map

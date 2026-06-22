@@ -26,6 +26,32 @@
   z-index: calc(var(--z-modal) + 1);
 }
 
+/* Savings target dialog -- tall form (year, FTE, 4 categories, summary).
+   No ComboBox, so it must NOT use overflow-visible. Cap the shell height and
+   scroll the body while header/footer stay fixed (same pattern as form modal). */
+.nofbiz__dialog.pt-v2:has(.admin-target-dialog__content) {
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.nofbiz__dialog.pt-v2:has(.admin-target-dialog__content) > .nofbiz__dialog__header,
+.nofbiz__dialog.pt-v2:has(.admin-target-dialog__content) > .nofbiz__dialog__footer {
+  flex: 0 0 auto;
+}
+
+.nofbiz__dialog__content:has(.admin-target-dialog__content) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.admin-target-dialog__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-m);
+}
+
 /* Dados filters row */
 .admin-filters-row {
   display: flex;

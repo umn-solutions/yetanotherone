@@ -9,6 +9,7 @@ import { hasAnyProfile, ROLES } from './roles.js';
 import { statusLabel } from './status-helpers.js';
 import { ownerName, mentorName, gestorName } from './format-helpers.js';
 import {
+  CATEGORY_KEYS,
   CATEGORY_DIRECTIONS,
   CATEGORY_FIELD_NAMES,
   deriveSavingType,
@@ -34,9 +35,11 @@ function num(v) {
  */
 function computePhaseTotalFromJson(key, phase) {
   if (!phase) return 0;
-  if (key === 'eficiencia') return num(phase.vp) * num(phase.tu);
-  if (key === 'producao')   return num(phase.vp) * num(phase.mu) * (num(phase.tt) / 100);
-  if (key === 'gastos')     return num(phase.v)  * num(phase.c);
+  if (key === 'eficiencia')    return num(phase.vp) * num(phase.tu);
+  if (key === 'producao')      return num(phase.vp) * num(phase.mu) * (num(phase.tt) / 100);
+  if (key === 'gastos')        return num(phase.v)  * num(phase.c);
+  if (key === 'reducao_risco') return num(phase.exp) * num(phase.taxa) / 100;
+  if (key === 'reducao_custo') return num(phase.co);
   return 0;
 }
 
@@ -164,15 +167,12 @@ function buildRow(item, ctx) {
   row.SavingType            = fin ? deriveSavingType(savingCat) : '';
   row.SavingCategory        = savingCat.join('; ');
 
-  row.EficienciaAnnualSaving = fin
-    ? flattenCategory(fin[CATEGORY_FIELD_NAMES.eficiencia], 'eficiencia', timePeriod)
-    : 0;
-  row.ProducaoAnnualSaving   = fin
-    ? flattenCategory(fin[CATEGORY_FIELD_NAMES.producao], 'producao', timePeriod)
-    : 0;
-  row.GastosAnnualSaving     = fin
-    ? flattenCategory(fin[CATEGORY_FIELD_NAMES.gastos], 'gastos', timePeriod)
-    : 0;
+  for (const key of CATEGORY_KEYS) {
+    const colName = key.charAt(0).toUpperCase() + key.slice(1).replace(/_([a-z])/g, (_, c) => c.toUpperCase()) + 'AnnualSaving';
+    row[colName] = fin
+      ? flattenCategory(fin[CATEGORY_FIELD_NAMES[key]], key, timePeriod)
+      : 0;
+  }
 
   if (isPrivileged) {
     row.FTEAnnualCost = fin ? (fin.FTEAnnualCost || '') : '';

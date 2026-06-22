@@ -17,6 +17,7 @@ import {
 } from '../libs/nofbiz/nofbiz.base.js';
 
 import { STATUS, canTransitionTo, statusLabel } from './status-helpers.js';
+import { canAccess } from './roles.js';
 import { transitionStatus, update, deleteItem as deleteInitiativeItem } from './initiatives-api.js';
 import {
   createEvent,
@@ -29,7 +30,7 @@ import {
   deleteItem as deleteNotification,
 } from './notifications-api.js';
 import { EVENT_TYPES, deriveSavingType } from './constants.js';
-import { assertToBeComplete, computeAnnualizedToBeTotalEur } from './financial-forms.js';
+import { assertToBeComplete, computeAnnualizedToBeTotalEur, resolveFinalValidationLabel } from './financial-forms.js';
 import { getAssignedGestor } from './routing-rules.js';
 import {
   getByInitiative as getFinancials,
@@ -77,6 +78,7 @@ function confirm(title, message, opts = {}) {
     const dialog = new Dialog({
       title,
       variant,
+      class: 'pt-v2',
       content: new Text(message, { type: 'p' }),
       backdrop: true,
       closeOnFocusLoss: false,
@@ -128,6 +130,7 @@ function confirmWithComment(title, message, opts = {}) {
     const dialog = new Dialog({
       title,
       variant,
+      class: 'pt-v2',
       content: new Container([
         new Text(message, { type: 'p' }),
         commentInput,
@@ -192,7 +195,7 @@ export function confirmWithDate(title, message, opts = {}) {
     const dialog = new Dialog({
       title,
       variant,
-      class: 'pace-dialog--overflow-visible',
+      class: 'pace-dialog--overflow-visible pt-v2',
       content: new Container([
         new Text(message, { type: 'p' }),
         new FieldLabel(label, dateInput),
@@ -250,7 +253,7 @@ function confirmWithEmployeeComboBox(title, message, options) {
     const dialog = new Dialog({
       title,
       variant: 'info',
-      class: 'pace-dialog--overflow-visible',
+      class: 'pace-dialog--overflow-visible pt-v2',
       content: new Container([
         new Text(message, { type: 'p' }),
         new FieldLabel('Pessoa', personCombo),
@@ -328,7 +331,7 @@ async function confirmWithUserComboBox(title, message) {
     const dialog = new Dialog({
       title,
       variant: 'info',
-      class: 'pace-dialog--overflow-visible',
+      class: 'pace-dialog--overflow-visible pt-v2',
       content: new Container([
         new Text(message, { type: 'p' }),
         new FieldLabel('Pessoa', personCombo),
@@ -948,42 +951,110 @@ export async function approveSavings(initiative, button, onSuccess) {
 }
 
 /**
- * Mentor final validation: VALIDADO_GESTOR -> IMPLEMENTADO (single click, date-picker).
- * Logs two events (MENTOR_FINAL_VALIDATION + OWNER_IMPLEMENTATION) so the timeline
- * preserves the full narrative. Legacy VALIDADO_FINAL items keep their own
- * markAsImplemented path (unchanged below).
+ * Mentor final validation: VALIDADO_GESTOR -> VALIDADO_FINAL.
+ * Logs the MENTOR_FINAL_VALIDATION event so the timeline reflects the confirmation.
+ * The final transition to IMPLEMENTADO is handled by mentorManagerValidation.
  */
 export async function mentorFinalValidation(initiative, button, onSuccess) {
+  if (!canTransitionTo(initiative.Status, STATUS.VALIDADO_FINAL)) {
+    Toast.error('Transição de estado inválida.');
+    return;
+  }
+
+  const confirmed = await confirm(
+    'Confirmar Savings',
+    'Confirma os savings desta iniciativa? A iniciativa ficará aguardar validação final pelo manager da equipa de mentores.',
+    { confirmLabel: 'Confirmar Savings' },
+  );
+  if (!confirmed) return;
+
+  button.isLoading = true;
+  const loading = Toast.loading('A confirmar savings...');
+  try {
+    await transitionStatus(initiative.Id, STATUS.VALIDADO_FINAL, initiative['odata.etag']);
+    await createEvent(initiative.UUID, EVENT_TYPES.MENTOR_FINAL_VALIDATION, STATUS.VALIDADO_GESTOR, STATUS.VALIDADO_FINAL);
+
+    const actorEmail = ContextStore.get('currentUser').get('email');
+    const recipients = [
+      initiative.SubmittedByEmail,
+      initiative.GestorValidatorEmail,
+    ].filter(email => email && email !== actorEmail);
+    const seen = new Set();
+    for (const email of recipients) {
+      if (seen.has(email)) continue;
+      seen.add(email);
+      await createNotification(
+        initiative.UUID,
+        email,
+        'Savings confirmados pelo mentor. Aguarda validação final.',
+        'state_change',
+      );
+    }
+
+    loading.success('Savings confirmados. Iniciativa aguarda validação final.');
+    if (onSuccess) onSuccess();
+  } catch (error) {
+    console.error(error);
+    loading.error(actionErrorMessage(error, 'Erro ao confirmar savings.'));
+  } finally {
+    button.isLoading = false;
+  }
+}
+
+/**
+ * Mentor-manager final validation: VALIDADO_FINAL -> IMPLEMENTADO.
+ * Opens date picker, resolves FinalValidationLabel, logs MENTOR_MANAGER_VALIDATION
+ * and OWNER_IMPLEMENTATION events, and persists the label to the initiative.
+ */
+export async function mentorManagerValidation(initiative, button, onSuccess) {
+  if (!canAccess('validar_implementacao_final')) {
+    Toast.error('Sem permissão para esta acção.');
+    return;
+  }
+
   if (!canTransitionTo(initiative.Status, STATUS.IMPLEMENTADO)) {
     Toast.error('Transição de estado inválida.');
     return;
   }
 
   const pickedDate = await confirmWithDate(
-    'Confirmar Savings e Implementar',
-    'Confirma os savings desta iniciativa e indique a data de implementação.',
+    'Confirmar Implementação',
+    'Confirma a implementação desta iniciativa e indique a data de implementação.',
     {
       defaultValue: __dayjs().format('YYYY-MM-DD'),
       label: 'Data de implementação',
-      confirmLabel: 'Confirmar',
+      confirmLabel: 'Confirmar Implementação',
     },
   );
   if (!pickedDate) return;
 
   button.isLoading = true;
-  const loading = Toast.loading('A confirmar savings e implementar...');
+  const loading = Toast.loading('A confirmar implementação...');
   try {
+    let financials = null;
+    try { financials = await getFinancials(initiative.UUID); } catch (_) { /* non-critical */ }
+
+    const validationLabel = resolveFinalValidationLabel(initiative, financials);
+
     await transitionStatus(initiative.Id, STATUS.IMPLEMENTADO, initiative['odata.etag'], {
       ImplementedDate: __dayjs(pickedDate).toISOString(),
+      FinalValidationLabel: validationLabel,
     });
 
-    // Log both transition steps so the timeline reflects the full narrative.
-    await createEvent(initiative.UUID, EVENT_TYPES.MENTOR_FINAL_VALIDATION, STATUS.VALIDADO_GESTOR, STATUS.VALIDADO_FINAL);
+    await createEvent(
+      initiative.UUID,
+      EVENT_TYPES.MENTOR_MANAGER_VALIDATION,
+      STATUS.VALIDADO_FINAL,
+      STATUS.IMPLEMENTADO,
+      '',
+      { ValidationLabel: validationLabel },
+    );
     await createEvent(initiative.UUID, EVENT_TYPES.OWNER_IMPLEMENTATION, STATUS.VALIDADO_FINAL, STATUS.IMPLEMENTADO);
 
     const actorEmail = ContextStore.get('currentUser').get('email');
     const recipients = [
       initiative.SubmittedByEmail,
+      initiative.MentorEmail,
       initiative.GestorValidatorEmail,
     ].filter(email => email && email !== actorEmail);
     const seen = new Set();
@@ -1002,7 +1073,7 @@ export async function mentorFinalValidation(initiative, button, onSuccess) {
     if (onSuccess) onSuccess();
   } catch (error) {
     console.error(error);
-    loading.error(actionErrorMessage(error, 'Erro ao confirmar savings.'));
+    loading.error(actionErrorMessage(error, 'Erro ao confirmar implementação.'));
   } finally {
     button.isLoading = false;
   }
@@ -1309,7 +1380,7 @@ export async function manageAccessAction(initiative, button, onSuccess) {
   const dialog = new Dialog({
     title: 'Gerir Acesso',
     variant: 'info',
-    class: 'pace-dialog--overflow-visible',
+    class: 'pace-dialog--overflow-visible pt-v2',
     content: new Container([
       new Text('Pessoas com acesso delegado a esta iniciativa. O proprietário, mentor e gestor mantêm acesso permanente e não aparecem aqui.', { type: 'p' }),
       listContainer,

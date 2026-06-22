@@ -1,0 +1,3494 @@
+/* ============================================================================
+ * place-theme.css — v2 visual theme matching mockups/place-mock-8_2.html
+ *
+ * Layered theme. Loads after pace-theme.css and styles.css. Rules are scoped
+ * under the wrapper class `.pt-v2`, so they apply only to routes that have
+ * been migrated. As routes adopt the wrapper, sections of pace-theme.css
+ * become safe to retire.
+ *
+ * Progress:
+ *   A01 — file created, loaded             [done]
+ *   A02 — color tokens                     [done]
+ *   A03 — radii / shadow tokens            [done]
+ *   A04 — typography scale                 [done]
+ *   A05 — scope mechanism (.pt-v2)         [done]
+ *   B01 — button primary                   [done]
+ *   B02 — button secondary / ghost         [done]
+ *   B03 — button danger                    [done]
+ *   B04 — button sizes (sm / lg)           [done]
+ *   B05 — button hero variants             [done]
+ *   B06 — chip / pill base + variants      [done]
+ *   B07 — phase badge (P/D/C/A)            [done]
+ *   B08 — team badge                       [done]
+ *   B09 — eyebrow label                    [done]
+ *   B10 — avatar                           [done]
+ *   B11 — TextInput                        [done]
+ *   B12 — TextArea                         [done]
+ *   B13 — ComboBox + dropdown              [done]
+ *   B14 — NumberInput                      [done]
+ *   B15 — CheckBox                         [done]
+ *   B16 — FieldLabel                       [done]
+ *   B17 — validation / error state         [done]
+ *   B18 — divider                          [done]
+ *   B19 — icon helpers                     [done]
+ *   C01 — card / panel base                [done]
+ *   C02 — section header                   [done]
+ *   C03 — stat card (KPI)                  [done]
+ *   C04 — initiative card                  [done]
+ *   C05 — notification item                [done]
+ *   C06 — empty state                      [done]
+ *   C07 — annotation / note box            [done]
+ *   C08 — form row (2-col)                 [done]
+ *   C09 — table (List) header + rows       [done]
+ *   C10 — pagination                       [done]
+ *   C11 — filter bar                       [done]
+ *   C12 — accordion item header            [done]
+ *   C13 — tab group (ViewSwitcher pattern) [done]
+ *   C14 — tag picker / toggle group        [done]
+ *   D01 — topbar / header (global)         [done]
+ *   D02 — nav tabs (global, underline)     [done]
+ *   D03 — hero section (gradient)          [done]
+ *   D04 — hero mascot slot                 [done]
+ *   D05 — footer                           [skipped — none in site]
+ *   D06 — modal / dialog                   [done]
+ *   D07 — side sheet / sidepanel           [done]
+ *   D08 — backdrop / overlay               [done]
+ *   D09 — toast                            [skipped — no SPARC class found]
+ *   E01 — home polish + opt-in             [done]
+ *   E02 — Pessoal full polish              [done]
+ *   E03 — Geral                            [done — covered by E02 shared classes]
+ *   E04 — Mentoria                         [done]
+ *   E05 — Gestor                           [done]
+ *   E06 — Catálogo                         [done — covered by E02 shared classes]
+ *   E07 — Admin                            [done]
+ *   E08 — New Initiative modal              [done]
+ *   E09 — Initiative detail SidePanel       [done]
+ *   E10 — Workflow / utility dialogs        [done]
+ *   F01 — remove dead pace-pdca rules      [done — handled during E01]
+ *   F02-F05 — deeper cleanup               [pending — requires per-route
+ *                                            visual validation first]
+ *
+ * Per-route polish blocks (E0X) live at the bottom of this file. Each
+ * targets the route's existing `.pace-*` custom classes under `.pt-v2`
+ * scope so the original markup is reused without JS changes.
+ *
+ * Scope mechanism (A05):
+ *   `createPageLayout(content, { contentClass: 'pt-v2' })` in utils/navbar.js
+ *   appends `pt-v2` to the main content Container's class. Routes opt in
+ *   per-migration by passing the option. Default unchanged (no class).
+ *
+ *   Scope covers main content only (NOT the global header + tabs). Header
+ *   and tab restyles will land later as global overrides (tasks D01/D02).
+ * ========================================================================== */
+
+/* ----------------------------------------------------------------------------
+ * A02 — Color tokens
+ *
+ * Sourced verbatim from mockups/place-mock-8_2.html `:root`. Prefixed with
+ * `--pt-*` so they do not collide with existing `--color-*` tokens in
+ * styles.css or framework tokens. Tokens only — applied to selectors in
+ * later atom/molecule/section tasks.
+ *
+ * Semantic status colors (ok/warn/danger/info) are pulled from v4_amadeu
+ * since place-mock-8_2 only ships PDCA phase colors.
+ * -------------------------------------------------------------------------- */
+
+:root {
+  /* Brand — Cetelem greens */
+  --pt-green:           #2D9442;  /* primary brand */
+  --pt-green-deep:      #1F6E2F;  /* dark variant (headings, hover) */
+  --pt-green-darker:    #14471D;  /* deepest variant */
+  --pt-lime:            #95C11F;  /* lime accent */
+  --pt-lime-soft:       #C8DC6E;  /* soft lime */
+  --pt-bnpp-green:      #007A3D;  /* BNP Paribas accent */
+
+  /* Neutrals */
+  --pt-bg:              #FAFAF6;  /* page background */
+  --pt-surface:         #FFFFFF;  /* cards / panels */
+  --pt-surface-alt:     #F2F5EC;  /* secondary surface */
+  --pt-border:          #E1E6D6;  /* dividers / borders */
+  --pt-ink:             #14241A;  /* primary text */
+  --pt-ink-soft:        #4A5A4A;  /* secondary text */
+  --pt-ink-muted:       #8A958A;  /* tertiary / metadata */
+
+  /* PDCA phase colors */
+  --pt-phase-plan:      #4F8DD9;  /* P — blue */
+  --pt-phase-do:        #E89923;  /* D — orange */
+  --pt-phase-check:     #9C5BD1;  /* C — purple */
+  --pt-phase-act:       #2D9442;  /* A — green (matches primary) */
+
+  /* Semantic status (from v4_amadeu) */
+  --pt-status-ok:       #009639;
+  --pt-status-warn:     #E89923;
+  --pt-status-danger:   #C0392B;
+  --pt-status-info:     #4F8DD9;
+
+  /* --------------------------------------------------------------------------
+   * A03 — Radii (mock-8_2 verbatim) + pill (used throughout, not in :root)
+   * ------------------------------------------------------------------------ */
+  --pt-r-sm:    8px;
+  --pt-r-md:    14px;
+  --pt-r-lg:    20px;
+  --pt-r-xl:    28px;
+  --pt-r-pill:  999px;
+
+  /* --------------------------------------------------------------------------
+   * A03 — Shadows (mock-8_2 verbatim)
+   * Ambient + soft drop, ink-tinted alpha for warm feel.
+   * ------------------------------------------------------------------------ */
+  --pt-shadow-sm: 0 1px 2px rgba(20,36,26,0.04), 0 2px 8px rgba(20,36,26,0.04);
+  --pt-shadow-md: 0 4px 12px rgba(20,36,26,0.06), 0 12px 32px rgba(20,36,26,0.06);
+  --pt-shadow-lg: 0 8px 24px rgba(20,36,26,0.10), 0 24px 64px rgba(20,36,26,0.12);
+
+  /* --------------------------------------------------------------------------
+   * A04 — Typography scale
+   *
+   * Sizes/weights/line-heights/letter-spacings derived from mockups
+   * (place-mock-8_2 + v4_amadeu .display/.eyebrow/.label).
+   * Font family intentionally NOT set — keeps existing site font.
+   * Tokens only; applied to selectors in later tasks (atoms / sections).
+   * ------------------------------------------------------------------------ */
+
+  /* Sizes */
+  --pt-fs-xs:       11px;   /* .label uppercase */
+  --pt-fs-sm:       12px;   /* eyebrow, small metadata */
+  --pt-fs-md:       13px;   /* stat label, small caption */
+  --pt-fs-base:     15px;   /* body */
+  --pt-fs-lg:       17px;   /* hero subtitle (slightly tightened from 18px) */
+  --pt-fs-xl:       19px;   /* section title */
+  --pt-fs-2xl:      24px;   /* sub-display */
+  --pt-fs-3xl:      32px;   /* stat value */
+  --pt-fs-4xl:      40px;   /* hero title (mobile) */
+  --pt-fs-display:  56px;   /* hero title (desktop) */
+
+  /* Weights */
+  --pt-fw-normal:    400;
+  --pt-fw-medium:    500;
+  --pt-fw-semibold:  600;
+  --pt-fw-bold:      700;
+  --pt-fw-extrabold: 800;
+  --pt-fw-black:     900;
+
+  /* Line heights */
+  --pt-lh-tight:    1.05;   /* display */
+  --pt-lh-snug:     1.2;    /* sub-display, headings */
+  --pt-lh-normal:   1.5;    /* body */
+  --pt-lh-relaxed:  1.55;   /* long-form, hero subtitle */
+
+  /* Letter spacings */
+  --pt-ls-tighter:  -0.02em;  /* display extra-tight */
+  --pt-ls-tight:    -0.015em; /* display default (v4_amadeu) */
+  --pt-ls-normal:   0;
+  --pt-ls-wide:     0.10em;   /* .label uppercase */
+  --pt-ls-wider:    0.12em;   /* .eyebrow uppercase */
+}
+
+/* ============================================================================
+ * Phase B — Atoms
+ * ========================================================================== */
+
+/* ----------------------------------------------------------------------------
+ * B01 — Button: base shape + primary variant
+ *
+ * Source: place-mock-8_2 `.btn` (base) + `.btn-primary`.
+ * Targets SPARC `.nofbiz__button` and `.nofbiz__linkbutton` (paired in
+ * framework CSS). `--squared` variant is excluded — it stays rectangular
+ * for icon-only buttons. Other variants (secondary, danger, sizes, hero)
+ * land in B02-B05.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .nofbiz__button:not(.nofbiz__button--squared),
+.pt-v2 .nofbiz__linkbutton:not(.nofbiz__linkbutton--squared) {
+  padding: 12px 22px;
+  border-radius: var(--pt-r-pill);
+  font-size: 14px;
+  font-weight: var(--pt-fw-bold);
+  line-height: 1.2;
+  border-width: 1.5px;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 200ms ease,
+    transform 80ms ease;
+}
+
+.pt-v2 .nofbiz__button:not(.nofbiz__button--squared):active,
+.pt-v2 .nofbiz__linkbutton:not(.nofbiz__linkbutton--squared):active {
+  transform: translateY(1px);
+}
+
+.pt-v2 .nofbiz__button--primary,
+.pt-v2 .nofbiz__linkbutton--primary {
+  background-color: var(--pt-green);
+  color: #FFFFFF;
+  border-color: transparent;
+  box-shadow: 0 4px 14px rgba(45, 148, 66, 0.30);
+}
+
+.pt-v2 .nofbiz__button--primary:hover,
+.pt-v2 .nofbiz__linkbutton--primary:hover {
+  background-color: var(--pt-green-deep);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(45, 148, 66, 0.42);
+}
+
+.pt-v2 .nofbiz__button--primary:active,
+.pt-v2 .nofbiz__linkbutton--primary:active {
+  background-color: var(--pt-green-deep);
+  box-shadow: 0 2px 8px rgba(45, 148, 66, 0.30);
+}
+
+/* ----------------------------------------------------------------------------
+ * B02 — Button: secondary / ghost variant
+ *
+ * Source: place-mock-8_2 `.btn-ghost` — transparent fill, neutral border,
+ * green border + green text on hover. No shadow.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .nofbiz__button--secondary,
+.pt-v2 .nofbiz__linkbutton--secondary {
+  background-color: transparent;
+  border-color: var(--pt-border);
+  color: var(--pt-ink);
+  box-shadow: none;
+}
+
+.pt-v2 .nofbiz__button--secondary:hover,
+.pt-v2 .nofbiz__linkbutton--secondary:hover {
+  background-color: transparent;
+  border-color: var(--pt-green-deep);
+  color: var(--pt-green-deep);
+}
+
+.pt-v2 .nofbiz__button--secondary:active,
+.pt-v2 .nofbiz__linkbutton--secondary:active {
+  background-color: var(--pt-surface-alt);
+  border-color: var(--pt-green-deep);
+  color: var(--pt-green-deep);
+}
+
+/* ----------------------------------------------------------------------------
+ * B03 — Button: danger variant
+ *
+ * Source: v4_amadeu `.btn-danger` (outlined style — restrained, polished).
+ * White surface, neutral border at rest; red border + text + faint red wash
+ * on hover. Less aggressive than the framework's solid-red default.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .nofbiz__button--danger,
+.pt-v2 .nofbiz__linkbutton--danger {
+  background-color: var(--pt-surface);
+  border-color: var(--pt-border);
+  color: var(--pt-status-danger);
+  box-shadow: none;
+}
+
+.pt-v2 .nofbiz__button--danger:hover,
+.pt-v2 .nofbiz__linkbutton--danger:hover {
+  background-color: rgba(192, 57, 43, 0.04);
+  border-color: var(--pt-status-danger);
+  color: var(--pt-status-danger);
+}
+
+.pt-v2 .nofbiz__button--danger:active,
+.pt-v2 .nofbiz__linkbutton--danger:active {
+  background-color: rgba(192, 57, 43, 0.08);
+  border-color: var(--pt-status-danger);
+}
+
+/* ----------------------------------------------------------------------------
+ * B04 — Button sizes (small / large)
+ *
+ * SPARC has no built-in size variant. Provide `.pt-btn-sm` / `.pt-btn-lg`
+ * utility classes — consumers apply via the Button `class:` prop:
+ *   new Button('x', { variant: 'primary', class: 'pt-btn-sm' })
+ *
+ * Selectors pair `.nofbiz__button` and `.nofbiz__linkbutton` to keep
+ * specificity equal to the B01 base (3 classes), later cascade wins.
+ *
+ * Sources: v4_amadeu `.btn-sm` (6px 12px / 12.5px), mock-8_2 `.btn-lg`
+ * (16px 30px / 16px).
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .nofbiz__button.pt-btn-sm,
+.pt-v2 .nofbiz__linkbutton.pt-btn-sm {
+  padding: 6px 12px;
+  font-size: 12.5px;
+}
+
+.pt-v2 .nofbiz__button.pt-btn-lg,
+.pt-v2 .nofbiz__linkbutton.pt-btn-lg {
+  padding: 16px 30px;
+  font-size: 16px;
+}
+
+/* ----------------------------------------------------------------------------
+ * B05 — Button: hero variants (over-gradient)
+ *
+ * For buttons placed over the dark-green hero gradient. Overrides B01/B02
+ * via utility class on the Button/LinkButton `class:` prop:
+ *   new Button('Submit',  { variant: 'primary',   class: 'pt-btn-hero-primary' })
+ *   new Button('Cancel',  { variant: 'secondary', class: 'pt-btn-hero-ghost' })
+ *
+ * Hero primary = lime with warm shadow (high contrast on dark gradient).
+ * Hero ghost   = translucent white + backdrop-blur (glassmorphic).
+ *
+ * backdrop-filter is supported in Chromium-based Edge (v79+) — target env.
+ *
+ * Source: place-mock-8_2 `.btn-hero-primary` and `.btn-hero-ghost`.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .nofbiz__button.pt-btn-hero-primary,
+.pt-v2 .nofbiz__linkbutton.pt-btn-hero-primary {
+  background-color: var(--pt-lime);
+  color: var(--pt-green-darker);
+  border-color: transparent;
+  box-shadow: 0 4px 14px rgba(149, 193, 31, 0.40);
+}
+
+.pt-v2 .nofbiz__button.pt-btn-hero-primary:hover,
+.pt-v2 .nofbiz__linkbutton.pt-btn-hero-primary:hover {
+  background-color: #A8D324;
+  color: var(--pt-green-darker);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(149, 193, 31, 0.50);
+}
+
+.pt-v2 .nofbiz__button.pt-btn-hero-ghost,
+.pt-v2 .nofbiz__linkbutton.pt-btn-hero-ghost {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #FFFFFF;
+  border-color: rgba(255, 255, 255, 0.35);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: none;
+}
+
+.pt-v2 .nofbiz__button.pt-btn-hero-ghost:hover,
+.pt-v2 .nofbiz__linkbutton.pt-btn-hero-ghost:hover {
+  background-color: rgba(255, 255, 255, 0.20);
+  color: #FFFFFF;
+  border-color: rgba(255, 255, 255, 0.50);
+}
+
+/* ----------------------------------------------------------------------------
+ * B06 — Chip / pill (utility class — no SPARC equivalent)
+ *
+ * Source: v4_amadeu `.chip*`. Apply via plain element + class:
+ *   new Text('Active', { type: 'span', class: 'pt-chip pt-chip-green' })
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--pt-r-pill);
+  font-size: 11.5px;
+  font-weight: var(--pt-fw-bold);
+  line-height: 1.4;
+  background-color: var(--pt-surface-alt);
+  color: var(--pt-ink-soft);
+  border: 1px solid var(--pt-border);
+}
+
+.pt-v2 .pt-chip-green {
+  background-color: rgba(149, 193, 31, 0.14);
+  color: #5E7F12;
+  border-color: rgba(149, 193, 31, 0.32);
+}
+
+.pt-v2 .pt-chip-clay {
+  background-color: #FCE2BC;
+  color: #855215;
+  border-color: rgba(232, 153, 35, 0.40);
+}
+
+.pt-v2 .pt-chip-dot::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+  display: inline-block;
+}
+
+/* ----------------------------------------------------------------------------
+ * B07 — Phase badge (PDCA)
+ *
+ * Utility classes — no SPARC equivalent. Color-coded per PDCA phase, with
+ * optional leading dot. Source: place-mock-8_2 `.phase-badge.phase-p/d/c/a`.
+ *
+ *   new Text('Plan', { type: 'span', class: 'pt-phase-badge pt-phase-badge--p' })
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pt-phase-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--pt-r-pill);
+  font-size: 12px;
+  font-weight: var(--pt-fw-extrabold);
+  line-height: 1.2;
+}
+
+.pt-v2 .pt-phase-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+  display: inline-block;
+}
+
+.pt-v2 .pt-phase-badge--p {
+  background-color: rgba(79, 141, 217, 0.15);
+  color: var(--pt-phase-plan);
+}
+
+.pt-v2 .pt-phase-badge--d {
+  background-color: rgba(232, 153, 35, 0.15);
+  color: var(--pt-phase-do);
+}
+
+.pt-v2 .pt-phase-badge--c {
+  background-color: rgba(156, 91, 209, 0.15);
+  color: var(--pt-phase-check);
+}
+
+.pt-v2 .pt-phase-badge--a {
+  background-color: rgba(45, 148, 66, 0.18);
+  color: var(--pt-green-deep);
+}
+
+/* ----------------------------------------------------------------------------
+ * B08 — Team badge (small green pill)
+ *
+ * Source: place-mock-8_2 `.init-team`.
+ *   new Text('Equipa A', { type: 'span', class: 'pt-team-badge' })
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pt-team-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--pt-r-pill);
+  background-color: rgba(45, 148, 66, 0.12);
+  color: var(--pt-green-deep);
+  font-size: 11px;
+  font-weight: var(--pt-fw-bold);
+  line-height: 1.5;
+}
+
+/* ----------------------------------------------------------------------------
+ * B09 — Eyebrow label (uppercase, letter-spaced)
+ *
+ * Source: v4_amadeu `.eyebrow`. Use as small section/banner label above
+ * larger heading text.
+ *   new Text('PACE - CETELEM', { type: 'span', class: 'pt-eyebrow' })
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pt-eyebrow {
+  display: inline-block;
+  font-size: var(--pt-fs-sm);
+  font-weight: var(--pt-fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--pt-ls-wider);
+  color: var(--pt-ink-muted);
+  line-height: 1.4;
+}
+
+/* ----------------------------------------------------------------------------
+ * B10 — Avatar (circle with initials)
+ *
+ * Source: v4_amadeu `.avatar`. 32px circle, green gradient bg, white initials.
+ *   new Container([new Text('JF')], { class: 'pt-avatar' })
+ * Subclass with `.pt-avatar--lg` (40px) where needed.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pt-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4A7C2A, var(--pt-bnpp-green));
+  color: #FFFFFF;
+  font-size: 12px;
+  font-weight: var(--pt-fw-extrabold);
+  text-transform: uppercase;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.pt-v2 .pt-avatar--lg {
+  width: 40px;
+  height: 40px;
+  font-size: 14px;
+}
+
+/* ----------------------------------------------------------------------------
+ * B11 — TextInput
+ *
+ * Source: v4_amadeu `.input`. SPARC default uses a heavy bottom-border
+ * accent pattern — overridden here to uniform border + radius + focus ring,
+ * matching the mockup. `border` shorthand resets bottom-border tweaks.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .nofbiz__textinput {
+  border: 1.5px solid var(--pt-border);
+  border-radius: var(--pt-r-sm);
+  padding: 11px 14px;
+  font-size: 14px;
+  background-color: var(--pt-surface);
+  color: var(--pt-ink);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.pt-v2 .nofbiz__textinput:hover {
+  border-color: var(--pt-ink-muted);
+}
+
+.pt-v2 .nofbiz__textinput:focus {
+  border-color: var(--pt-green);
+  box-shadow: 0 0 0 3px rgba(45, 148, 66, 0.18);
+  outline: none;
+}
+
+.pt-v2 .nofbiz__textinput::placeholder {
+  color: var(--pt-ink-muted);
+}
+
+/* ----------------------------------------------------------------------------
+ * B12 — TextArea (extends B11 base, plus min-height + resize)
+ * Source: v4_amadeu `.textarea`.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .nofbiz__textarea {
+  border: 1.5px solid var(--pt-border);
+  border-radius: var(--pt-r-sm);
+  padding: 11px 14px;
+  font-size: 14px;
+  line-height: var(--pt-lh-relaxed);
+  background-color: var(--pt-surface);
+  color: var(--pt-ink);
+  min-height: 100px;
+  resize: vertical;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.pt-v2 .nofbiz__textarea:hover {
+  border-color: var(--pt-ink-muted);
+}
+
+.pt-v2 .nofbiz__textarea:focus {
+  border-color: var(--pt-green);
+  box-shadow: 0 0 0 3px rgba(45, 148, 66, 0.18);
+  outline: none;
+}
+
+.pt-v2 .nofbiz__textarea::placeholder {
+  color: var(--pt-ink-muted);
+}
+
+/* ----------------------------------------------------------------------------
+ * B13 — ComboBox trigger + dropdown panel
+ *
+ * Source: v4_amadeu `.select` for trigger; dropdown panel styled to match
+ * surface/border/shadow tokens. SPARC ComboBox is composite — trigger
+ * (`.nofbiz__combobox`) and floating dropdown (`.nofbiz__combobox__dropdown`).
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .nofbiz__combobox {
+  border: 1.5px solid var(--pt-border);
+  border-radius: var(--pt-r-sm);
+  background-color: var(--pt-surface);
+  color: var(--pt-ink);
+  min-height: 42px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.pt-v2 .nofbiz__combobox:hover {
+  border-color: var(--pt-ink-muted);
+}
+
+.pt-v2 .nofbiz__combobox:focus-within {
+  border-color: var(--pt-green);
+  box-shadow: 0 0 0 3px rgba(45, 148, 66, 0.18);
+}
+
+.pt-v2 .nofbiz__combobox__dropdown {
+  background-color: var(--pt-surface);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-md);
+  box-shadow: var(--pt-shadow-md);
+  padding: 6px;
+}
+
+.pt-v2 .nofbiz__combobox__dropdown__list .nofbiz__combobox__option {
+  border-radius: var(--pt-r-sm);
+  padding: 8px 12px;
+  font-size: 14px;
+  color: var(--pt-ink);
+}
+
+.pt-v2 .nofbiz__combobox__dropdown__list .nofbiz__combobox__option--focused,
+.pt-v2 .nofbiz__combobox__dropdown__list .nofbiz__combobox__option:hover:not([data-disabled]) {
+  background-color: var(--pt-surface-alt);
+}
+
+.pt-v2 .nofbiz__combobox__dropdown__list .nofbiz__combobox__option--selected {
+  background-color: rgba(45, 148, 66, 0.12);
+  color: var(--pt-green-deep);
+}
+
+/* ----------------------------------------------------------------------------
+ * B14 — NumberInput (same shape as B11)
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .nofbiz__numberinput {
+  border: 1.5px solid var(--pt-border);
+  border-radius: var(--pt-r-sm);
+  padding: 11px 14px;
+  font-size: 14px;
+  background-color: var(--pt-surface);
+  color: var(--pt-ink);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.pt-v2 .nofbiz__numberinput:hover {
+  border-color: var(--pt-ink-muted);
+}
+
+.pt-v2 .nofbiz__numberinput:focus {
+  border-color: var(--pt-green);
+  box-shadow: 0 0 0 3px rgba(45, 148, 66, 0.18);
+  outline: none;
+}
+
+/* ----------------------------------------------------------------------------
+ * B15 — CheckBox
+ *
+ * SPARC uses `:has(input:checked)` selector for state. Recolor to brand
+ * green; the SVG checkmark inherits via `currentColor` or fill rule from
+ * framework — restyle box + tick fill.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .nofbiz__checkbox {
+  border-radius: var(--pt-r-sm);
+  border: 1.5px solid var(--pt-border);
+  background-color: var(--pt-surface);
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.pt-v2 .nofbiz__checkbox:hover {
+  border-color: var(--pt-green);
+}
+
+.pt-v2 .nofbiz__checkbox:has(input:checked) {
+  background-color: var(--pt-green);
+  border-color: var(--pt-green);
+}
+
+.pt-v2 .nofbiz__checkbox:has(input:checked):hover {
+  background-color: var(--pt-green-deep);
+  border-color: var(--pt-green-deep);
+}
+
+.pt-v2 .nofbiz__checkbox:has(input:checked) svg {
+  color: #FFFFFF;
+  fill: #FFFFFF;
+}
+
+/* ----------------------------------------------------------------------------
+ * B16 — FieldLabel
+ *
+ * Label text above/beside form controls. Use ink color, medium-bold weight,
+ * 13px size. Slight margin handled by SPARC wrapper.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .nofbiz__fieldlabel__label-text {
+  font-size: 13px;
+  font-weight: var(--pt-fw-semibold);
+  color: var(--pt-ink);
+  letter-spacing: 0;
+}
+
+.pt-v2 .nofbiz__fieldlabel.nofbiz__fieldlabel--disabled .nofbiz__fieldlabel__label-text {
+  color: var(--pt-ink-muted);
+}
+
+/* ----------------------------------------------------------------------------
+ * B17 — Validation / error state
+ *
+ * SPARC adds `.form-control--invalid` / `.form-control--valid` to inputs.
+ * Override the heavy bottom-border default to full-border styling to match
+ * B11/B12/B14 shape.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .nofbiz__textinput.form-control--invalid,
+.pt-v2 .nofbiz__textarea.form-control--invalid,
+.pt-v2 .nofbiz__numberinput.form-control--invalid {
+  border-color: var(--pt-status-danger);
+}
+
+.pt-v2 .nofbiz__textinput.form-control--invalid:focus,
+.pt-v2 .nofbiz__textarea.form-control--invalid:focus,
+.pt-v2 .nofbiz__numberinput.form-control--invalid:focus {
+  border-color: var(--pt-status-danger);
+  box-shadow: 0 0 0 3px rgba(192, 57, 43, 0.18);
+}
+
+.pt-v2 .nofbiz__textinput.form-control--valid,
+.pt-v2 .nofbiz__textarea.form-control--valid,
+.pt-v2 .nofbiz__numberinput.form-control--valid {
+  border-color: var(--pt-status-ok);
+}
+
+.pt-v2 .nofbiz__textinput.form-control--valid:focus,
+.pt-v2 .nofbiz__textarea.form-control--valid:focus,
+.pt-v2 .nofbiz__numberinput.form-control--valid:focus {
+  border-color: var(--pt-status-ok);
+  box-shadow: 0 0 0 3px rgba(0, 150, 57, 0.18);
+}
+
+/* ----------------------------------------------------------------------------
+ * B18 — Divider utility
+ * Source: v4_amadeu `.divider`. Thin horizontal line for separating sections.
+ *   new Container([], { class: 'pt-divider' })
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pt-divider {
+  height: 1px;
+  width: 100%;
+  background-color: var(--pt-border);
+  border: none;
+  margin: 0;
+}
+
+/* Vertical variant for inline use */
+.pt-v2 .pt-divider--v {
+  height: auto;
+  width: 1px;
+  align-self: stretch;
+}
+
+/* ----------------------------------------------------------------------------
+ * B19 — Icon sizing / color helpers
+ *
+ * SPARC `getIcon()` returns inline SVG. Provide sizing utility classes so
+ * route code can drop in `<Container([getIcon('x')], { class: 'pt-icon pt-icon-md' })`
+ * without ad-hoc styles.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pt-icon,
+.pt-v2 .pt-icon svg {
+  display: inline-flex;
+  flex-shrink: 0;
+  fill: currentColor;
+  color: inherit;
+}
+
+.pt-v2 .pt-icon-sm,
+.pt-v2 .pt-icon-sm svg {
+  width: 14px;
+  height: 14px;
+}
+
+.pt-v2 .pt-icon-md,
+.pt-v2 .pt-icon-md svg {
+  width: 18px;
+  height: 18px;
+}
+
+.pt-v2 .pt-icon-lg,
+.pt-v2 .pt-icon-lg svg {
+  width: 22px;
+  height: 22px;
+}
+
+.pt-v2 .pt-icon-xl,
+.pt-v2 .pt-icon-xl svg {
+  width: 28px;
+  height: 28px;
+}
+
+/* Color helpers (apply to icon container; svg fill inherits currentColor) */
+.pt-v2 .pt-icon-green   { color: var(--pt-green); }
+.pt-v2 .pt-icon-muted   { color: var(--pt-ink-muted); }
+.pt-v2 .pt-icon-danger  { color: var(--pt-status-danger); }
+.pt-v2 .pt-icon-warn    { color: var(--pt-status-warn); }
+.pt-v2 .pt-icon-info    { color: var(--pt-status-info); }
+
+/* ============================================================================
+ * Phase C — Molecules
+ * ========================================================================== */
+
+/* ----------------------------------------------------------------------------
+ * C01 — Card / panel base
+ *
+ * Source: place-mock-8_2 generic section card. Use utility `.pt-card` for
+ * arbitrary containers; also override SPARC `.nofbiz__card` to align.
+ * `.pt-card--lift` adds hover elevation for interactive cards.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pt-card,
+.pt-v2 .nofbiz__card {
+  background-color: var(--pt-surface);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-lg);
+  padding: 28px;
+  box-shadow: var(--pt-shadow-sm);
+}
+
+.pt-v2 .pt-card--lift {
+  transition: transform 160ms ease, box-shadow 200ms ease, border-color 160ms ease;
+  cursor: pointer;
+}
+
+.pt-v2 .pt-card--lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--pt-shadow-md);
+  border-color: var(--pt-green);
+}
+
+.pt-v2 .pt-card--compact {
+  padding: 16px;
+  border-radius: var(--pt-r-md);
+}
+
+/* ----------------------------------------------------------------------------
+ * C02 — Section header (title + optional subtitle + optional link)
+ *
+ * Source: place-mock-8_2 `.section-header` / `.section-title` / `.section-sub` /
+ * `.section-link`. Layout: flex row, title block on left, link on right.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pt-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.pt-v2 .pt-section-header__title {
+  font-size: var(--pt-fs-xl);
+  font-weight: var(--pt-fw-extrabold);
+  color: var(--pt-ink);
+  line-height: var(--pt-lh-snug);
+  letter-spacing: var(--pt-ls-tight);
+  margin: 0 0 4px 0;
+}
+
+.pt-v2 .pt-section-header__sub {
+  font-size: var(--pt-fs-md);
+  font-weight: var(--pt-fw-medium);
+  color: var(--pt-ink-soft);
+  line-height: var(--pt-lh-normal);
+  margin: 0;
+}
+
+.pt-v2 .pt-section-header__link {
+  font-size: 13px;
+  font-weight: var(--pt-fw-bold);
+  color: var(--pt-green-deep);
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pt-v2 .pt-section-header__link:hover {
+  color: var(--pt-green);
+  text-decoration: underline;
+}
+
+/* ----------------------------------------------------------------------------
+ * C03 — Stat card (KPI)
+ *
+ * Source: place-mock-8_2 `.stat`. Padding 22/22/20, hover lifts, color-coded
+ * icon backgrounds via modifier (`--plan/--do/--check/--act`).
+ *   new Container([
+ *     new Container([getIcon('chart')], { class: 'pt-stat-card__icon pt-stat-card__icon--plan' }),
+ *     new Text('12',       { type: 'span', class: 'pt-stat-card__value' }),
+ *     new Text('Planeadas', { type: 'span', class: 'pt-stat-card__label' }),
+ *   ], { class: 'pt-stat-card' })
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pt-stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background-color: var(--pt-surface);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-lg);
+  padding: 22px 22px 20px;
+  box-shadow: var(--pt-shadow-sm);
+  transition: transform 160ms ease, box-shadow 200ms ease, border-color 160ms ease;
+}
+
+.pt-v2 .pt-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--pt-shadow-md);
+  border-color: var(--pt-green);
+}
+
+.pt-v2 .pt-stat-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--pt-r-md);
+  background-color: var(--pt-surface-alt);
+  color: var(--pt-ink-soft);
+  margin-bottom: 4px;
+}
+
+.pt-v2 .pt-stat-card__icon--plan  { background-color: rgba(79, 141, 217, 0.12); color: var(--pt-phase-plan); }
+.pt-v2 .pt-stat-card__icon--do    { background-color: rgba(232, 153, 35, 0.12); color: var(--pt-phase-do); }
+.pt-v2 .pt-stat-card__icon--check { background-color: rgba(156, 91, 209, 0.12); color: var(--pt-phase-check); }
+.pt-v2 .pt-stat-card__icon--act   { background-color: rgba(45, 148, 66, 0.14);  color: var(--pt-green-deep); }
+
+.pt-v2 .pt-stat-card__value {
+  font-size: var(--pt-fs-3xl);
+  font-weight: var(--pt-fw-black);
+  color: var(--pt-ink);
+  line-height: 1;
+  letter-spacing: var(--pt-ls-tight);
+  font-variant-numeric: tabular-nums;
+}
+
+.pt-v2 .pt-stat-card__label {
+  font-size: var(--pt-fs-md);
+  font-weight: var(--pt-fw-semibold);
+  color: var(--pt-ink-soft);
+}
+
+.pt-v2 .pt-stat-card__trend {
+  font-size: 12px;
+  font-weight: var(--pt-fw-bold);
+  color: var(--pt-status-ok);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pt-v2 .pt-stat-card__trend--down { color: var(--pt-status-danger); }
+
+/* ----------------------------------------------------------------------------
+ * C04 — Initiative card (avatar | body | action)
+ *
+ * Source: place-mock-8_2 `.init-card`. 3-column grid layout, surface-alt
+ * background that flips to white on hover with green border.
+ *   new Container([
+ *     avatarContainer,
+ *     bodyContainer,
+ *     actionButton,
+ *   ], { class: 'pt-init-card' })
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pt-init-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background-color: var(--pt-surface-alt);
+  border: 1px solid transparent;
+  border-radius: var(--pt-r-md);
+  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.pt-v2 .pt-init-card:hover {
+  background-color: var(--pt-surface);
+  border-color: var(--pt-green);
+  transform: translateY(-1px);
+}
+
+.pt-v2 .pt-init-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pt-v2 .pt-init-card__title {
+  font-size: 14px;
+  font-weight: var(--pt-fw-bold);
+  color: var(--pt-ink);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pt-v2 .pt-init-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--pt-ink-muted);
+}
+
+/* ----------------------------------------------------------------------------
+ * C05 — Notification item
+ *
+ * Restyles existing `.pace-notif-item` / `.pace-notif-list` / `.pace-notif-date`
+ * (from current home route) to match mockup card-list pattern. The
+ * `pace-home-notifications` container is restyled in D03/E01 to be a card.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pace-notif-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.pt-v2 .pace-notif-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--pt-border);
+  transition: background-color 120ms ease;
+}
+
+.pt-v2 .pace-notif-item:last-child {
+  border-bottom: none;
+}
+
+.pt-v2 .pace-notif-item:hover {
+  background-color: var(--pt-surface-alt);
+}
+
+.pt-v2 .pace-notif-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background-color: rgba(45, 148, 66, 0.12);
+  color: var(--pt-green-deep);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pt-v2 .pace-notif-icon--warn  { background-color: rgba(232, 153, 35, 0.14); color: var(--pt-status-warn); }
+.pt-v2 .pace-notif-icon--error { background-color: rgba(192, 57, 43, 0.10);  color: var(--pt-status-danger); }
+
+.pt-v2 .pace-notif-date {
+  font-size: 12px;
+  color: var(--pt-ink-muted);
+  margin-left: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* ----------------------------------------------------------------------------
+ * C06 — Empty state (dashed border, mascot/icon slot, message)
+ *
+ * Source: place-mock-8_2 `.empty-state` / `.empty-mascot` / `.empty-title` /
+ * `.empty-text`. Use for lists / sections with no items.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pt-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 24px;
+  border: 1.5px dashed var(--pt-border);
+  border-radius: var(--pt-r-lg);
+  background-color: var(--pt-bg);
+  text-align: center;
+}
+
+.pt-v2 .pt-empty-state__icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background-color: var(--pt-surface);
+  border: 1px solid var(--pt-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--pt-green);
+  box-shadow: 0 4px 14px rgba(45, 148, 66, 0.10);
+  margin-bottom: 4px;
+}
+
+.pt-v2 .pt-empty-state__title {
+  font-size: var(--pt-fs-xl);
+  font-weight: var(--pt-fw-extrabold);
+  color: var(--pt-ink);
+  line-height: var(--pt-lh-snug);
+  margin: 0;
+}
+
+.pt-v2 .pt-empty-state__text {
+  font-size: 14px;
+  color: var(--pt-ink-soft);
+  line-height: var(--pt-lh-relaxed);
+  margin: 0;
+  max-width: 380px;
+}
+
+/* ----------------------------------------------------------------------------
+ * C07 — Annotation / note box (left-border colored)
+ *
+ * Source: place-mock-8_2 annotation block. Variants for warn/info/danger;
+ * defaults to warn (most common use case in mockup).
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pt-annotation {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--pt-r-sm);
+  background: linear-gradient(135deg, #FFF8E1, #FFF3CD);
+  border-left: 4px solid var(--pt-status-warn);
+  color: #5C4A1F;
+  font-size: 14px;
+  line-height: var(--pt-lh-relaxed);
+}
+
+.pt-v2 .pt-annotation--info {
+  background: linear-gradient(135deg, #EAF2FB, #DCEAF8);
+  border-left-color: var(--pt-status-info);
+  color: #173961;
+}
+
+.pt-v2 .pt-annotation--danger {
+  background: linear-gradient(135deg, #FDECEA, #FAD9D5);
+  border-left-color: var(--pt-status-danger);
+  color: #6A1812;
+}
+
+.pt-v2 .pt-annotation--success {
+  background: linear-gradient(135deg, #E8F4EB, #D4EAD9);
+  border-left-color: var(--pt-status-ok);
+  color: #1B4D26;
+}
+
+.pt-v2 .pt-annotation__icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: flex-start;
+  padding-top: 2px;
+}
+
+/* ----------------------------------------------------------------------------
+ * C08 — Form row (2-column responsive grid)
+ *
+ * Two-column form layout that collapses to one column under 640px. Used in
+ * modals and admin forms.
+ *   new Container([field1, field2], { class: 'pt-form-row' })
+ * Spans full width with `.pt-form-row__full` modifier on a child.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pt-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.pt-v2 .pt-form-row > .pt-form-row__full {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 640px) {
+  .pt-v2 .pt-form-row { grid-template-columns: 1fr; }
+}
+
+/* ----------------------------------------------------------------------------
+ * C09 — Table (SPARC List in table mode)
+ *
+ * SPARC's List component renders as a table; targets are `.nofbiz__list__table`,
+ * `__header`, `__row`, `__col`. Pace-theme has existing table overrides under
+ * different class names — those remain untouched (apply outside .pt-v2 scope).
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .nofbiz__list__table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  font-size: 14px;
+  color: var(--pt-ink);
+}
+
+.pt-v2 .nofbiz__list__header {
+  background-color: var(--pt-surface-alt);
+  font-size: 12px;
+  font-weight: var(--pt-fw-bold);
+  color: var(--pt-ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--pt-border);
+  text-align: left;
+}
+
+.pt-v2 .nofbiz__list__header--ascending,
+.pt-v2 .nofbiz__list__header--descending {
+  color: var(--pt-green-deep);
+}
+
+.pt-v2 .nofbiz__list__row {
+  border-bottom: 1px solid var(--pt-border);
+  transition: background-color 120ms ease;
+}
+
+.pt-v2 .nofbiz__list__row:hover {
+  background-color: var(--pt-surface-alt);
+}
+
+.pt-v2 .nofbiz__list__row--empty {
+  color: var(--pt-ink-muted);
+  font-style: italic;
+}
+
+.pt-v2 .nofbiz__list__col {
+  padding: 14px 16px;
+  vertical-align: middle;
+}
+
+/* ----------------------------------------------------------------------------
+ * C10 — Pagination
+ *
+ * SPARC has no built-in pagination class. Use `utils/sp-paging.js` markup
+ * + `.pt-pagination` wrapper. Pill buttons for prev/next, numbered pages.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pt-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px 0;
+}
+
+.pt-v2 .pt-pagination__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--pt-r-sm);
+  border: 1px solid var(--pt-border);
+  background-color: var(--pt-surface);
+  color: var(--pt-ink);
+  font-size: 13px;
+  font-weight: var(--pt-fw-semibold);
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.pt-v2 .pt-pagination__btn:hover:not(:disabled) {
+  border-color: var(--pt-green);
+  color: var(--pt-green-deep);
+}
+
+.pt-v2 .pt-pagination__btn--active {
+  background-color: var(--pt-green);
+  border-color: var(--pt-green);
+  color: #FFFFFF;
+}
+
+.pt-v2 .pt-pagination__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pt-v2 .pt-pagination__info {
+  font-size: 12px;
+  color: var(--pt-ink-muted);
+  margin: 0 8px;
+}
+
+/* ----------------------------------------------------------------------------
+ * C11 — Filter bar
+ *
+ * Combobox-row + result-count layout. Used on Geral, Pessoal, Catálogo,
+ * Dashboard. Replaces the existing `.pace-filter-*` classes inside .pt-v2.
+ *   new Container([comboBox1, comboBox2, countSpan], { class: 'pt-filter-bar' })
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pt-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background-color: var(--pt-surface);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-md);
+  margin-bottom: 16px;
+}
+
+.pt-v2 .pt-filter-bar > .nofbiz__combobox {
+  min-width: 180px;
+  flex: 0 1 220px;
+}
+
+.pt-v2 .pt-filter-bar__count {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: var(--pt-fw-semibold);
+  color: var(--pt-ink-muted);
+  padding: 4px 10px;
+  background-color: var(--pt-surface-alt);
+  border-radius: var(--pt-r-pill);
+}
+
+/* ----------------------------------------------------------------------------
+ * C12 — Accordion item header
+ *
+ * SPARC AccordionItem. Restyle header row only (body uses card-ish styling
+ * from C01 if wrapped). Open state gets the green accent.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .nofbiz__accordionitem {
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-md);
+  background-color: var(--pt-surface);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.pt-v2 .nofbiz__accordionitem__header {
+  padding: 14px 16px;
+  font-size: 14px;
+  font-weight: var(--pt-fw-bold);
+  color: var(--pt-ink);
+  background-color: var(--pt-surface);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.pt-v2 .nofbiz__accordionitem__header:hover {
+  background-color: var(--pt-surface-alt);
+}
+
+.pt-v2 .nofbiz__accordionitem--open > .nofbiz__accordionitem__header {
+  background-color: rgba(45, 148, 66, 0.06);
+  color: var(--pt-green-deep);
+  border-bottom: 1px solid var(--pt-border);
+}
+
+.pt-v2 .nofbiz__accordionitem__header__icon {
+  transition: transform 200ms ease;
+  color: var(--pt-ink-muted);
+}
+
+.pt-v2 .nofbiz__accordionitem--open > .nofbiz__accordionitem__header .nofbiz__accordionitem__header__icon {
+  color: var(--pt-green-deep);
+  transform: rotate(180deg);
+}
+
+.pt-v2 .nofbiz__accordionitem__content {
+  padding: 16px;
+}
+
+/* ----------------------------------------------------------------------------
+ * C13 — TabGroup (ViewSwitcher pattern)
+ *
+ * SPARC TabGroup is used for view switching (in-page tabs, including inside
+ * modals). Underline-active style, no per-tab background color.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .nofbiz__tabgroup__nav {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--pt-border);
+  margin-bottom: 16px;
+}
+
+.pt-v2 .nofbiz__tabgroup__nav__tab-btn {
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: var(--pt-fw-bold);
+  color: var(--pt-ink-soft);
+  background-color: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+  margin-bottom: -1px;
+}
+
+.pt-v2 .nofbiz__tabgroup__nav__tab-btn:hover {
+  color: var(--pt-ink);
+}
+
+.pt-v2 .nofbiz__tabgroup__nav__tab-btn--active {
+  color: var(--pt-green-deep);
+  border-bottom-color: var(--pt-green);
+}
+
+.pt-v2 .nofbiz__tabgroup__nav__tab-btn--disabled {
+  color: var(--pt-ink-muted);
+  cursor: not-allowed;
+}
+
+.pt-v2 .nofbiz__tabgroup__content {
+  padding-top: 4px;
+}
+
+/* ----------------------------------------------------------------------------
+ * C14 — Tag picker / toggle button group
+ *
+ * Source: v4_amadeu `.tag-pick` with `[aria-pressed="true"]`. Used for
+ * yes/no toggles and small multi-select pickers. Use plain elements + classes.
+ *   new Button('Sim', {
+ *     class: 'pt-tag-picker__btn',
+ *     attr: { 'aria-pressed': 'true' },
+ *     onClickHandler: ...,
+ *   })
+ * Wrap a row in `.pt-tag-picker` (flex container).
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pt-tag-picker {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pt-v2 .pt-tag-picker__btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 13px;
+  font-size: 12.5px;
+  font-weight: var(--pt-fw-bold);
+  border-radius: var(--pt-r-pill);
+  background-color: var(--pt-surface-alt);
+  color: var(--pt-ink-soft);
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.pt-v2 .pt-tag-picker__btn:hover {
+  border-color: var(--pt-green);
+  color: var(--pt-green-deep);
+}
+
+.pt-v2 .pt-tag-picker__btn[aria-pressed="true"] {
+  background-color: var(--pt-green);
+  color: #FFFFFF;
+  border-color: var(--pt-green-deep);
+}
+
+.pt-v2 .pt-tag-picker__btn[aria-pressed="true"]:hover {
+  background-color: var(--pt-green-deep);
+}
+
+/* ============================================================================
+ * Phase D — Page Sections
+ *
+ * Mix of scoped and global rules:
+ *   D01 (header), D02 (tabs)            — global (no .pt-v2 prefix)
+ *   D03-D08                              — scoped under .pt-v2
+ *
+ * Global rules use higher specificity than pace-theme.css (more compound
+ * selectors) where needed to win the cascade without `!important`.
+ * ========================================================================== */
+
+/* ----------------------------------------------------------------------------
+ * D01 — Topbar / header (GLOBAL)
+ *
+ * Restyles `.pace-header` and children to match place-mock-8_2 `.topbar`:
+ * white sticky background, taller padding, refined border. Applies to all
+ * routes since header is shared chrome.
+ *
+ * `.pace-header__new-btn` and `__info-btn` are existing custom button classes
+ * (not SPARC button variants) — restyled to mock-8_2 pill button shape.
+ * -------------------------------------------------------------------------- */
+
+.pace-header {
+  height: auto;
+  min-height: 64px;
+  padding: 12px 32px;
+  background-color: var(--pt-surface);
+  border-bottom: 1px solid var(--pt-border);
+  box-shadow: 0 1px 0 rgba(20, 36, 26, 0.02);
+}
+
+.pace-header__left { display: flex; align-items: center; gap: 16px; }
+.pace-header__right { gap: 16px; }
+
+.pace-header__logo {
+  height: 32px;
+  width: auto;
+  display: block;
+}
+
+.pace-header__divider {
+  display: inline-block;
+  width: 1px;
+  height: 28px;
+  background-color: var(--pt-border);
+}
+
+.pace-header__platform {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.pace-header__platform-name {
+  font-weight: var(--pt-fw-black);
+  font-size: 16px;
+  color: var(--pt-green-deep);
+  letter-spacing: -0.01em;
+}
+
+.pace-header__platform-sub {
+  font-size: 11px;
+  font-weight: var(--pt-fw-semibold);
+  color: var(--pt-ink-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-top: 1px;
+}
+
+.pace-tabs__cta {
+  padding: 9px 18px;
+  border-radius: var(--pt-r-pill);
+  background-color: var(--pt-green);
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: var(--pt-fw-bold);
+  border: 1.5px solid transparent;
+  box-shadow: 0 3px 10px rgba(45, 148, 66, 0.28);
+  transition: background-color 160ms ease, transform 80ms ease, box-shadow 200ms ease;
+  margin: 10px 0 10px auto;
+  flex: 0 0 auto;
+}
+
+.pace-tabs__cta:hover {
+  background-color: var(--pt-green-deep);
+  transform: translateY(-1px);
+  box-shadow: 0 5px 14px rgba(45, 148, 66, 0.38);
+}
+
+.pace-header__info-btn {
+  padding: 9px 18px;
+  border-radius: var(--pt-r-pill);
+  background-color: transparent;
+  color: var(--pt-ink);
+  border: 1.5px solid var(--pt-border);
+  font-size: 13px;
+  font-weight: var(--pt-fw-bold);
+  transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease;
+}
+
+.pace-header__info-btn:hover {
+  border-color: var(--pt-green-deep);
+  color: var(--pt-green-deep);
+  background-color: transparent;
+}
+
+.pace-header__user-name {
+  font-size: 13px;
+  font-weight: var(--pt-fw-bold);
+  color: var(--pt-ink);
+}
+
+.pace-header__user-role {
+  font-size: 11px;
+  color: var(--pt-ink-muted);
+  font-weight: var(--pt-fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.pace-header__avatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--pt-green), var(--pt-green-deep));
+  color: #FFFFFF;
+  font-weight: var(--pt-fw-bold);
+  font-size: 14px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  flex: 0 0 auto;
+}
+
+/* ----------------------------------------------------------------------------
+ * D02 — Nav tabs (GLOBAL)
+ *
+ * Mock-8_2 `.nav-tab` pattern: sticky white background, underline-active.
+ * The current per-route background colors (`pace-tab-inicio`, `pace-tab-pessoal`
+ * etc.) are NEUTRALIZED — replaced with shared underline-active style.
+ *
+ * Open question from plan resolved here: dropping the per-route color in
+ * favor of cleaner mockup style. If the user later wants color back, the
+ * `pace-tab-<key>` selectors are still emitted by navbar.js — only their
+ * styling here changes.
+ * -------------------------------------------------------------------------- */
+
+.pace-tabs {
+  position: fixed;
+  top: 64px;
+  height: auto;
+  min-height: 52px;
+  background-color: var(--pt-surface);
+  border-bottom: 1px solid var(--pt-border);
+  padding: 6px 32px 0;
+  gap: 4px;
+  justify-content: flex-start;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.pace-tabs__tab,
+.pace-tabs__tab.pace-tab-inicio,
+.pace-tabs__tab.pace-tab-pessoal,
+.pace-tabs__tab.pace-tab-equipa,
+.pace-tabs__tab.pace-tab-geral,
+.pace-tabs__tab.pace-tab-mentoria,
+.pace-tabs__tab.pace-tab-gestor,
+.pace-tabs__tab.pace-tab-catalogo,
+.pace-tabs__tab.pace-tab-dashboard,
+.pace-tabs__tab.pace-tab-admin {
+  flex: 0 0 auto;
+  max-width: none;
+  padding: 14px 20px;
+  margin: 0;
+  border-radius: 0;
+  background-color: transparent;
+  background-image: none;
+  color: var(--pt-ink-soft);
+  font-size: 14px;
+  font-weight: var(--pt-fw-bold);
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 1;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px;
+  transition: color 120ms ease, border-color 120ms ease;
+  box-shadow: none;
+  transform: none;
+}
+
+.pace-tabs__tab:hover {
+  color: var(--pt-ink);
+  opacity: 1;
+  border-bottom-color: rgba(45, 148, 66, 0.4);
+}
+
+.pace-tabs__tab[disabled],
+.pace-tabs__tab.nofbiz__button--disabled {
+  color: var(--pt-green-deep);
+  border-bottom-color: var(--pt-green);
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  pointer-events: none;
+  opacity: 1;
+}
+
+.pace-tabs__tab .pace-tab-icon svg {
+  width: 1em;
+  height: 1em;
+}
+
+/* Adjust #root top offset — header + tabs now share new heights */
+#root {
+  --header-footer-height: 122px;  /* 64 header + 58 tabs */
+}
+
+/* Update pace-content padding to mockup container width */
+.pt-v2.pace-content,
+.pace-content {
+  padding: 0 32px;
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+/* ----------------------------------------------------------------------------
+ * D03 — Hero section (scoped .pt-v2)
+ *
+ * Restyles existing `.pace-hero` and children to the mock-8_2 hero pattern:
+ * dark green gradient with subtle radial overlay, white text, large display
+ * title, action buttons on a translucent surface. Mascot slot via D04.
+ *
+ * `.pace-hero-badge` (existing eyebrow on home) is restyled in-place to
+ * translucent-pill on dark; route.css overrides still apply but are weaker
+ * specificity than `.pt-v2 .pace-hero .pace-hero-badge`.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pace-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  align-items: center;
+  gap: 32px;
+  min-height: 340px;
+  padding: 48px 56px;
+  margin-bottom: 24px;
+  border: none;
+  border-radius: var(--pt-r-xl);
+  color: #FFFFFF;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at top right, rgba(149, 193, 31, 0.20), transparent 60%),
+    linear-gradient(135deg,
+      var(--pt-green-darker) 0%,
+      var(--pt-green-deep) 50%,
+      var(--pt-green) 100%);
+  box-shadow: var(--pt-shadow-lg);
+}
+
+.pt-v2 .pace-hero::before {
+  content: '';
+  position: absolute;
+  top: -100px;
+  right: 25%;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(149, 193, 31, 0.30), transparent 65%);
+  filter: blur(4px);
+  pointer-events: none;
+}
+
+.pt-v2 .pace-hero__pattern {
+  position: absolute;
+  inset: 0;
+  opacity: 0.08;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='40' viewBox='0 0 80 40'><path d='M 0 40 Q 20 0 40 40 Q 60 0 80 40' fill='none' stroke='white' stroke-width='2.5'/></svg>");
+  background-size: 80px 40px;
+  z-index: 1;
+}
+
+.pt-v2 .pace-hero__content {
+  position: relative;
+  z-index: 2;
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.pt-v2 .pace-hero h1,
+.pt-v2 .pace-hero__title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--pt-fs-display);
+  font-weight: var(--pt-fw-black);
+  line-height: 1.02;
+  letter-spacing: -0.025em;
+  color: #FFFFFF;
+  margin: 0;
+}
+
+.pt-v2 .pace-hero__title-accent {
+  color: var(--pt-lime, #95C11F);
+}
+
+.pt-v2 .pace-hero p {
+  font-size: 17px;
+  font-weight: var(--pt-fw-medium);
+  line-height: var(--pt-lh-relaxed);
+  color: rgba(255, 255, 255, 0.88);
+  margin: 0;
+  max-width: 560px;
+}
+
+.pt-v2 .pace-hero .pace-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: var(--pt-fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--pt-ls-wider);
+  color: #FFFFFF;
+  background-color: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--pt-r-pill);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  margin-bottom: 0;
+}
+
+.pt-v2 .pace-hero-badge__dot {
+  width: 8px;
+  height: 8px;
+  background-color: var(--pt-lime, #95C11F);
+  border-radius: 50%;
+  box-shadow: 0 0 12px var(--pt-lime, #95C11F);
+  display: inline-block;
+}
+
+.pt-v2 .pace-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+@media (max-width: 980px) {
+  .pt-v2 .pace-hero {
+    grid-template-columns: 1fr;
+    padding: 36px 28px;
+    min-height: 0;
+  }
+  .pt-v2 .pace-hero h1,
+  .pt-v2 .pace-hero__title { font-size: var(--pt-fs-4xl); }
+}
+
+@media (max-width: 640px) {
+  .pt-v2 .pace-hero { padding: 28px 22px; }
+  .pt-v2 .pace-hero h1,
+  .pt-v2 .pace-hero__title { font-size: 30px; }
+}
+
+/* ----------------------------------------------------------------------------
+ * D04 — Hero mascot slot (scoped .pt-v2)
+ *
+ * Right-column container for an illustration. Placeholder styling only —
+ * actual mascot asset is missing. When/if added under app/media/ as an SVG
+ * or PNG, the markup becomes:
+ *   new Image('@/media/mascot.svg', { class: 'pace-hero__visual' })
+ *
+ * Without an asset, the slot collapses (no background pattern shown).
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pace-hero__visual {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  filter: drop-shadow(0 24px 48px rgba(0, 0, 0, 0.30));
+  animation: pt-hero-float 6s ease-in-out infinite;
+}
+
+.pt-v2 .pace-hero__visual img,
+.pt-v2 .pace-hero__visual svg {
+  max-width: 100%;
+  max-height: 320px;
+  height: auto;
+}
+
+@keyframes pt-hero-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+
+@media (max-width: 980px) {
+  .pt-v2 .pace-hero__visual {
+    display: none;
+  }
+}
+
+/* ----------------------------------------------------------------------------
+ * D06 — Modal / Dialog (scoped .pt-v2)
+ *
+ * SPARC ships both `.nofbiz__dialog` and `.nofbiz__modal`. Restyle to
+ * mock-8_2 / v4_amadeu modal pattern: large radius (28px), shadow-lg, white
+ * surface, padded header/content/footer.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .nofbiz__dialog,
+.pt-v2 .nofbiz__modal {
+  background-color: var(--pt-surface);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-xl);
+  box-shadow: var(--pt-shadow-lg);
+  padding: 28px;
+  max-width: min(720px, 96vw);
+  max-height: 92vh;
+}
+
+.pt-v2 .nofbiz__dialog__header,
+.pt-v2 .nofbiz__modal__header {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--pt-border);
+  font-size: var(--pt-fs-xl);
+  font-weight: var(--pt-fw-extrabold);
+  color: var(--pt-ink);
+  letter-spacing: var(--pt-ls-tight);
+}
+
+.pt-v2 .nofbiz__dialog__content {
+  padding: 18px 0;
+  color: var(--pt-ink-soft);
+  font-size: 14px;
+  line-height: var(--pt-lh-relaxed);
+}
+
+.pt-v2 .nofbiz__dialog__footer {
+  padding-top: 16px;
+  border-top: 1px solid var(--pt-border);
+  gap: 10px;
+}
+
+/* ----------------------------------------------------------------------------
+ * D07 — Side sheet / SidePanel (scoped .pt-v2)
+ *
+ * SPARC `.nofbiz__sidepanel` is the right-side drawer used for detail views.
+ * Restyle to v4_amadeu `.sheet` pattern: wider, animated slide-in, soft shadow.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .nofbiz__sidepanel {
+  background-color: var(--pt-surface);
+  border-left: 1px solid var(--pt-border);
+  box-shadow: var(--pt-shadow-lg);
+  width: min(620px, 96vw);
+  padding: 0;
+}
+
+.pt-v2 .nofbiz__sidepanel--open {
+  animation: pt-sheet-in 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes pt-sheet-in {
+  from { transform: translateX(24px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+.pt-v2 .nofbiz__sidepanel__header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--pt-border);
+  background-color: var(--pt-surface);
+}
+
+.pt-v2 .nofbiz__sidepanel__title {
+  font-size: var(--pt-fs-xl);
+  font-weight: var(--pt-fw-extrabold);
+  color: var(--pt-ink);
+  margin: 0;
+  letter-spacing: var(--pt-ls-tight);
+}
+
+.pt-v2 .nofbiz__sidepanel__close-btn {
+  border-radius: var(--pt-r-pill);
+  width: 32px;
+  height: 32px;
+  background-color: transparent;
+  color: var(--pt-ink-soft);
+  border: none;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.pt-v2 .nofbiz__sidepanel__close-btn:hover {
+  background-color: var(--pt-surface-alt);
+  color: var(--pt-ink);
+}
+
+.pt-v2 .nofbiz__sidepanel__content {
+  padding: 20px 24px;
+}
+
+.pt-v2 .nofbiz__sidepanel__footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--pt-border);
+  gap: 10px;
+}
+
+/* ----------------------------------------------------------------------------
+ * D08 — Backdrop / overlay (scoped .pt-v2)
+ *
+ * Dark wash behind dialog/modal/sidepanel. SPARC ships separate backdrops
+ * per overlay component — restyle them uniformly.
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .nofbiz__dialog--backdrop,
+.pt-v2 .nofbiz__modal--backdrop,
+.pt-v2 .nofbiz__sidepanel--backdrop {
+  background-color: rgba(20, 36, 26, 0.42);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  animation: pt-backdrop-in 160ms ease-out;
+}
+
+@keyframes pt-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ============================================================================
+ * Phase E — Per-route polish
+ *
+ * Each block targets a single route's existing `.pace-*` class names under
+ * `.pt-v2` scope. Reuses the existing markup; restyles map to mock-8_2 /
+ * v4_amadeu visual language via the `--pt-*` tokens already established.
+ * ========================================================================== */
+
+/* ----------------------------------------------------------------------------
+ * E02 — Pessoal route
+ *
+ * Patterns covered:
+ *   - KPI row (`pace-kpi-row`, `pace-kpi`, `pace-kpi-value`, `pace-kpi-label`)
+ *   - Toggle switcher (`pace-toggle*`, `pace-toggle-wrapper`)
+ *   - Filter row (`pace-filters`)
+ *   - Revision cards (`pace-pending-item*`, `pace-revision-section`, `--urgent`)
+ *   - Container tables (`pace-table-wrap`, `pace-table-row`, `pace-table-cell-stack`,
+ *     `pace-table-link-btn`, `pace-table-description`, `pace-table--pessoal-standard`)
+ *
+ * Several of these classes are reused by Geral, Mentoria, Catálogo, etc.,
+ * so the overrides here also improve those routes incidentally (table rows,
+ * filters, toggle, KPI). Route-specific patterns for those land in E03+.
+ * -------------------------------------------------------------------------- */
+
+/* KPI cards */
+.pt-v2 .pace-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.pt-v2 .pace-kpi-row--4 {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.pt-v2 .pace-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background-color: var(--pt-surface);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-lg);
+  padding: 22px 24px;
+  box-shadow: var(--pt-shadow-sm);
+  transition: transform 160ms ease, box-shadow 200ms ease, border-color 160ms ease;
+}
+
+.pt-v2 .pace-kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--pt-shadow-md);
+  border-color: var(--pt-green);
+}
+
+.pt-v2 .pace-kpi-value {
+  font-size: var(--pt-fs-3xl);
+  font-weight: var(--pt-fw-black);
+  color: var(--pt-ink);
+  line-height: 1;
+  letter-spacing: var(--pt-ls-tight);
+  font-variant-numeric: tabular-nums;
+}
+
+.pt-v2 .pace-kpi-label {
+  display: block;
+  font-size: var(--pt-fs-md);
+  font-weight: var(--pt-fw-semibold);
+  color: var(--pt-ink-soft);
+  text-transform: none;
+  letter-spacing: 0;
+  margin-bottom: 0;
+}
+
+.pt-v2 .pace-kpi--highlight {
+  background-color: rgba(45, 148, 66, 0.06);
+  border-color: var(--pt-green);
+}
+
+.pt-v2 .pace-kpi--highlight .pace-kpi-value {
+  color: var(--pt-green-deep);
+}
+
+.pt-v2 .pace-kpi-value--green {
+  color: var(--pt-green-deep);
+}
+
+/* Toggle switcher (segmented pill row) */
+.pt-v2 .pace-toggle-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.pt-v2 .pace-toggle {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  background-color: var(--pt-surface-alt);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-pill);
+  padding: 4px;
+  overflow: visible;
+}
+
+.pt-v2 .pace-toggle-btn {
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: var(--pt-fw-bold);
+  border-radius: var(--pt-r-pill);
+  background-color: transparent;
+  color: var(--pt-ink-soft);
+  border: 1.5px solid transparent;
+  box-shadow: none;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.pt-v2 .pace-toggle-btn:not(:last-child) { border-right: none; }
+
+.pt-v2 .pace-toggle-btn:hover:not(.pace-toggle-btn--active) {
+  background-color: transparent;
+  color: var(--pt-green-deep);
+}
+
+.pt-v2 .pace-toggle-btn--active,
+.pt-v2 .pace-toggle-btn.pace-toggle-btn--active {
+  background-color: var(--pt-green);
+  color: #FFFFFF;
+  border-color: var(--pt-green-deep);
+  box-shadow: 0 2px 8px rgba(45, 148, 66, 0.25);
+}
+
+/* Filter bar (replaces .pace-filters layout for opted-in routes) */
+.pt-v2 .pace-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background-color: var(--pt-surface);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-md);
+  margin-bottom: 20px;
+  box-shadow: var(--pt-shadow-sm);
+}
+
+.pt-v2 .pace-filters > * {
+  min-width: 200px;
+  flex: 1 1 220px;
+}
+
+.pt-v2 .pace-filters > .nofbiz__button {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+/* Revision / pending cards */
+.pt-v2 .pace-revision-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.pt-v2 .pace-revision-section:empty { display: none; }
+
+.pt-v2 .pace-pending-item {
+  background-color: var(--pt-surface);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-md);
+  padding: 16px 20px;
+  margin-bottom: 0;
+  box-shadow: var(--pt-shadow-sm);
+  transition: transform 160ms ease, box-shadow 200ms ease, border-color 160ms ease;
+}
+
+.pt-v2 .pace-pending-item:hover {
+  border-color: var(--pt-green);
+  box-shadow: var(--pt-shadow-md);
+  transform: translateY(-1px);
+}
+
+.pt-v2 .pace-pending-item--urgent {
+  border-left: 4px solid var(--pt-status-danger);
+}
+
+.pt-v2 .pace-pending-item-title {
+  display: block;
+  font-size: 15px;
+  font-weight: var(--pt-fw-bold);
+  color: var(--pt-ink);
+}
+
+.pt-v2 .pace-pending-item-meta {
+  display: block;
+  font-size: 13px;
+  font-weight: var(--pt-fw-medium);
+  color: var(--pt-ink-muted);
+  margin-top: 4px;
+}
+
+.pt-v2 .pace-pending-item-comment {
+  display: block;
+  margin: 10px 0 0 0;
+  padding: 10px 12px;
+  background-color: var(--pt-surface-alt);
+  border-radius: var(--pt-r-sm);
+  border-top: none;
+  font-size: 13px;
+  color: var(--pt-ink);
+  font-weight: var(--pt-fw-medium);
+  line-height: var(--pt-lh-relaxed);
+  white-space: pre-wrap;
+}
+
+.pt-v2 .pace-pending-item-comment::before {
+  content: 'MOTIVO: ';
+  font-weight: var(--pt-fw-extrabold);
+  color: var(--pt-status-danger);
+  letter-spacing: var(--pt-ls-wide);
+  font-size: 11px;
+  margin-right: 6px;
+}
+
+.pt-v2 .pace-pending-item-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.pt-v2 .pace-pending-item-actions .pace-pending-item-meta {
+  margin-top: 0;
+}
+
+/* Container-based tables (used by Pessoal + Geral + Mentoria + Catálogo) */
+.pt-v2 .pace-table-wrap {
+  background-color: var(--pt-surface);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-md);
+  box-shadow: var(--pt-shadow-sm);
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.pt-v2 .pace-table-wrap table {
+  font-size: 14px;
+}
+
+.pt-v2 .pace-table-wrap th {
+  background-color: var(--pt-surface-alt);
+  border-bottom: 1px solid var(--pt-border);
+  color: var(--pt-ink-soft);
+  font-size: 12px;
+  font-weight: var(--pt-fw-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 12px 16px;
+}
+
+.pt-v2 .pace-table-wrap td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--pt-border);
+  color: var(--pt-ink);
+  vertical-align: middle;
+}
+
+.pt-v2 .pace-table-wrap tr:last-child td {
+  border-bottom: none;
+}
+
+.pt-v2 .pace-table-wrap tr:hover td {
+  background-color: var(--pt-surface-alt);
+}
+
+.pt-v2 .pace-table-wrap .pace-table-link {
+  color: var(--pt-green-deep);
+  font-weight: var(--pt-fw-bold);
+}
+
+.pt-v2 .pace-table-wrap .pace-table-link:hover {
+  color: var(--pt-green);
+  text-decoration: underline;
+}
+
+/* Grid-based "container tables" */
+.pt-v2 .pace-table-row {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--pt-border);
+  font-size: 14px;
+  color: var(--pt-ink);
+  background-color: var(--pt-surface);
+  transition: background-color 120ms ease;
+}
+
+.pt-v2 .pace-table-row:first-of-type {
+  border-top-left-radius: var(--pt-r-md);
+  border-top-right-radius: var(--pt-r-md);
+}
+
+.pt-v2 .pace-table-row:last-of-type {
+  border-bottom: none;
+  border-bottom-left-radius: var(--pt-r-md);
+  border-bottom-right-radius: var(--pt-r-md);
+}
+
+.pt-v2 .pace-table-row.pace-table-row--header,
+.pt-v2 .pace-table-row--header {
+  background-color: var(--pt-surface-alt);
+  font-size: 12px;
+  font-weight: var(--pt-fw-bold);
+  color: var(--pt-ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 12px 16px;
+}
+
+.pt-v2 .pace-table-row:not(.pace-table-row--header):hover {
+  background-color: var(--pt-surface-alt);
+}
+
+/* Wrap the rows in a card-shaped container if not already in pace-table-wrap */
+.pt-v2 .pace-table--pessoal-standard,
+.pt-v2 .pace-table--standard,
+.pt-v2 .pace-table--geral,
+.pt-v2 .pace-table--mentoria,
+.pt-v2 .pace-table--mentoria-colabs,
+.pt-v2 .pace-table--catalogo,
+.pt-v2 .pace-table--arquivo,
+.pt-v2 .pace-table--equipa,
+.pt-v2 .pace-table--pessoal {
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-md);
+  background-color: var(--pt-surface);
+  box-shadow: var(--pt-shadow-sm);
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+/* Title + description stack inside a single cell */
+.pt-v2 .pace-table-cell-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+/* Inline-link button used as the row's first cell (initiative title link) */
+.pt-v2 .pace-table-link-btn,
+.pt-v2 .pace-table-link-btn.nofbiz__button,
+.pt-v2 .pace-table-link-btn.nofbiz__button--secondary {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--pt-green-deep);
+  font-size: 14px;
+  font-weight: var(--pt-fw-bold);
+  text-align: left;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: 0;
+  display: inline;
+}
+
+.pt-v2 .pace-table-link-btn:hover,
+.pt-v2 .pace-table-link-btn.nofbiz__button:hover,
+.pt-v2 .pace-table-link-btn.nofbiz__button--secondary:hover {
+  background: transparent;
+  color: var(--pt-green);
+  text-decoration: underline;
+  transform: none;
+  border-color: transparent;
+}
+
+.pt-v2 .pace-table-description {
+  font-size: 12.5px;
+  color: var(--pt-ink-muted);
+  font-weight: var(--pt-fw-medium);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Empty-message row inside a sortable table */
+.pt-v2 .pace-empty-msg {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--pt-ink-muted);
+  font-style: italic;
+  font-size: 14px;
+}
+
+/* ----------------------------------------------------------------------------
+ * E04 — Mentoria route
+ *
+ * Unique patterns (rest covered by E02 shared classes):
+ *   - CTA banner (`pace-cta`, `pace-cta-title`, `pace-cta-left`)
+ *   - Validation grid (`pace-validation-grid`, 2-col)
+ *   - Validation columns (`pace-validation-col`, `--project`, `--savings`,
+ *     `--scroll` with sticky heading)
+ *   - Empty placeholder text (`pace-empty`)
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pace-cta {
+  background: transparent;
+  border-bottom: 1px solid var(--pt-border);
+  padding: 20px 0 18px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.pt-v2 .pace-cta-title {
+  font-size: var(--pt-fs-2xl);
+  font-weight: var(--pt-fw-extrabold);
+  color: var(--pt-ink);
+  letter-spacing: var(--pt-ls-tight);
+  margin: 0 0 6px 0;
+  line-height: var(--pt-lh-snug);
+}
+
+.pt-v2 .pace-cta p {
+  font-size: 14px;
+  color: var(--pt-ink-soft);
+  line-height: var(--pt-lh-relaxed);
+  margin: 0;
+  max-width: 720px;
+}
+
+.pt-v2 .pace-cta h2 {
+  font-size: var(--pt-fs-xl);
+  font-weight: var(--pt-fw-extrabold);
+  color: var(--pt-ink);
+  margin: 0;
+}
+
+.pt-v2 .pace-cta-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pt-v2 .pace-validation-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 980px) {
+  .pt-v2 .pace-validation-grid { grid-template-columns: 1fr; }
+}
+
+.pt-v2 .pace-validation-col {
+  background-color: var(--pt-surface);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-lg);
+  padding: 20px;
+  box-shadow: var(--pt-shadow-sm);
+  border-top: 3px solid var(--pt-border);
+}
+
+.pt-v2 .pace-validation-col--project {
+  border-top-color: var(--pt-green);
+}
+
+.pt-v2 .pace-validation-col--savings {
+  border-top-color: var(--pt-status-warn);
+}
+
+.pt-v2 .pace-validation-col--scroll {
+  min-height: 360px;
+  max-height: 50vh;
+  overflow: auto;
+  padding-top: 0;
+}
+
+.pt-v2 .pace-validation-col h3 {
+  font-size: var(--pt-fs-xl);
+  font-weight: var(--pt-fw-extrabold);
+  color: var(--pt-ink);
+  letter-spacing: var(--pt-ls-tight);
+  margin: 0 0 14px 0;
+}
+
+.pt-v2 .pace-validation-col--scroll h3 {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background-color: var(--pt-surface);
+  margin: 0 -20px 14px -20px;
+  padding: 16px 20px 10px 20px;
+  border-bottom: 1px solid var(--pt-border);
+}
+
+.pt-v2 .pace-validation-col h3::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+  background-color: currentColor;
+  opacity: 0;
+}
+
+.pt-v2 .pace-validation-col--project h3 { color: var(--pt-green-deep); }
+.pt-v2 .pace-validation-col--project h3::before {
+  background-color: var(--pt-green);
+  opacity: 1;
+}
+.pt-v2 .pace-validation-col--savings h3 { color: #8A5E00; }
+.pt-v2 .pace-validation-col--savings h3::before {
+  background-color: var(--pt-status-warn);
+  opacity: 1;
+}
+
+.pt-v2 .pace-empty {
+  font-size: 13px;
+  color: var(--pt-ink-muted);
+  font-style: italic;
+  padding: 16px 4px;
+  text-align: center;
+}
+
+/* ----------------------------------------------------------------------------
+ * E05 — Gestor route
+ *
+ * Unique vs E02 + E04:
+ *   - `pace-pending-section` — wrapper around pending savings list
+ *   - `pace-sec-title` — section title with brand underline (also used by home
+ *     and form modals; home's `--plain` modifier suppresses the underline)
+ *
+ * Rest covered by E02 (KPI, toggle, filters, pending-item, table) and E04
+ * (CTA banner, empty placeholder).
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pace-pending-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.pt-v2 .pace-sec-title {
+  font-size: var(--pt-fs-xl);
+  font-weight: var(--pt-fw-extrabold);
+  color: var(--pt-ink);
+  letter-spacing: var(--pt-ls-tight);
+  margin: 0 0 14px 0;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--pt-green);
+  line-height: var(--pt-lh-snug);
+}
+
+.pt-v2 .pace-sec-title--plain {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 16px;
+}
+
+/* ----------------------------------------------------------------------------
+ * E07 — Admin (Configuração) route
+ *
+ * Page hosts SPARC TabGroup (styled in C13) with subroutes: Dados, CSV
+ * import, Roles, Hierarchy. Specific patterns:
+ *   - `.admin-filters-row` — flex filter row
+ *   - `.admin-result-card`, `--error` — CSV import outcome card
+ *   - `.admin-role-dialog__content` — role edit dialog body (layout in admin/route.css)
+ *   - `.admin-tree-children`, `.admin-tree-leaf`, `.admin-tree-name`, `.admin-tree-dept`
+ *     — org hierarchy tree
+ *   - `.pace-cta-text` — paragraph inside `.pace-cta` (already styled via E04 `.pace-cta p`)
+ *   - `.pace-filter-count` — small filter-result count
+ *
+ * `pace-dialog--overflow-visible` is a layout utility (no visual override).
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .admin-filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  background-color: var(--pt-surface);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-md);
+  margin-bottom: 16px;
+  box-shadow: var(--pt-shadow-sm);
+}
+
+.pt-v2 .admin-filters-row .nofbiz__combobox,
+.pt-v2 .admin-filters-row .nofbiz__textinput {
+  min-width: 200px;
+  flex: 1 1 220px;
+  max-width: none;
+}
+
+.pt-v2 .admin-result-card {
+  background-color: var(--pt-surface);
+  border: 1px solid var(--pt-green);
+  border-left: 4px solid var(--pt-green);
+  border-radius: var(--pt-r-md);
+  padding: 18px 20px;
+  margin-top: 16px;
+  box-shadow: var(--pt-shadow-sm);
+  color: var(--pt-ink);
+  font-size: 14px;
+  line-height: var(--pt-lh-relaxed);
+}
+
+.pt-v2 .admin-result-card--error {
+  border-color: var(--pt-status-danger);
+  border-left-color: var(--pt-status-danger);
+  background-color: rgba(192, 57, 43, 0.04);
+  color: #6A1812;
+}
+
+.pt-v2 .admin-tree-children {
+  padding-left: 20px;
+  border-left: 1px solid var(--pt-border);
+  margin-left: 8px;
+}
+
+.pt-v2 .admin-tree-leaf {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--pt-border);
+  font-size: 14px;
+  color: var(--pt-ink);
+  border-radius: var(--pt-r-sm);
+  transition: background-color 120ms ease;
+}
+
+.pt-v2 .admin-tree-leaf:hover {
+  background-color: var(--pt-surface-alt);
+}
+
+.pt-v2 .admin-tree-leaf:last-child {
+  border-bottom: none;
+}
+
+.pt-v2 .admin-tree-name {
+  font-weight: var(--pt-fw-bold);
+  color: var(--pt-ink);
+}
+
+.pt-v2 .admin-tree-dept {
+  font-size: 12.5px;
+  color: var(--pt-ink-muted);
+  font-weight: var(--pt-fw-medium);
+}
+
+.pt-v2 .admin-role-dialog__content > :first-child {
+  font-size: var(--pt-fs-xl);
+  font-weight: var(--pt-fw-extrabold);
+  color: var(--pt-ink);
+  letter-spacing: var(--pt-ls-tight);
+}
+
+.pt-v2 .pace-filter-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  background-color: var(--pt-surface-alt);
+  border-radius: var(--pt-r-pill);
+  font-size: 12px;
+  font-weight: var(--pt-fw-semibold);
+  color: var(--pt-ink-muted);
+  white-space: nowrap;
+}
+
+/* pace-cta-text often emitted as <span>; ensure paragraph-style rendering */
+.pt-v2 .pace-cta-text {
+  display: block;
+  font-size: 14px;
+  color: var(--pt-ink-soft);
+  line-height: var(--pt-lh-relaxed);
+  margin: 0;
+  max-width: 720px;
+}
+
+/* ============================================================================
+ * E08 — New Initiative modal (scoped .pt-v2)
+ *
+ * The modal mounts to <body> with pt-v2 ON ITS OWN ELEMENT, so the shell
+ * must be targeted with a compound selector (.pace-form-modal.pt-v2) rather
+ * than the descendant selector used by D06 (.pt-v2 .nofbiz__modal). All
+ * interior elements use descendant selectors (.pt-v2 .pace-*). This block
+ * overrides only color / border / radius / shadow declarations from the old
+ * lime palette in pace-theme.css — pure layout (flex/grid/gap/width) is
+ * inherited unchanged from pace-theme.css.
+ * ========================================================================== */
+
+/* ---- E08 — New Initiative modal (scoped .pt-v2) ---- */
+
+/* -- Shell -- */
+
+.pace-form-modal.pt-v2,
+.pace-initiative-modal.pt-v2 {
+  background-color: var(--pt-surface);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-xl);
+  box-shadow: var(--pt-shadow-lg);
+  /* Airy, contained width for the single-field basic steps (v4_amadeu feel). */
+  width: min(880px, 94vw);
+  /* Bounded flex column: header / stepper / footer stay fixed, the active view
+     scrolls. Padding lives on the inner sections so the scroll area is full-bleed
+     and the footer never spills outside the modal. */
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Wide layout on the impacto (financial) step — the multi-column financial
+   section needs more room than the basic steps. JS toggles this modifier when
+   the impacto view is active. */
+.pace-form-modal--wide.pt-v2 {
+  width: min(1200px, 95vw);
+}
+
+/* Fixed chrome (do not shrink) vs the scrollable active view. The ViewSwitcher
+   renders the 5 `.nofbiz__view` sections as direct children of the modal; only
+   the visible one flexes to fill the remaining height and scrolls. */
+.pace-form-modal.pt-v2 > .pace-modal-header-band,
+.pace-form-modal.pt-v2 > .pace-stepper,
+.pace-form-modal.pt-v2 > .pace-modal-footer {
+  flex: 0 0 auto;
+}
+
+.pace-form-modal.pt-v2 > .nofbiz__view {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px 28px;
+}
+
+/* The per-view form is no longer its own scroll container — the view scrolls.
+   Neutralise the old fixed max-height/overflow that caused the broken nested
+   scroll and pushed the footer out of the modal. */
+.pace-form-modal.pt-v2 .pace-initiative-form {
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
+/* -- Header band -- */
+
+.pt-v2 .pace-modal-header-band {
+  position: relative;
+  border-bottom: 1px solid var(--pt-border);
+  padding: 24px 28px 20px;
+}
+
+/* -- Close (X) button, top-right of header -- */
+
+.pt-v2 .pace-modal-close.nofbiz__button {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 38px;
+  height: 38px;
+  min-width: 0;
+  padding: 0;
+  border-radius: var(--pt-r-pill);
+  border: 1px solid var(--pt-border);
+  background: var(--pt-surface-alt);
+  box-shadow: var(--pt-shadow-sm);
+  color: var(--pt-ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.pt-v2 .pace-modal-close.nofbiz__button:hover {
+  background: var(--pt-green);
+  color: #ffffff;
+  border-color: var(--pt-green);
+  transform: translateY(-1px);
+}
+
+.pt-v2 .pace-modal-close-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pt-v2 .pace-modal-close-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* Keep the title/subtitle clear of the close button */
+.pt-v2 .pace-modal-header-band .pace-modal-eyebrow,
+.pt-v2 .pace-modal-header-band .pace-modal-title,
+.pt-v2 .pace-modal-header-band .pace-modal-subtitle {
+  padding-right: 44px;
+}
+
+.pt-v2 .pace-modal-eyebrow {
+  font-size: var(--pt-fs-xs);
+  font-weight: var(--pt-fw-extrabold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--pt-green-deep);
+  margin: 0 0 6px 0;
+}
+
+.pt-v2 .pace-modal-title {
+  font-size: var(--pt-fs-2xl);
+  font-weight: var(--pt-fw-extrabold);
+  letter-spacing: var(--pt-ls-tight);
+  color: var(--pt-ink);
+  margin: 0 0 6px 0;
+  line-height: var(--pt-lh-snug);
+}
+
+.pt-v2 .pace-modal-subtitle {
+  font-size: 14px;
+  color: var(--pt-ink-soft);
+  margin: 0;
+  line-height: var(--pt-lh-relaxed);
+  max-width: 520px;
+}
+
+/* -- Stepper -- */
+
+.pt-v2 .pace-stepper {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  padding: 16px 28px;
+  border-bottom: 1px solid var(--pt-border);
+  background-color: var(--pt-surface);
+}
+
+/* Each step button: reset SPARC button chrome and apply segment look */
+.pt-v2 .pace-stepper .pace-step-seg.nofbiz__button,
+.pt-v2 .pace-stepper .pace-step-seg.nofbiz__button:hover,
+.pt-v2 .pace-stepper .pace-step-seg.nofbiz__button:focus {
+  flex: 1;
+  background-color: transparent;
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-sm);
+  color: var(--pt-ink-muted);
+  box-shadow: none;
+  font-size: var(--pt-fs-sm);
+  font-weight: var(--pt-fw-semibold);
+  padding: 8px 10px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color 120ms ease, color 120ms ease, background-color 120ms ease;
+}
+
+/* Active step */
+.pt-v2 .pace-stepper .pace-step-seg--active.nofbiz__button,
+.pt-v2 .pace-stepper .pace-step-seg--active.nofbiz__button:hover {
+  border-color: var(--pt-green);
+  background-color: var(--pt-surface);
+  color: var(--pt-green-deep);
+  font-weight: var(--pt-fw-bold);
+  box-shadow: var(--pt-shadow-sm);
+}
+
+/* Done step */
+.pt-v2 .pace-stepper .pace-step-seg--done.nofbiz__button,
+.pt-v2 .pace-stepper .pace-step-seg--done.nofbiz__button:hover {
+  border-color: var(--pt-border);
+  background-color: rgba(45, 148, 66, 0.08);
+  color: var(--pt-green-deep);
+}
+
+/* -- Form body area (scoped colours only) -- */
+
+.pt-v2 .pace-step-intro {
+  color: var(--pt-ink-soft);
+}
+
+/* Required asterisk: override old --color-danger-fg */
+.pt-v2 .pace-required .nofbiz__fieldlabel__label-text::after {
+  color: var(--pt-status-danger);
+}
+
+/* -- Confidential toggle: v4_amadeu bordered box, green tint when checked -- */
+
+.pt-v2 .pace-conf-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-md);
+  background: var(--pt-surface);
+  color: var(--pt-ink);
+  font-weight: var(--pt-fw-semibold);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.pt-v2 .pace-conf-toggle:hover {
+  border-color: var(--pt-green);
+}
+
+.pt-v2 .pace-conf-toggle.pace-conf-toggle--on {
+  background: rgba(45, 148, 66, 0.10);
+  border-color: var(--pt-green);
+  color: var(--pt-green-deep);
+}
+
+.pt-v2 .pace-conf-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--pt-ink-muted);
+}
+
+.pt-v2 .pace-conf-toggle.pace-conf-toggle--on .pace-conf-icon {
+  color: var(--pt-green);
+}
+
+.pt-v2 .pace-conf-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* -- Section titles inside the form -- */
+
+.pt-v2 .pace-form-section-title {
+  color: var(--pt-ink-soft);
+  border-bottom-color: var(--pt-border);
+}
+
+/* -- Tags grid: selected = green primary -- */
+
+.pt-v2 .pace-tags-grid .nofbiz__button--secondary {
+  background-color: var(--pt-surface-alt);
+  border-color: var(--pt-border);
+  color: var(--pt-ink-soft);
+}
+
+.pt-v2 .pace-tags-grid .nofbiz__button--secondary:hover {
+  background-color: var(--pt-border);
+  border-color: var(--pt-border);
+}
+
+.pt-v2 .pace-tags-grid .nofbiz__button--primary {
+  background-color: var(--pt-green);
+  border-color: var(--pt-green);
+  color: #ffffff;
+}
+
+.pt-v2 .pace-tags-grid .nofbiz__button--primary:hover {
+  background-color: var(--pt-green-deep);
+  border-color: var(--pt-green-deep);
+}
+
+/* -- Savings categories: hard cost = magenta, soft cost = secondary green.
+   The two rows now share one visual language: the background is a low-opacity
+   wash of the full-strength border/text colour. Scoped to `.pace-savings-grid`
+   so the step-1 tag picker (also `.pace-tags-grid`) keeps the primary green. -- */
+
+.pt-v2 .pace-savings-grid .nofbiz__button--danger {
+  background-color: rgba(192, 40, 125, 0.10);
+  border-color: #c0287d;
+  color: #c0287d;
+}
+
+.pt-v2 .pace-savings-grid .nofbiz__button--danger:hover {
+  background-color: rgba(192, 40, 125, 0.16);
+  border-color: #c0287d;
+}
+
+.pt-v2 .pace-savings-grid .nofbiz__button--primary {
+  background-color: rgba(14, 159, 110, 0.10);
+  border-color: #0e9f6e;
+  color: #0e9f6e;
+}
+
+.pt-v2 .pace-savings-grid .nofbiz__button--primary:hover {
+  background-color: rgba(14, 159, 110, 0.16);
+  border-color: #0e9f6e;
+}
+
+/* -- Segmented period toggle: selected = green -- */
+
+.pt-v2 .pace-segmented-toggle .nofbiz__button--secondary {
+  background-color: var(--pt-surface-alt);
+  border-color: var(--pt-border);
+  color: var(--pt-ink-soft);
+}
+
+.pt-v2 .pace-segmented-toggle .nofbiz__button--secondary:hover {
+  background-color: var(--pt-border);
+  border-color: var(--pt-border);
+}
+
+.pt-v2 .pace-segmented-toggle .nofbiz__button--primary {
+  background-color: var(--pt-green);
+  border-color: var(--pt-green);
+  color: #ffffff;
+}
+
+.pt-v2 .pace-segmented-toggle .nofbiz__button--primary:hover {
+  background-color: var(--pt-green-deep);
+  border-color: var(--pt-green-deep);
+}
+
+/* -- Shared financial fields divider -- */
+
+.pt-v2 .pace-shared-financial-fields {
+  border-bottom-color: var(--pt-border);
+}
+
+/* -- Tab form rows divider -- */
+
+.pt-v2 .pace-tab-remove-row {
+  border-top-color: var(--pt-border);
+}
+
+/* -- Saving type value -- */
+
+.pt-v2 .pace-saving-type-value {
+  color: var(--pt-green-deep);
+}
+
+/* -- Financial section accordion header stripe -- */
+
+.pt-v2 .pace-financial-section .nofbiz__accordionitem__header {
+  border-bottom-color: var(--pt-green);
+}
+
+/* -- Totals section title -- */
+
+.pt-v2 .pace-totals-section-title {
+  color: var(--pt-ink);
+}
+
+/* -- Totals blocks: card look -- */
+
+.pt-v2 .pace-totals-block-inner {
+  background-color: var(--pt-surface);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-md);
+  padding: 12px 16px;
+  box-shadow: var(--pt-shadow-sm);
+}
+
+/* -- Detail rows (inside totals blocks) -- */
+
+.pt-v2 .pace-detail-row--total {
+  background-color: var(--pt-surface-alt);
+  border-left-color: var(--pt-green);
+  border-radius: var(--pt-r-sm);
+}
+
+.pt-v2 .pace-detail-row--total .pace-detail-label {
+  color: var(--pt-ink);
+}
+
+.pt-v2 .pace-detail-row--total .pace-detail-value {
+  color: var(--pt-green-deep);
+}
+
+.pt-v2 .pace-detail-label {
+  color: var(--pt-ink-muted);
+}
+
+.pt-v2 .pace-detail-value {
+  color: var(--pt-ink);
+}
+
+/* -- Field callout (hint box beside a field) -- */
+
+.pt-v2 .pace-field-callout {
+  background-color: rgba(45, 148, 66, 0.06);
+  border-left-color: var(--pt-green);
+  color: var(--pt-ink-soft);
+}
+
+/* -- Computed impact row -- */
+
+.pt-v2 .pace-impact-row--computed {
+  background-color: rgba(45, 148, 66, 0.06);
+  border-color: var(--pt-green);
+}
+
+.pt-v2 .pace-impact-row--computed .nofbiz__text {
+  color: var(--pt-green-deep);
+}
+
+/* -- Projected impact summary (To-Be − As-Is) -- */
+
+.pt-v2 .pace-impact-summary {
+  margin-top: 12px;
+  padding: 14px 18px;
+  background-color: var(--pt-surface-alt);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-md);
+}
+
+.pt-v2 .pace-impact-title {
+  display: block;
+  font-size: var(--pt-fs-xs);
+  font-weight: var(--pt-fw-extrabold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pt-ink-muted);
+  margin-bottom: 10px;
+}
+
+.pt-v2 .pace-impact-row {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+  flex-wrap: wrap;
+}
+
+/* Each metric's period + annual values grouped together. */
+.pt-v2 .pace-impact-group {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.pt-v2 .pace-impact-group + .pace-impact-group {
+  padding-left: 40px;
+  border-left: 1px solid var(--pt-border);
+}
+
+.pt-v2 .pace-impact-pill {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pt-v2 .pace-impact-pill-label {
+  font-size: var(--pt-fs-xs);
+  font-weight: var(--pt-fw-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pt-ink-muted);
+}
+
+.pt-v2 .pace-impact-pill-value {
+  font-size: 22px;
+  font-weight: var(--pt-fw-extrabold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.pt-v2 .pace-impact--pos { color: var(--pt-green-deep); }
+.pt-v2 .pace-impact--neg { color: var(--pt-status-danger); }
+
+/* -- Footer -- */
+
+.pt-v2 .pace-modal-footer {
+  border-top: 1px solid var(--pt-border);
+  padding: 16px 28px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pt-v2 .pace-modal-footer__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pt-v2 .pace-modal-footer__right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pt-v2 .pace-step-counter {
+  font-size: var(--pt-fs-xs);
+  font-weight: var(--pt-fw-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pt-ink-muted);
+}
+
+
+/* ============================================================================
+ * E09 — Initiative detail SidePanel (scoped .pt-v2)
+ *
+ * Restyles the existing `.pace-detail-*`, `.pace-flow-*`, `.pace-chip*` and
+ * comment markup (utils/side-panel-detail.js) to the v4_amadeu detail-sheet
+ * look, using the place-mock-8_2 `--pt-*` tokens. The panel carries `pt-v2`
+ * on its own element (it mounts to body). The SPARC built-in title bar is
+ * hidden — the close button is folded into the gradient header instead.
+ * ========================================================================== */
+
+/* Built-in title bar hidden; the gradient header below carries chips + title. */
+.pt-v2 .nofbiz__sidepanel__header-bar { display: none; }
+.pt-v2 .nofbiz__sidepanel__content { padding: 0; }
+
+.pt-v2 .pace-detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding-bottom: 24px;
+}
+
+/* Body sections inset; the header stays full-bleed. */
+.pt-v2 .pace-detail-content > :not(.pace-detail-header) {
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+/* -- Header (gradient band) -- */
+
+.pt-v2 .pace-detail-header {
+  position: relative;
+  padding: 22px 56px 18px 24px;
+  background: linear-gradient(180deg, rgba(45, 148, 66, 0.07), transparent);
+  border-bottom: 1px solid var(--pt-border);
+}
+
+.pt-v2 .pace-detail-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.pt-v2 .pace-detail-title {
+  margin: 0;
+  font-size: var(--pt-fs-2xl);
+  font-weight: var(--pt-fw-black);
+  letter-spacing: var(--pt-ls-tight);
+  line-height: var(--pt-lh-snug);
+  color: var(--pt-ink);
+}
+
+/* Close button, top-right of the header */
+.pt-v2 .pace-detail-close.nofbiz__button {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 34px;
+  height: 34px;
+  min-width: 0;
+  padding: 0;
+  border-radius: var(--pt-r-pill);
+  border: 1px solid var(--pt-border);
+  background: var(--pt-surface-alt);
+  box-shadow: var(--pt-shadow-sm);
+  color: var(--pt-ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.pt-v2 .pace-detail-close.nofbiz__button:hover {
+  background: var(--pt-green);
+  color: #ffffff;
+  border-color: var(--pt-green);
+  transform: translateY(-1px);
+}
+
+.pt-v2 .pace-detail-close-icon { display: inline-flex; align-items: center; justify-content: center; }
+.pt-v2 .pace-detail-close-icon svg { width: 18px; height: 18px; }
+
+/* -- Chips (pill, tinted bg + full-strength text) -- */
+
+.pt-v2 .pace-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border-radius: var(--pt-r-pill);
+  font-size: var(--pt-fs-xs);
+  font-weight: var(--pt-fw-extrabold);
+  letter-spacing: 0.02em;
+  background-color: var(--pt-surface-alt);
+  color: var(--pt-ink-soft);
+  border: 1px solid transparent;
+}
+
+.pt-v2 .pace-chip--active   { background-color: rgba(79, 141, 217, 0.14);  color: var(--pt-phase-plan); }
+.pt-v2 .pace-chip--pending  { background-color: rgba(232, 153, 35, 0.14);  color: var(--pt-status-warn); }
+.pt-v2 .pace-chip--revision { background-color: rgba(232, 153, 35, 0.14);  color: var(--pt-status-warn); }
+.pt-v2 .pace-chip--done     { background-color: rgba(0, 150, 57, 0.14);    color: var(--pt-bnpp-green); }
+.pt-v2 .pace-chip--inactive { background-color: rgba(45, 148, 66, 0.12);   color: var(--pt-green-deep); }
+.pt-v2 .pace-chip--conf     { background-color: rgba(192, 40, 125, 0.12);  color: #c0287d; }
+
+/* -- Section titles -- */
+
+.pt-v2 .pace-detail-content .pace-sec-title {
+  font-size: var(--pt-fs-xs);
+  font-weight: var(--pt-fw-extrabold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pt-green-deep);
+  margin: 0 0 10px 0;
+}
+
+/* -- Detail rows / text -- */
+
+.pt-v2 .pace-detail-row--inline {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--pt-border);
+}
+
+.pt-v2 .pace-detail-text {
+  margin: 0;
+  color: var(--pt-ink-soft);
+  font-size: 14px;
+  line-height: var(--pt-lh-relaxed);
+}
+
+/* -- Progress timeline -- */
+
+.pt-v2 .pace-flow { display: flex; flex-direction: column; gap: 0; }
+
+.pt-v2 .pace-flow-label {
+  font-size: var(--pt-fs-xs);
+  font-weight: var(--pt-fw-extrabold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pt-green-deep);
+}
+
+.pt-v2 .pace-flow-date { font-size: var(--pt-fs-xs); color: var(--pt-ink-muted); font-weight: var(--pt-fw-semibold); }
+
+.pt-v2 .pace-flow-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--pt-r-pill);
+  background: var(--pt-surface);
+  border: 2.5px solid var(--pt-border);
+  box-sizing: border-box;
+}
+
+.pt-v2 .pace-flow-dot--done,
+.pt-v2 .pace-flow-dot--active { background: var(--pt-green); border-color: var(--pt-green-deep); }
+.pt-v2 .pace-flow-dot--next  { background: var(--pt-surface); border-color: var(--pt-border); }
+
+.pt-v2 .pace-flow-connector { background: var(--pt-border); }
+.pt-v2 .pace-flow-connector--done { background: var(--pt-green); }
+
+.pt-v2 .pace-flow-description__head { font-weight: var(--pt-fw-bold); color: var(--pt-ink); }
+.pt-v2 .pace-flow-actor { font-size: var(--pt-fs-xs); color: var(--pt-ink-muted); font-weight: var(--pt-fw-semibold); }
+.pt-v2 .pace-flow-comment { color: var(--pt-ink-soft); font-size: 13px; line-height: var(--pt-lh-relaxed); }
+
+/* -- Comments -- */
+
+.pt-v2 .pace-comment-item { display: flex; gap: 10px; padding: 12px 0; border-top: 1px solid var(--pt-border); }
+
+.pt-v2 .pace-comment-avatar {
+  width: 32px; height: 32px;
+  border-radius: var(--pt-r-pill);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: var(--pt-fw-extrabold); color: #ffffff;
+  background: linear-gradient(135deg, var(--pt-green), var(--pt-bnpp-green));
+  flex: 0 0 auto;
+}
+
+.pt-v2 .pace-comment-author { font-weight: var(--pt-fw-bold); color: var(--pt-ink); }
+.pt-v2 .pace-comment-date { font-size: var(--pt-fs-xs); color: var(--pt-ink-muted); margin-left: 8px; }
+.pt-v2 .pace-comment-body { margin: 4px 0 0 0; color: var(--pt-ink-soft); font-size: 14px; line-height: var(--pt-lh-relaxed); }
+
+/* -- Footer actions -- */
+
+.pt-v2 .pace-detail-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+/* ============================================================================
+ * E10 — Workflow / utility dialogs (scoped .pt-v2)
+ *
+ * The confirm / comment / date / assignee / reject / request-revision and
+ * "Gerir Acesso" dialogs (utils/workflow-actions.js, routes/admin) now carry
+ * `pt-v2`, so they inherit the D06 dialog chrome + migrated atoms. These rules
+ * recolour the remaining bespoke `.pace-access-*` / hint markup to `--pt-*`.
+ * ========================================================================== */
+
+/* Dialog shell: pt-v2 is on the dialog element itself, so D06's descendant
+   selector (.pt-v2 .nofbiz__dialog) misses it — restyle via a compound selector. */
+.nofbiz__dialog.pt-v2 {
+  background-color: var(--pt-surface);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-xl);
+  box-shadow: var(--pt-shadow-lg);
+  padding: 28px;
+  max-width: min(560px, 96vw);
+}
+
+/* Dialog sections ship as `nofbiz__card`s (full border + radius + margin), which
+   reads as three stacked boxes. Flatten to one surface with simple divider lines. */
+.pt-v2 .nofbiz__dialog__header,
+.pt-v2 .nofbiz__dialog__content,
+.pt-v2 .nofbiz__dialog__footer {
+  border: none;
+  border-radius: 0;
+  margin: 0;
+  background-color: transparent;
+  box-shadow: none;
+}
+.pt-v2 .nofbiz__dialog__header { border-bottom: 1px solid var(--pt-border); }
+.pt-v2 .nofbiz__dialog__footer { border-top: 1px solid var(--pt-border); }
+
+.pt-v2 .nofbiz__dialog__content > .nofbiz__container { display: flex; flex-direction: column; gap: 12px; }
+
+/* Dialog form controls span the content width. */
+.pt-v2 .nofbiz__dialog__content .nofbiz__fieldlabel,
+.pt-v2 .nofbiz__dialog__content .nofbiz__peoplepicker,
+.pt-v2 .nofbiz__dialog__content .nofbiz__combobox,
+.pt-v2 .nofbiz__dialog__content .nofbiz__textarea,
+.pt-v2 .nofbiz__dialog__content .nofbiz__textinput {
+  width: 100%;
+}
+
+/* -- Gerir Acesso list -- */
+
+.pt-v2 .pace-access-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.pt-v2 .pace-access-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-md);
+  background-color: var(--pt-surface);
+}
+
+.pt-v2 .pace-access-name { color: var(--pt-ink); font-weight: var(--pt-fw-semibold); }
+
+.pt-v2 .pace-empty-hint { color: var(--pt-ink-muted); font-size: 13px; }

@@ -30,6 +30,7 @@ export const SCHEMA = {
     { title: 'SubmittedDate' },
     { title: 'ImplementedDate' },
     { title: 'ExpectedEndDate' },
+    { title: 'FinalValidationLabel' },
   ],
 
   InitiativesFinancials: [
@@ -43,6 +44,8 @@ export const SCHEMA = {
     { title: 'EficienciaData', multiline: true },
     { title: 'ProducaoData', multiline: true },
     { title: 'GastosGeraisData', multiline: true },
+    { title: 'ReducaoRiscoData', multiline: true },
+    { title: 'ReducaoCustoData', multiline: true },
     { title: 'FTEAnnualCost' },
     { title: 'LastModifiedBy', multiline: true },
     { title: 'LastModifiedByEmail' },
@@ -69,6 +72,7 @@ export const SCHEMA = {
     { title: 'Actor', multiline: true },
     { title: 'ActorEmail', indexed: true },
     { title: 'Date' },
+    { title: 'ValidationLabel' },
   ],
 
   Notifications: [
@@ -95,6 +99,15 @@ export const SCHEMA = {
     { title: 'DeptAncestorPath', multiline: true },
     { title: 'Depth' },
     { title: 'AppRole' },
+  ],
+
+  SavingsTargets: [
+    { title: 'Title', indexed: true, builtIn: true },
+    { title: 'FTETarget' },
+    { title: 'CategoryTargets', multiline: true },
+    { title: 'LastModifiedBy', multiline: true },
+    { title: 'LastModifiedByEmail' },
+    { title: 'LastModifiedDate' },
   ],
 
   InitiativesSharedAccess: [

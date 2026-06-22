@@ -368,7 +368,7 @@ type ContainerTags = 'div' | 'span' | 'header' | 'main' | 'footer' | 'section' |
 interface ContainerProps extends HTMDElementProps {
     as?: ContainerTags;
     selectableItems?: boolean;
-    onClickHandler: (e: MouseEvent) => void;
+    onClickHandler?: (e: MouseEvent) => void;
 }
 declare class Container extends HTMDElement {
     protected _tag: ContainerTags;
@@ -741,6 +741,13 @@ interface PeopleSearchOptions {
      * @default 15
      */
     principalSource?: number;
+    /**
+     * When true, returns raw SharePoint results without normalization
+     * (no phantom filtering, no MultipleMatches flattening, no dedup).
+     * Resolution paths that need provider-specific Key selection use this.
+     * @default false
+     */
+    raw?: boolean;
 }
 interface UserProfile {
     employeeId: string;
@@ -765,6 +772,12 @@ interface FullUserDetails extends UserProfile {
  *
  * Provides the {@link CurrentUser} async singleton for accessing the
  * authenticated user's profile, group memberships, and resolved access level.
+ *
+ * Access-level resolution is email-based (server-side OData filter via
+ * {@link SiteApi.isUserInGroup}). This survives duplicate User Information List
+ * entries that on-premises SharePoint creates when a "ghost" empty-email
+ * principal coexists with the real one -- the numeric siteUserId can belong to
+ * the ghost, making group lookups keyed on that ID return no memberships.
  *
  * @see {@link GroupHierarchyEntry} for configuring group-based access levels.
  * @see `src/base/sharepoint/api/people.api.ts` for the underlying API calls.
@@ -845,9 +858,18 @@ declare class CurrentUser {
      * Idempotent -- returns `this` immediately on subsequent calls once
      * initialization has succeeded.
      *
+     * Access-level resolution uses email-based server-side OData filtering
+     * ({@link SiteApi.isUserInGroup}) rather than the numeric siteUserId.
+     * On-premises SharePoint may create a stale "ghost" principal with an empty
+     * `Email` alongside the real UIL entry for the same AD account; that ghost
+     * principal can receive the lower numeric ID, making `data.groups` (which is
+     * keyed on siteUserId) return an empty list for the authenticated user.
+     * Email is a stable, AD-authoritative identifier that is not affected by
+     * duplicate UIL entries.
+     *
      * @param groupHierarchy - Optional ordered list of groups from lowest to
      *   highest privilege. The array is walked from last index to first; the
-     *   first case-insensitive match wins.
+     *   highest-priority match wins (parallel membership checks per entry).
      * @param options - Optional settings. Use `options.targetUser` to load a
      *   different user's profile (debug/testing).
      * @returns A Promise resolving with the initialized `CurrentUser` instance.
@@ -2396,7 +2418,13 @@ declare class SiteApi {
      */
     getSiteGroups(): Promise<SPGroup[]>;
     /**
-     * Retrieves all users belonging to the given site group.
+     * Retrieves all users belonging to the given site group, filtering out ghost
+     * entries with empty/invalid email addresses and deduplicating by normalized
+     * email (keeping the row with the richer `Title` when duplicates exist).
+     *
+     * On-premises SharePoint can create a stale "ghost" principal alongside the
+     * valid one for each AD user -- the ghost has an empty `Email` column. This
+     * method drops those rows so callers never see phantom options in pickers.
      *
      * Accepts either a numeric group ID or a group name (title string).
      * Calls `/_api/web/sitegroups/getbyid(n)/users` or
@@ -2420,6 +2448,29 @@ declare class SiteApi {
     getGroupUsers(group: number | string, options: {
         enrich: true;
     }): Promise<(SPUser & UserProfile)[]>;
+    /**
+     * Returns the subset of a group's members whose `Email` equals `email`,
+     * filtered **server-side** via OData `$filter`.
+     *
+     * This is the preferred membership check for on-premises SharePoint because
+     * the `sitegroups/.../users` list can contain duplicate UIL entries for the
+     * same AD account (one valid, one ghost with an empty email). Matching on the
+     * stable `Email` column via a server-side filter avoids fetching the full
+     * membership list and sidesteps numeric site-user-ID ambiguity.
+     *
+     * @param group - Numeric group ID or group name string.
+     * @param email - The email to test membership for (any case/whitespace).
+     * @returns An array of {@link SPUser} rows that matched (empty = not a member).
+     */
+    getGroupUsersByEmail(group: number | string, email: string): Promise<SPUser[]>;
+    /**
+     * Returns `true` when the user identified by `email` is a member of the
+     * given group, determined via a server-side OData email filter.
+     *
+     * @param group - Numeric group ID or group name string.
+     * @param email - The user's email address.
+     */
+    isUserInGroup(group: number | string, email: string): Promise<boolean>;
     /**
      * Retrieves the web properties for this site.
      *
@@ -2454,6 +2505,12 @@ declare class SiteApi {
  * search against all configured identity providers. Reads
  * `_spPageContextInfo.webAbsoluteUrl` for the endpoint URL; the request digest
  * is auto-injected by {@link spPOST}.
+ *
+ * By default, results are normalized: unresolved phantom entries are dropped,
+ * `MultipleMatches` arrays are flattened into the top-level list, and duplicate
+ * entries for the same user (different auth providers) are deduped keeping the
+ * richest entry (most populated `EntityData`). Pass `options.raw: true` to
+ * skip normalization and receive the raw SharePoint response.
  *
  * @param query - The search string (name, email, or login name).
  * @param options - Optional search configuration. See {@link PeopleSearchOptions}.
@@ -2496,6 +2553,129 @@ declare function getUserProfile(loginName: string): Promise<UserProfile>;
  * @throws When `ensureUser` fails (user cannot be resolved on the site).
  */
 declare function getFullUserDetails(loginName: string, siteApi?: SiteApi): Promise<FullUserDetails>;
+
+/**
+ * Augments a {@link SystemError} with optional contextual properties that
+ * the email API attaches after construction. Because {@link SystemError} does not
+ * accept arbitrary properties in its `options` object, `cause` and `details`
+ * are assigned as instance properties and typed via this intersection.
+ */
+interface SystemErrorEmailAugment {
+    /** The original error that triggered this {@link SystemError}, if any. */
+    cause?: unknown;
+    /** Structured context object for diagnostics (e.g. invalid addresses, counts). */
+    details?: unknown;
+}
+/** A {@link SystemError} with optional `cause` and `details` properties. */
+type AugmentedSystemError = SystemError & SystemErrorEmailAugment;
+/**
+ * Arguments accepted by {@link sendEmail}.
+ *
+ * Recipients may be provided as a single string or an array of strings.
+ * All addresses are normalized (trimmed, lower-cased, deduped) before use.
+ */
+interface SendEmailArgs {
+    /**
+     * One or more recipient email addresses (required).
+     * At least one of `to`, `cc`, or `bcc` must resolve to a non-empty list.
+     */
+    to: string | string[];
+    /** Optional Cc email addresses. */
+    cc?: string | string[];
+    /** Optional Bcc email addresses. */
+    bcc?: string | string[];
+    /** Non-empty email subject (required). */
+    subject: string;
+    /** Non-empty email body, HTML or plain text (required). */
+    body: string;
+    /**
+     * Optional From address. When omitted, SharePoint uses the web application's
+     * configured outbound email account.
+     */
+    from?: string;
+}
+/**
+ * Successful result returned by {@link sendEmail}.
+ */
+interface SendEmailResult {
+    /** Always `true` on success. */
+    ok: true;
+    /** Total number of unique recipients across To, Cc, and Bcc. */
+    recipientCount: number;
+}
+/**
+ * Result returned by {@link resolveEmailsToLogins}.
+ *
+ * The three fields are mutually exclusive: each input email ends up in exactly
+ * one of `resolved`, `unresolved`, or `invalid`.
+ */
+interface ResolveEmailsResult {
+    /**
+     * Map from normalized email address to SharePoint claim login name
+     * for every email that was found in the site's User Information List.
+     */
+    resolved: Map<string, string>;
+    /**
+     * Emails that passed format validation but were not found in the site UIL.
+     * Each user must have visited or been granted access to this site collection
+     * before they appear in the UIL.
+     */
+    unresolved: string[];
+    /** Emails that failed basic format validation (`/^[^\s@]+@[^\s@]+\.[^\s@]+$/`). */
+    invalid: string[];
+}
+/** Shape of a single row returned by the siteUsers OData query. */
+interface SiteUserRow {
+    Email: string;
+    LoginName: string;
+}
+
+/**
+ * Maximum number of unique recipients (To + Cc + Bcc combined) per {@link sendEmail}
+ * call. Callers must split larger audiences into chunks of this size and call
+ * `sendEmail` once per chunk.
+ */
+declare const MAX_RECIPIENTS_PER_CALL = 50;
+/**
+ * Resolves a list of email addresses to their SharePoint claim login names
+ * via the current site's User Information List.
+ *
+ * Performs a single OR-filtered `siteUsers` query. Resolution-by-email bypasses
+ * UPS / People Picker, which has been observed to fail on some sites where SP
+ * cannot match UIL.Email column values reliably. Login-name lookups always
+ * work if the user is in the UIL.
+ *
+ * @param emails - Email addresses (any case, leading/trailing whitespace OK).
+ * @returns Resolved map, unresolved list, and invalid list. See {@link ResolveEmailsResult}.
+ * @throws {SystemError} `'EmailResolutionFailed'` (`breaksFlow=false`) if the
+ *   `siteUsers` query fails.
+ */
+declare function resolveEmailsToLogins(emails: string[]): Promise<ResolveEmailsResult>;
+/**
+ * Sends an email via `SP.Utilities.Utility.SendEmail`.
+ *
+ * Pipeline:
+ *   1. Validate args (subject, body, recipient presence)
+ *   2. Normalize, dedupe, and cap-check recipients across To/Cc/Bcc
+ *   3. Resolve every recipient to a claim login (single REST call via {@link resolveEmailsToLogins})
+ *   4. `ensureUser` fallback for any misses (one POST per missing recipient, sequential;
+ *      users unresolvable by SharePoint's People Picker remain in the unresolved list)
+ *   5. POST a single `SendEmail` request
+ *
+ * Cap: {@link MAX_RECIPIENTS_PER_CALL}. Larger audiences must be chunked by the
+ * caller -- one `sendEmail` call per chunk.
+ *
+ * @param args - See {@link SendEmailArgs}.
+ * @returns `{ ok: true, recipientCount }` on success. See {@link SendEmailResult}.
+ * @throws {SystemError}
+ *   - `'EmailValidation'`        (`breaksFlow=true`)  -- bad/missing args; programmer error.
+ *   - `'EmailTooManyRecipients'` (`breaksFlow=false`) -- count exceeds {@link MAX_RECIPIENTS_PER_CALL}.
+ *   - `'EmailInvalid'`           (`breaksFlow=false`) -- malformed addresses present.
+ *   - `'EmailUnresolved'`        (`breaksFlow=false`) -- recipients not in site UIL even after `ensureUser` fallback.
+ *   - `'EmailResolutionFailed'`  (`breaksFlow=false`) -- `siteUsers` query failed.
+ *   - `'EmailSendFailed'`        (`breaksFlow=false`) -- `SendEmail` POST rejected.
+ */
+declare function sendEmail({ to, cc, bcc, subject, body, from, }: SendEmailArgs): Promise<SendEmailResult>;
 
 /**
  * Options for SharePoint REST API request functions.
@@ -3134,5 +3314,5 @@ declare global {
     }
 }
 
-export { AccordionGroup, AccordionItem, Button, Card, CheckBox, ComboBox, Container, ContextStore, CurrentUser, DateInput, DateRangeInput, Dialog, ErrorBoundary, FORMAT_MAP, FieldLabel, FormControl, FormField, FormSchema, Fragment, HTMDElement, Image, LinkButton, List, Loader, Modal, NavigationEvent, NumberInput, PeoplePicker, RoleManager, Router, SP_ACCEPT_MINIMAL, SidePanel, SimpleElapsedTimeBenchmark, SiteApi, StyleResource, SystemError, TabGroup, Text, TextArea, TextInput, Toast, UserIdentity, View, ViewSwitcher, copyToClipboard, defineRoute, enforceStrictObject, escapeAttr, escapeHtml, extractComboBoxValue, fromFieldValue, generateRuntimeUID, generateUUIDv4, getFullUserDetails, getIcon, getUserProfile, isComboBoxOption, listIcons, pageReset, refreshRequestDigest, registerIcons, resolvePath, sanitizeQuery, searchUsers, spDELETE, spGET, spMERGE, spPOST, startDigestTimer, stopDigestTimer, toFieldValue };
-export type { AccordionGroupProps, AccordionItemProps, BuiltInIconName, ButtonProps, CAMLCondition, CAMLOperator, CAMLOrderByField, CAMLQueryObject, CAMLQueryResponse, CAMLValueOperator, CardProps, CardVariants, ChildrenOptions, ComboBoxDataset, ComboBoxOptionProps, ComboBoxProps, ContainerProps, ContainerTags, ContextStoreEntry, CreateFieldOptions, CreateListOptions, DATE_FORMATS, DateInputProps, DateRangeInputProps, DateRangeRules, DialogProps, DialogVariants, ErrorBoundaryProps, ErrorOptions, FieldLabelPosition, FieldLabelProps, FormControlProps, FormFieldProps, FormFieldType, FragmentProps, FullUserDetails, GetItemsOptions, GetItemsPagedOptions, GroupHierarchyEntry, HTMDElementInterface, HTMDElementProps, HTMDNode, HTMDSingleNode, IconName, IconSource, ImageProps, InitializeOptions, LinkButtonProps, ListApiOptions, ListProps, LoaderProps, ModalProps, NavigationGuardFn, NavigationOptions, NumberInputProps, PaginatedResult, PeoplePickerProps, PeopleSearchOptions, PeopleSearchResult, PeopleSearchResultData, PermissionMap, ProfileProperty, RouteConfig, RouteOptions, RoutePaths, RouterProps, RuntimeEventListenerOptions, RuntimeEventOptions, SPCollectionResponse, SPField, SPFieldValue, SPGroup, SPItemWithETag, SPList, SPRequestOptions, SPSimpleValue, SPUser, SPWeb, SidePanelProps, StyleResourceOptions, TabConfig, TabGroupProps, TextAreaProps, TextInputProps, TextProps, ToastLoadingController, ToastOptions, ToastPromiseMessages, ToastType, Unsubscribe, UserIdentityProperties, UserProfile, UserProfilePayload, ViewProps, ViewSwitcherProps, pageResetOptions };
+export { AccordionGroup, AccordionItem, Button, Card, CheckBox, ComboBox, Container, ContextStore, CurrentUser, DateInput, DateRangeInput, Dialog, ErrorBoundary, FORMAT_MAP, FieldLabel, FormControl, FormField, FormSchema, Fragment, HTMDElement, Image, LinkButton, List, Loader, MAX_RECIPIENTS_PER_CALL, Modal, NavigationEvent, NumberInput, PeoplePicker, RoleManager, Router, SP_ACCEPT_MINIMAL, SidePanel, SimpleElapsedTimeBenchmark, SiteApi, StyleResource, SystemError, TabGroup, Text, TextArea, TextInput, Toast, UserIdentity, View, ViewSwitcher, copyToClipboard, defineRoute, enforceStrictObject, escapeAttr, escapeHtml, extractComboBoxValue, fromFieldValue, generateRuntimeUID, generateUUIDv4, getFullUserDetails, getIcon, getUserProfile, isComboBoxOption, listIcons, pageReset, refreshRequestDigest, registerIcons, resolveEmailsToLogins, resolvePath, sanitizeQuery, searchUsers, sendEmail, spDELETE, spGET, spMERGE, spPOST, startDigestTimer, stopDigestTimer, toFieldValue };
+export type { AccordionGroupProps, AccordionItemProps, AugmentedSystemError, BuiltInIconName, ButtonProps, CAMLCondition, CAMLOperator, CAMLOrderByField, CAMLQueryObject, CAMLQueryResponse, CAMLValueOperator, CardProps, CardVariants, ChildrenOptions, ComboBoxDataset, ComboBoxOptionProps, ComboBoxProps, ContainerProps, ContainerTags, ContextStoreEntry, CreateFieldOptions, CreateListOptions, DATE_FORMATS, DateInputProps, DateRangeInputProps, DateRangeRules, DialogProps, DialogVariants, ErrorBoundaryProps, ErrorOptions, FieldLabelPosition, FieldLabelProps, FormControlProps, FormFieldProps, FormFieldType, FragmentProps, FullUserDetails, GetItemsOptions, GetItemsPagedOptions, GroupHierarchyEntry, HTMDElementInterface, HTMDElementProps, HTMDNode, HTMDSingleNode, IconName, IconSource, ImageProps, InitializeOptions, LinkButtonProps, ListApiOptions, ListProps, LoaderProps, ModalProps, NavigationGuardFn, NavigationOptions, NumberInputProps, PaginatedResult, PeoplePickerProps, PeopleSearchOptions, PeopleSearchResult, PeopleSearchResultData, PermissionMap, ProfileProperty, ResolveEmailsResult, RouteConfig, RouteOptions, RoutePaths, RouterProps, RuntimeEventListenerOptions, RuntimeEventOptions, SPCollectionResponse, SPField, SPFieldValue, SPGroup, SPItemWithETag, SPList, SPRequestOptions, SPSimpleValue, SPUser, SPWeb, SendEmailArgs, SendEmailResult, SidePanelProps, SiteUserRow, StyleResourceOptions, TabConfig, TabGroupProps, TextAreaProps, TextInputProps, TextProps, ToastLoadingController, ToastOptions, ToastPromiseMessages, ToastType, Unsubscribe, UserIdentityProperties, UserProfile, UserProfilePayload, ViewProps, ViewSwitcherProps, pageResetOptions };

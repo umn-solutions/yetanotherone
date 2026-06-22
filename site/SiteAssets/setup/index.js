@@ -6,7 +6,7 @@ import { renderCards, setBusy, setButtonBusy } from './render.js'
 import {
   createList, deleteList, setListHidden,
   createField, deleteField, fixIndex,
-  syncList, fullSetup, syncAll, backfillInitiativeDates,
+  syncList, fullSetup, syncAll,
 } from './actions.js'
 import { generateData } from './generate.js'
 
@@ -22,7 +22,6 @@ const scanTimeEl = document.getElementById('scan-time');
 const btnScan = document.getElementById('btn-scan');
 const btnFullSetup = document.getElementById('btn-full-setup');
 const btnSyncAll = document.getElementById('btn-sync-all');
-const btnBackfillDates = document.getElementById('btn-backfill-dates');
 const btnGenData = document.getElementById('btn-gen-data');
 const genCountSelect = document.getElementById('gen-count');
 
@@ -49,7 +48,6 @@ async function doScan() {
 
   btnFullSetup.disabled = !(result.hasMissingLists || result.hasMissingFields || result.hasIndexIssues);
   btnSyncAll.disabled = !(result.hasMissingFields || result.hasIndexIssues);
-  btnBackfillDates.disabled = !(result.scanResult.Initiatives?.exists ?? false);
 
   const tasksExists = result.scanResult.Tasks?.exists ?? false;
   btnGenData.disabled = !tasksExists;
@@ -78,18 +76,6 @@ async function doSyncAll() {
   setBusy(true, btnScan);
 
   await syncAll(siteApi, scanResult, SCHEMA);
-
-  busy = false;
-  await doScan();
-}
-
-// -- Backfill dates orchestration --------------------------------------------
-async function doBackfillDates() {
-  if (busy) return;
-  busy = true;
-  setBusy(true, btnScan);
-
-  await backfillInitiativeDates(siteApi);
 
   busy = false;
   await doScan();
@@ -146,7 +132,6 @@ cardsEl.addEventListener('click', async (e) => {
 btnScan.addEventListener('click', doScan);
 btnFullSetup.addEventListener('click', doFullSetup);
 btnSyncAll.addEventListener('click', doSyncAll);
-btnBackfillDates.addEventListener('click', doBackfillDates);
 btnGenData.addEventListener('click', doGenerateData);
 
 // -- Log toggle --------------------------------------------------------------

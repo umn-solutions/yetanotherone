@@ -17,6 +17,7 @@ import {
   STATUS_LABELS,
   statusLabel,
   chipClass,
+  renderStatusCell,
 } from '../../utils/status-helpers.js';
 import {
   parseSaving,
@@ -189,7 +190,7 @@ export default defineRoute((config) => {
       buildKpi(String(items.length), 'Total Iniciativas'),
       buildKpi(String(emCurso.length), 'Em Curso'),
       buildKpi(String(implementados.length), 'Implementadas'),
-      buildKpi(`EUR ${(savingsTotal / 1000).toFixed(1)}k`, 'Savings Acumulados', true),
+      buildKpi(`€ ${(savingsTotal / 1000).toFixed(1)}k`, 'Savings Acumulados', true),
     ];
   }
 
@@ -465,14 +466,11 @@ export default defineRoute((config) => {
                   },
                   class: 'pace-table-link-btn',
                 }),
-                new Text(statusLabel(item.Status), {
-                  type: 'span',
-                  class: `pace-chip ${chipClass(item.Status)}`,
-                }),
+                renderStatusCell(item),
                 new Text(ownerName(item), { type: 'span' }),
                 new Text(
                   parseSaving(item.SavingValidated || item.SavingsValue)
-                    ? `EUR ${parseSaving(item.SavingValidated || item.SavingsValue).toLocaleString()}`
+                    ? `€ ${parseSaving(item.SavingValidated || item.SavingsValue).toLocaleString()}`
                     : '---',
                   { type: 'span' }
                 ),
@@ -493,5 +491,5 @@ export default defineRoute((config) => {
 
   loadData();
 
-  return createPageLayout([ctaBanner, kpiRow, filterBar, metricsTable, drillDetail]);
+  return createPageLayout([ctaBanner, kpiRow, filterBar, metricsTable, drillDetail], { contentClass: 'pt-v2' });
 });

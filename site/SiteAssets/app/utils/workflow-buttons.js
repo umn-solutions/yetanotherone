@@ -13,6 +13,7 @@ import {
   startExecution,
   approveSavings,
   mentorFinalValidation,
+  mentorManagerValidation,
   markAsImplemented,
   transferGestor,
   transferOwnership,
@@ -252,6 +253,29 @@ export function buildWorkflowButtons({
           },
         });
         buttons.push(editBtn);
+      }
+      if (!approvalsOnly && canAccess('rejeitar')) {
+        const rejectBtn = new Button('Rejeitar', {
+          variant: 'danger',
+          isOutlined: true,
+          onClickHandler: () => rejectInitiative(initiative, rejectBtn, handleSuccess),
+        });
+        buttons.push(rejectBtn);
+      }
+      if (!approvalsOnly && canAccess('solicitar_revisao')) {
+        const revisionBtn = new Button('Solicitar Revisão', {
+          variant: 'secondary',
+          onClickHandler: () => requestRevision(initiative, revisionBtn, handleSuccess),
+        });
+        buttons.push(revisionBtn);
+      }
+    } else if (status === STATUS.VALIDADO_FINAL) {
+      if (canAccess('validar_implementacao_final')) {
+        const implConfirmBtn = new Button('Confirmar Implementação', {
+          variant: 'primary',
+          onClickHandler: () => mentorManagerValidation(initiative, implConfirmBtn, handleSuccess),
+        });
+        buttons.push(implConfirmBtn);
       }
       if (!approvalsOnly && canAccess('rejeitar')) {
         const rejectBtn = new Button('Rejeitar', {

@@ -15,8 +15,18 @@ export const EVENT_TYPES = {
   CANCELLATION: 'Cancellation',
   TRANSFER: 'Transfer',
   MENTOR_FINAL_VALIDATION: 'MentorFinalValidation',
+  MENTOR_MANAGER_VALIDATION: 'MentorManagerValidation',
   OWNER_IMPLEMENTATION: 'OwnerImplementation',
   EDIT_APPROVER: 'EditApprover',
+};
+
+// -- Final validation label constants --
+
+export const SOFT_SAVINGS_THRESHOLD_EUR = 10000;
+
+export const MENTOR_MANAGER_LABELS = {
+  PLACE: 'Validado pela equipa PLACE',
+  AREA_FINANCEIRA: 'Validado pela área financeira',
 };
 
 // OrgHierarchy Category values that grant gestor role
@@ -32,17 +42,17 @@ export const BOOTSTRAP_ADMIN_GROUP = 'PACE Owners';
 
 export const SAVING_CATEGORIES = [
   'Redução de custos',
-  'Aumento de receita',
+  'Aumento de Vendas(NBI)',
   'Redução de risco',
   'Custos e riscos evitados',
-  'Melhoria de qualidade',
+  'Redução de tempo de execução de tarefas',
   'Outros Benefícios Qualitativos',
 ];
 
-export const HARD_CATEGORIES = ['Redução de custos', 'Aumento de receita', 'Redução de risco'];
-export const SOFT_CATEGORIES = ['Custos e riscos evitados', 'Melhoria de qualidade'];
+export const HARD_CATEGORIES = ['Redução de custos', 'Aumento de Vendas(NBI)', 'Redução de risco'];
+export const SOFT_CATEGORIES = ['Custos e riscos evitados', 'Redução de tempo de execução de tarefas'];
 
-export const NO_FINANCIALS_CATEGORIES = ['Outros Benefícios Qualitativos', 'Melhoria de qualidade'];
+export const NO_FINANCIALS_CATEGORIES = ['Outros Benefícios Qualitativos', 'Redução de tempo de execução de tarefas'];
 
 /**
  * Returns true if at least one selected category requires financial data.
@@ -57,10 +67,10 @@ export function hasFinancialData(categories) {
 export const SAVING_CATEGORY_GUIDANCE = {
   'Outros Benefícios Qualitativos': 'Iniciativa sem impacto financeiro directo.',
   'Redução de custos': 'Redução de FTE, contratos temporários, despesas de prestadores, horas extra, material de escritório. Comparação com custos N-1 ou orçamento do Ano N.',
-  'Aumento de receita': 'Aumento de PNB via crescimento de vendas. Créditos, seguros, produtos complementares.',
+  'Aumento de Vendas(NBI)': 'Aumento de PNB via crescimento de vendas. Créditos, seguros, produtos complementares.',
   'Redução de risco': 'Melhoria de eficiência de cobrança, redução de taxa de reincidência.',
   'Custos e riscos evitados': 'Recrutamento evitado, coimas/penalizações/custos evitados, riscos evitados. Despesas previstas, não orçamentadas e não incorridas.',
-  'Melhoria de qualidade': 'Aumento de satisfação do cliente. Fidelização e imagem.',
+  'Redução de tempo de execução de tarefas': 'Diminuição do tempo necessário para executar tarefas operacionais. Automatização, simplificação de processos, eliminação de passos redundantes.',
 };
 
 /**
@@ -97,12 +107,12 @@ export function annualizeSavings(value, timePeriod) {
 
 export const STATUS_DESCRIPTIONS = {
   'Rascunho':        'Iniciativa em elaboração, ainda não submetida para validação.',
-  'Submetido':       'Aguarda validação pelo mentor de projecto.',
-  'Validado Mentor': 'Projecto aprovado pelo mentor, aguarda início de execução.',
+  'Submetido':       'Aguarda validação pelo mentor.',
+  'Validado Mentor': 'Aprovado pelo mentor.',
   'Em Execucao':     'Iniciativa em execução activa.',
   'Por Validar':     'Savings submetidos, aguarda validação pelo gestor.',
   'Validado Gestor': 'Savings validados pelo gestor, aguarda confirmação final.',
-  'Validado Final':  'Validação final concluída, pronta para implementação.',
+  'Validado Final':  'Confirmado pelo mentor. Aguarda validação final pelo manager da equipa de mentores.',
   'Implementado':    'Iniciativa implementada e concluída com sucesso.',
   'Em Revisao':      'Devolvida para revisão antes de nova submissão.',
   'Rejeitado':       'Iniciativa rejeitada pelo avaliador.',
@@ -126,25 +136,31 @@ export const INITIATIVE_TAGS = [
 
 // -- Multi-category financial forms metadata --
 
-export const CATEGORY_KEYS = ['eficiencia', 'producao', 'gastos'];
+export const CATEGORY_KEYS = ['eficiencia', 'producao', 'gastos', 'reducao_risco', 'reducao_custo'];
 
 export const CATEGORY_LABELS = {
-  eficiencia: 'Eficiência',
-  producao:   'Produção',
-  gastos:     'Gastos Gerais',
+  eficiencia:    'Eficiência',
+  producao:      'Produção',
+  gastos:        'Gastos Gerais',
+  reducao_risco: 'Redução de risco',
+  reducao_custo: 'Redução de custo',
 };
 
 // 'decrease' = saving = AsIs - ToBe (Eficiencia time, Gastos cost)
-// 'increase' = gain   = ToBe - AsIs (Producao revenue)
+// 'increase' = gain   = ToBe - AsIs (Producao revenue, Reducao Risco, Reducao Custo)
 export const CATEGORY_DIRECTIONS = {
-  eficiencia: 'decrease',
-  producao:   'increase',
-  gastos:     'decrease',
+  eficiencia:    'decrease',
+  producao:      'increase',
+  gastos:        'decrease',
+  reducao_risco: 'increase',
+  reducao_custo: 'increase',
 };
 
 // Maps internal key to the SP list field name that stores the JSON payload
 export const CATEGORY_FIELD_NAMES = {
-  eficiencia: 'EficienciaData',
-  producao:   'ProducaoData',
-  gastos:     'GastosGeraisData',
+  eficiencia:    'EficienciaData',
+  producao:      'ProducaoData',
+  gastos:        'GastosGeraisData',
+  reducao_risco: 'ReducaoRiscoData',
+  reducao_custo: 'ReducaoCustoData',
 };

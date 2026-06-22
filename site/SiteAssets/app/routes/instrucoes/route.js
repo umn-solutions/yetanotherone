@@ -133,7 +133,7 @@ export default defineRoute((config) => {
         'Clicar em "Aprovar Savings" para validar.',
         'Se necessário, solicitar revisão ao colaborador.',
       ],
-      tip: 'Savings >= 10.000 EUR ou Hard Cost são encaminhados para o Gestor RF.',
+      tip: 'Savings >= 10.000 € ou Hard Cost são encaminhados para o Gestor RF.',
     },
     {
       title: '5. Cancelar uma iniciativa',
@@ -285,7 +285,7 @@ export default defineRoute((config) => {
     },
     {
       question: 'Como funcionam os savings?',
-      answer: 'Existem dois tipos: Hard Cost (redução directa de custos comprovável) e Soft Cost (ganhos de eficiência ou produtividade). Savings acima de 10.000 EUR ou Hard Cost são encaminhados para o Gestor RF.',
+      answer: 'Existem dois tipos: Hard Cost (redução directa de custos comprovável) e Soft Cost (ganhos de eficiência ou produtividade). Savings acima de 10.000 € ou Hard Cost são encaminhados para o Gestor RF.',
     },
     {
       question: 'Posso editar uma iniciativa após submissão?',
@@ -316,5 +316,5 @@ export default defineRoute((config) => {
     new AccordionGroup(faqItems),
   ], { class: 'pace-faq' });
 
-  return createPageLayout([ctaBanner, profileCards, actionGuides, processFlow, faqSection]);
+  return createPageLayout([ctaBanner, profileCards, actionGuides, processFlow, faqSection], { contentClass: 'pt-v2' });
 });

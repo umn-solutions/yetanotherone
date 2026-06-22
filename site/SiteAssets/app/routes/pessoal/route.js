@@ -15,7 +15,7 @@ import {
 
 import { getPersonalAndShared } from '../../utils/initiatives-api.js';
 import { getSharedWithMe } from '../../utils/shared-api.js';
-import { STATUS, statusLabel, statusDescription } from '../../utils/status-helpers.js';
+import { STATUS, statusLabel, statusDescription, renderStatusCell } from '../../utils/status-helpers.js';
 import { openInitiativeDetail } from '../../utils/side-panel-detail.js';
 import { openEditInitiativeModal } from '../../utils/new-initiative.js';
 import { createPageLayout } from '../../utils/navbar.js';
@@ -80,7 +80,7 @@ export default defineRoute((config) => {
       new Text(item.Team || '', { type: 'span' }),
       new Text(mentorName(item), { type: 'span' }),
       new Text(gestorName(item), { type: 'span' }),
-      new Text(statusDescription(item.Status), { type: 'span' }),
+      renderStatusCell(item),
     ];
   }
 
@@ -388,5 +388,5 @@ export default defineRoute((config) => {
 
   loadData();
 
-  return createPageLayout([kpiContainer, revisionSection, toggleContainer, filterBar, emCursoView, colaboracoesView, rascunhosView, finalizadasView]);
+  return createPageLayout([kpiContainer, revisionSection, toggleContainer, filterBar, emCursoView, colaboracoesView, rascunhosView, finalizadasView], { contentClass: 'pt-v2' });
 });

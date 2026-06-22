@@ -14,7 +14,7 @@ import {
 } from '../../libs/nofbiz/nofbiz.base.js';
 import { getUnassignedByStatuses, getByStatusesAndMentor, getByUUIDs } from '../../utils/initiatives-api.js';
 import { getSharedWithMe } from '../../utils/shared-api.js';
-import { STATUS, statusLabel, statusDescription } from '../../utils/status-helpers.js';
+import { STATUS, statusLabel, statusDescription, renderStatusCell } from '../../utils/status-helpers.js';
 import {
   ownerName,
   mentorName,
@@ -95,7 +95,7 @@ export default defineRoute((config) => {
       new Text(item.Team || '', { type: 'span' }),
       new Text(ownerName(item), { type: 'span' }),
       new Text(gestorName(item), { type: 'span' }),
-      new Text(statusDescription(item.Status), { type: 'span' }),
+      renderStatusCell(item),
     ], { class: 'pace-table-row', onClickHandler: openFn });
   }
 
@@ -386,5 +386,5 @@ export default defineRoute((config) => {
     filterBar,
     minhasView,
     colabsView,
-  ]);
+  ], { contentClass: 'pt-v2' });
 });

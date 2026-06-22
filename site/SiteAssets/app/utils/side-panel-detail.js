@@ -10,6 +10,7 @@ import {
   ContextStore,
   UserIdentity,
   Loader,
+  getIcon,
   __dayjs,
 } from '../libs/nofbiz/nofbiz.base.js';
 
@@ -23,6 +24,7 @@ import {
   getPhaseEditability,
   buildCategoryDisplay,
   buildTotalsPanel,
+  resolveFinalValidationLabel,
 } from './financial-forms.js';
 import { buildFteCostController } from './fte-cost-field.js';
 import { buildWorkflowButtons } from './workflow-buttons.js';
@@ -39,10 +41,10 @@ const TIME_PERIOD_DISPLAY = {
 const SAVING_CAT_DISPLAY = {
   'Outros Benefícios Qualitativos': 'Outros Benefícios Qualitativos',
   'Redução de custos': 'Redução de custos',
-  'Aumento de receita': 'Aumento de receita',
+  'Aumento de Vendas(NBI)': 'Aumento de Vendas(NBI)',
   'Redução de risco': 'Redução de risco',
   'Custos e riscos evitados': 'Custos e riscos evitados',
-  'Melhoria de qualidade': 'Melhoria de qualidade',
+  'Redução de tempo de execução de tarefas': 'Redução de tempo de execução de tarefas',
 };
 
 /**
@@ -96,7 +98,18 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
     headerChips.push(new Text('Confidencial', { type: 'span', class: 'pace-chip pace-chip--conf' }));
   }
 
+  const closeBtn = new Button(
+    new Container([getIcon('close-line')], { as: 'span', class: 'pace-detail-close-icon' }),
+    {
+      variant: 'secondary',
+      isOutlined: true,
+      class: 'pace-detail-close',
+      onClickHandler: () => panel.close(),
+    },
+  );
+
   const header = new Container([
+    closeBtn,
     new Container(headerChips, { class: 'pace-detail-chips' }),
     new Text(initiative.Title || 'Sem título', { type: 'h2', class: 'pace-detail-title' }),
   ], { class: 'pace-detail-header' });
@@ -115,6 +128,9 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
   ];
   if (gestorDisplay !== '---') {
     dadosPairs.push(['Gestor Validador', gestorDisplay]);
+  }
+  if (initiative.FinalValidationLabel) {
+    dadosPairs.push(['Validação Final', initiative.FinalValidationLabel]);
   }
 
   const dadosGerais = new Container([
@@ -225,6 +241,7 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
     Cancellation: 'Cancelado',
     Implementation: 'Implementado',
     MentorFinalValidation: 'Confirmação Final Mentor',
+    MentorManagerValidation: 'Validação Final',
     OwnerImplementation: 'Implementado pelo Colaborador',
     Comment: 'Comentário',
     Transfer: 'Transferido',
@@ -244,8 +261,9 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
     [EVENT_TYPES.BUSINESS_REJECTION]:      STATUS.REJEITADO,
     [EVENT_TYPES.REVIEW_REQUEST]:          STATUS.EM_REVISAO,
     [EVENT_TYPES.CANCELLATION]:            STATUS.CANCELADO,
-    [EVENT_TYPES.MENTOR_FINAL_VALIDATION]: STATUS.VALIDADO_FINAL,
-    [EVENT_TYPES.OWNER_IMPLEMENTATION]:    STATUS.IMPLEMENTADO,
+    [EVENT_TYPES.MENTOR_FINAL_VALIDATION]:    STATUS.VALIDADO_FINAL,
+    [EVENT_TYPES.MENTOR_MANAGER_VALIDATION]:  STATUS.IMPLEMENTADO,
+    [EVENT_TYPES.OWNER_IMPLEMENTATION]:       STATUS.IMPLEMENTADO,
     // Comment, Transfer, Share have no status change -> no description shown
   };
 
@@ -272,7 +290,11 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
       }
       const actorName = actorObj.displayName || 'Sistema';
       const dateStr = ev.Date ? __dayjs(ev.Date).format('DD/MM/YYYY HH:mm') : '';
-      const label = EVENT_TYPE_LABELS[ev.EventType] || ev.EventType;
+      const baseLabel = EVENT_TYPE_LABELS[ev.EventType] || ev.EventType;
+      // For MentorManagerValidation, show the persisted label if available; fall back to computed.
+      const label = (ev.EventType === EVENT_TYPES.MENTOR_MANAGER_VALIDATION && (ev.ValidationLabel || resolveFinalValidationLabel(initiative, financials)))
+        ? (ev.ValidationLabel || resolveFinalValidationLabel(initiative, financials))
+        : baseLabel;
 
       const stepContent = [
         new Container([
@@ -424,6 +446,7 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
     footer: footerContainer,
     width: '600px',
     closeOnFocusLoss: false,
+    class: 'pt-v2',
   });
 
   // Click-outside-to-close (replaces focusout-based default which mis-fires on DOM refresh)

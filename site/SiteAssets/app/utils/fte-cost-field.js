@@ -67,7 +67,7 @@ export function buildFteCostController(opts = {}) {
       field,
       totalsOpt: field,
       displayRow: new FieldLabel(
-        'Custo Anual por FTE (EUR)',
+        'Custo Anual por FTE (€)',
         new NumberInput(field, { placeholder: '0', min: 0 }),
       ),
       getSaveValue: () => String(parseFloat(field.value) || 0),

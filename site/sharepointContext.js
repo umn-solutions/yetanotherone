@@ -578,7 +578,7 @@ var _spMockData = {
           Id: 33, UUID: 'uuid-033',
           Title: 'Substituicao do core bancario por solucao open-source',
           Description: 'Substituir o sistema core bancario actual por uma solucao open-source para reducao de custos de licenciamento.',
-          Problem: 'Custos anuais de licenciamento do core bancario ascendem a 1.2M EUR.',
+          Problem: 'Custos anuais de licenciamento do core bancario ascendem a 1.2M €.',
           Objective: 'Eliminar custos de licenciamento atraves de migracao para solucao open-source.',
           Status: 'Rejeitado', ImpactedTeamOUID: 'ITD-DAT',
           IsConfidential: 'false',
@@ -588,6 +588,43 @@ var _spMockData = {
           MentorEmail: 'bruno.costa@domain.pt',
           GestorValidator: '', GestorValidatorEmail: '',
           Tags: '',
+          AuthorId: 1, __metadata: { etag: '"1"' },
+        },
+        {
+          Id: 34, UUID: 'uuid-034',
+          Title: 'Reducao do tempo de gestao de escaladas (Validado Final)',
+          Description: 'Reduzir o tempo de resolucao de escaladas via triagem automatizada.',
+          Problem: 'As escaladas demoram em media 3 dias a ser atribuidas ao responsavel correcto.',
+          Objective: 'Reduzir tempo de atribuicao para 4 horas com triagem automatica.',
+          Status: 'Validado Final', ImpactedTeamOUID: 'OPS-COL',
+          IsConfidential: 'false',
+          SubmittedBy: '{"email":"paulo.gomes@domain.pt","displayName":"Paulo Gomes"}',
+          SubmittedByEmail: 'paulo.gomes@domain.pt',
+          Mentor: '{"email":"mario.silva@domain.pt","displayName":"Mario Silva"}',
+          MentorEmail: 'mario.silva@domain.pt',
+          GestorValidator: '{"email":"luis.rodrigues@domain.pt","displayName":"Luis Rodrigues"}',
+          GestorValidatorEmail: 'luis.rodrigues@domain.pt',
+          FinalValidationLabel: '',
+          Tags: '["Lean","Business Automation"]',
+          AuthorId: 1, __metadata: { etag: '"1"' },
+        },
+        {
+          Id: 35, UUID: 'uuid-035',
+          Title: 'Automatizacao de balancetes de reconciliacao (Implementado)',
+          Description: 'Automatizar a geracao de balancetes de reconciliacao mensais.',
+          Problem: 'Balancetes de reconciliacao sao preparados manualmente, consumindo 2 dias por mes.',
+          Objective: 'Automatizar 100% da geracao de balancetes mensais.',
+          Status: 'Implementado', ImpactedTeamOUID: 'FIN-CTB',
+          IsConfidential: 'false',
+          ImplementedDate: '2026-05-20T10:00:00Z',
+          SubmittedBy: '{"email":"vasco.pinto@domain.pt","displayName":"Vasco Pinto"}',
+          SubmittedByEmail: 'vasco.pinto@domain.pt',
+          Mentor: '{"email":"mario.silva@domain.pt","displayName":"Mario Silva"}',
+          MentorEmail: 'mario.silva@domain.pt',
+          GestorValidator: '{"email":"fernando.dias@domain.pt","displayName":"Fernando Dias"}',
+          GestorValidatorEmail: 'fernando.dias@domain.pt',
+          FinalValidationLabel: 'Validado pela área financeira',
+          Tags: '["Business Automation","Data Management"]',
           AuthorId: 1, __metadata: { etag: '"1"' },
         },
       ],
@@ -608,8 +645,9 @@ var _spMockData = {
         { InternalName: 'GestorValidatorEmail', Title: 'GestorValidatorEmail', TypeAsString: 'Text' },
         { InternalName: 'Tags', Title: 'Tags', TypeAsString: 'Note' },
         { InternalName: 'PreviousStatus', Title: 'PreviousStatus', TypeAsString: 'Text' },
+        { InternalName: 'FinalValidationLabel', Title: 'FinalValidationLabel', TypeAsString: 'Text' },
       ],
-      nextId: 34,
+      nextId: 36,
     },
 
     'InitiativeEvents': {
@@ -839,6 +877,7 @@ var _spMockData = {
         { InternalName: 'Actor', Title: 'Actor', TypeAsString: 'Note' },
         { InternalName: 'ActorEmail', Title: 'ActorEmail', TypeAsString: 'Text' },
         { InternalName: 'Date', Title: 'Date', TypeAsString: 'Text' },
+        { InternalName: 'ValidationLabel', Title: 'ValidationLabel', TypeAsString: 'Text' },
       ],
       nextId: 147,
     },
@@ -919,7 +958,7 @@ var _spMockData = {
         {
           Id: 1, UUID: 'fin-uuid-001', Title: 'uuid-002', InitiativeUUID: 'uuid-002',
           TimePeriod: 'Mensal', SavingType: 'Soft Cost',
-          SavingCategory: JSON.stringify(['Aumento de receita']),
+          SavingCategory: JSON.stringify(['Aumento de Vendas(NBI)']),
           EnabledCategories: JSON.stringify(['eficiencia', 'producao', 'gastos']),
           EficienciaData: JSON.stringify({
             asIs: { vp: 200, tu: 12 },
@@ -994,7 +1033,7 @@ var _spMockData = {
         {
           Id: 5, UUID: 'fin-uuid-005', Title: 'uuid-013', InitiativeUUID: 'uuid-013',
           TimePeriod: 'Trimestral', SavingType: 'Soft Cost',
-          SavingCategory: JSON.stringify(['Aumento de receita']),
+          SavingCategory: JSON.stringify(['Aumento de Vendas(NBI)']),
           EnabledCategories: JSON.stringify(['eficiencia', 'producao', 'gastos']),
           EficienciaData: JSON.stringify({
             asIs: { vp: 180, tu: 20 },
@@ -1017,7 +1056,7 @@ var _spMockData = {
         {
           Id: 6, UUID: 'fin-uuid-006', Title: 'uuid-014', InitiativeUUID: 'uuid-014',
           TimePeriod: 'Mensal', SavingType: 'Hard Cost',
-          SavingCategory: JSON.stringify(['Aumento de receita']),
+          SavingCategory: JSON.stringify(['Aumento de Vendas(NBI)']),
           EnabledCategories: JSON.stringify(['eficiencia', 'producao', 'gastos']),
           EficienciaData: JSON.stringify({
             asIs: { vp: 400, tu: 5 },
@@ -1040,7 +1079,7 @@ var _spMockData = {
         {
           Id: 7, UUID: 'fin-uuid-007', Title: 'uuid-015', InitiativeUUID: 'uuid-015',
           TimePeriod: 'Mensal', SavingType: 'Soft Cost',
-          SavingCategory: JSON.stringify(['Aumento de receita']),
+          SavingCategory: JSON.stringify(['Aumento de Vendas(NBI)']),
           EnabledCategories: JSON.stringify(['eficiencia']),
           EficienciaData: JSON.stringify({
             asIs: { vp: 100, tu: 25 },
@@ -1108,7 +1147,7 @@ var _spMockData = {
         {
           Id: 11, UUID: 'fin-uuid-011', Title: 'uuid-024', InitiativeUUID: 'uuid-024',
           TimePeriod: 'Mensal', SavingType: 'Soft Cost',
-          SavingCategory: JSON.stringify(['Melhoria de qualidade']),
+          SavingCategory: JSON.stringify(['Redução de tempo de execução de tarefas']),
           EnabledCategories: JSON.stringify(['eficiencia']),
           EficienciaData: JSON.stringify({ asIs: { vp: 80, tu: 30 } }),
           ProducaoData: '', GastosGeraisData: '',
@@ -1173,7 +1212,7 @@ var _spMockData = {
         {
           Id: 16, UUID: 'fin-uuid-016', Title: 'uuid-029', InitiativeUUID: 'uuid-029',
           TimePeriod: 'Mensal', SavingType: 'Soft Cost',
-          SavingCategory: JSON.stringify(['Melhoria de qualidade']),
+          SavingCategory: JSON.stringify(['Redução de tempo de execução de tarefas']),
           EnabledCategories: JSON.stringify(['eficiencia']),
           EficienciaData: JSON.stringify({ asIs: { vp: 90, tu: 35 } }),
           ProducaoData: '', GastosGeraisData: '',
@@ -1242,7 +1281,7 @@ var _spMockData = {
         {
           Id: 21, UUID: 'finan-uuid-multi-2', Title: 'uuid-018', InitiativeUUID: 'uuid-018',
           TimePeriod: 'Mensal', SavingType: 'Hard Cost',
-          SavingCategory: JSON.stringify(['Redução de custos', 'Aumento de receita']),
+          SavingCategory: JSON.stringify(['Redução de custos', 'Aumento de Vendas(NBI)']),
           EnabledCategories: JSON.stringify(['eficiencia', 'producao', 'gastos']),
           EficienciaData: JSON.stringify({
             asIs:      { vp: 200, tu: 12 },
@@ -1268,7 +1307,7 @@ var _spMockData = {
         {
           Id: 22, UUID: 'finan-uuid-multi-3', Title: 'uuid-019', InitiativeUUID: 'uuid-019',
           TimePeriod: 'Mensal', SavingType: 'Hard Cost',
-          SavingCategory: JSON.stringify(['Aumento de receita']),
+          SavingCategory: JSON.stringify(['Aumento de Vendas(NBI)']),
           EnabledCategories: JSON.stringify(['producao']),
           EficienciaData: '',
           ProducaoData: JSON.stringify({
@@ -1393,7 +1432,7 @@ var _spMockData = {
 
         // COM branch
         { Id: 14, Title: 'BRG001', ShortName: 'Tiago', Direcao: 'COMMERCIAL', Departamento: 'COMMERCIAL', OUID: 'COM-GOV', OUDesc: 'COMMERCIAL', Category: 'Executive', ManagerId: '154895', AncestorPath: '154895|BRG001', DeptAncestorPath: 'COMMERCIAL|COMMERCIAL|COM-GOV', Depth: '1', Email: 'tiago.mendonca@domain.pt', AppRole: '', AuthorId: 1, __metadata: { etag: '"1"' } },
-        { Id: 15, Title: '999001', ShortName: 'Mario', Direcao: 'COMMERCIAL', Departamento: 'BANKING PARTNERSHIPS', OUID: 'COM-BKP', OUDesc: 'BANKING PARTNERSHIPS', Category: 'Expert - Technical Lead', ManagerId: 'BRG001', AncestorPath: '154895|BRG001|999001', DeptAncestorPath: 'COMMERCIAL|BANKING PARTNERSHIPS|COM-BKP', Depth: '2', Email: 'mario.silva@domain.pt', AppRole: 'mentor', AuthorId: 1, __metadata: { etag: '"1"' } },
+        { Id: 15, Title: '999001', ShortName: 'Mario', Direcao: 'COMMERCIAL', Departamento: 'BANKING PARTNERSHIPS', OUID: 'COM-BKP', OUDesc: 'BANKING PARTNERSHIPS', Category: 'Expert - Technical Lead', ManagerId: 'BRG001', AncestorPath: '154895|BRG001|999001', DeptAncestorPath: 'COMMERCIAL|BANKING PARTNERSHIPS|COM-BKP', Depth: '2', Email: 'mario.silva@domain.pt', AppRole: 'mentor-manager', AuthorId: 1, __metadata: { etag: '"1"' } },
       ],
       fields: [
         { InternalName: 'Title', Title: 'Title', TypeAsString: 'Text' },
@@ -1411,6 +1450,31 @@ var _spMockData = {
         { InternalName: 'AppRole', Title: 'AppRole', TypeAsString: 'Text' },
       ],
       nextId: 16,
+    },
+
+    'SavingsTargets': {
+      items: [
+        {
+          Id: 1,
+          Title: '2026',
+          FTETarget: '12',
+          CategoryTargets: '{"Redução de custos":25000,"Aumento de Vendas(NBI)":20000,"Redução de risco":15000,"Custos e riscos evitados":20000}',
+          LastModifiedBy: '{"email":"mario.silva@domain.pt","displayName":"Mario Silva"}',
+          LastModifiedByEmail: 'mario.silva@domain.pt',
+          LastModifiedDate: '2026-01-10T09:00:00.000Z',
+          AuthorId: 1,
+          __metadata: { etag: '"1"' },
+        },
+      ],
+      fields: [
+        { InternalName: 'Title', Title: 'Title', TypeAsString: 'Text' },
+        { InternalName: 'FTETarget', Title: 'FTETarget', TypeAsString: 'Text' },
+        { InternalName: 'CategoryTargets', Title: 'CategoryTargets', TypeAsString: 'Note' },
+        { InternalName: 'LastModifiedBy', Title: 'LastModifiedBy', TypeAsString: 'Note' },
+        { InternalName: 'LastModifiedByEmail', Title: 'LastModifiedByEmail', TypeAsString: 'Text' },
+        { InternalName: 'LastModifiedDate', Title: 'LastModifiedDate', TypeAsString: 'Text' },
+      ],
+      nextId: 2,
     },
 
     'InitiativesSharedAccess': {

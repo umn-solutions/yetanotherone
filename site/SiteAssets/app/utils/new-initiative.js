@@ -17,6 +17,7 @@ import {
   ContextStore,
   fromFieldValue,
   generateUUIDv4,
+  getIcon,
   __zod,
 } from '../libs/nofbiz/nofbiz.base.js';
 
@@ -28,6 +29,7 @@ import {
   EVENT_TYPES,
   CATEGORY_KEYS,
   CATEGORY_LABELS,
+  CATEGORY_FIELD_NAMES,
   deriveSavingType,
   hasFinancialData,
 } from './constants.js';
@@ -189,7 +191,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     const quantRequired = hasFinancialData(cats);
 
     if (quantRequired && categoryStates.size === 0) {
-      errs.push('Adicione pelo menos uma métrica (Eficiência, Produção ou Gastos Gerais).');
+      errs.push('Adicione pelo menos uma métrica (' + CATEGORY_KEYS.map(k => CATEGORY_LABELS[k]).join(', ') + ').');
     }
 
     if (categoryStates.size > 0) {
@@ -226,10 +228,10 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
       SavingCategory: savingCatLabels,
       SavingType: deriveSavingType(savingCatLabels),
       EnabledCategories: Array.from(categoryStates.keys()),
-      EficienciaData:   serializeCategory(categoryStates.get('eficiencia')),
-      ProducaoData:     serializeCategory(categoryStates.get('producao')),
-      GastosGeraisData: serializeCategory(categoryStates.get('gastos')),
     };
+    for (const key of CATEGORY_KEYS) {
+      fields[CATEGORY_FIELD_NAMES[key]] = serializeCategory(categoryStates.get(key));
+    }
     const fteField = sharedFinancial.schema.get('fteAnnualCost');
     if (fteField) fields.FTEAnnualCost = String(parseFloat(fteField.value) || 0);
     return fields;
@@ -262,13 +264,22 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
 
   const overlay = new Container(
     [new Loader(new Text('A processar...', { type: 'p' }), { animation: 'pulse' })],
-    { class: 'pace-submission-overlay', containerSelector: 'body' }
+    { class: 'pace-submission-overlay pt-v2', containerSelector: 'body' }
   );
   const showOverlay = () => overlay.render();
   const hideOverlay = () => { if (overlay.isAlive) overlay.remove(); };
 
+  // Force SPARC's debounced TextInput/TextArea sync to flush before we read
+  // FormField values: trigger blur so each control's own blur handler runs
+  // _syncValue() synchronously. Without this, a pending 300ms debounce can
+  // leave the last edit unsynced and we MERGE-write stale data.
+  const flushPendingInputs = () => {
+    modal?.instance?.find('input, textarea').trigger('blur');
+  };
+
   // -- Save functions --
   const saveAsDraft = async (btn) => {
+    flushPendingInputs();
     if (!schema.isValid) {
       schema.focusOnFirstInvalid();
       Toast.error('Preencha o título e seleccione a equipa.');
@@ -346,6 +357,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
   };
 
   const submitInitiative = async (btn) => {
+    flushPendingInputs();
     if (!schema.isValid) {
       schema.focusOnFirstInvalid();
       Toast.error('Preencha o título e seleccione a equipa.');
@@ -457,6 +469,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
 
   // -- Re-submit from wizard (EM_REVISAO -> previous status, with toBe gate + gestor re-attribution) --
   const resubmitFromWizard = async (btn) => {
+    flushPendingInputs();
     if (!schema.isValid) {
       schema.focusOnFirstInvalid();
       Toast.error('Preencha o título e seleccione a equipa.');
@@ -489,7 +502,8 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
       }
 
       // Refresh initiative to pick up new etag for the transition
-      const fresh = await getInitiativeByUUID(initiative.UUID);
+      const results = await getInitiativeByUUID(initiative.UUID);
+      const fresh = results?.[0];
       if (!fresh) {
         loading.error('Erro ao recarregar iniciativa após guardar.');
         return;
@@ -515,15 +529,45 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     }
   };
 
-  // ===== STEP 1 -- Basic Info =====
+  // ===== STEP DEFINITIONS =====
+
+  const steps = [
+    { id: 'contexto', label: 'Contexto', n: '01' },
+    { id: 'problema', label: 'Problema',  n: '02' },
+    { id: 'tema',    label: 'Tema',       n: '03' },
+    { id: 'plano',   label: 'Plano',      n: '04' },
+    { id: 'impacto', label: 'Impacto',    n: '05' },
+  ];
+
+  // ===== FIELD COMPONENTS =====
 
   const titleInput = new FieldLabel('Título', new TextInput(titleField, { placeholder: 'Ex: Redução do tempo de...', isDisabled: baseFieldsLocked }), { class: 'pace-required' });
   const descInput = new FieldLabel('Descrição do problema identificado', new TextArea(descriptionField, { placeholder: 'Descreva a situação actual', rows: 3, isDisabled: baseFieldsLocked }));
   const teamCombo = new FieldLabel('Equipa', new ComboBox(teamField, teamOptions, { placeholder: 'Seleccionar...', isDisabled: baseFieldsLocked }), { class: 'pace-required' });
+  const confidentialCb = new CheckBox(confidentialField, { title: 'Confidencial', isDisabled: baseFieldsLocked });
   const confidentialCheckInline = new Container([
-    new CheckBox(confidentialField, { title: 'Confidencial', isDisabled: baseFieldsLocked }),
+    confidentialCb,
+    new Container([getIcon('lock-line')], { as: 'span', class: 'pace-conf-icon' }),
     new Text('Confidencial', { type: 'span' }),
-  ], { class: 'pace-checkbox-row' });
+  ], {
+    class: 'pace-checkbox-row pace-conf-toggle',
+    // Clicking anywhere on the box toggles confidential. Forward to the checkbox
+    // input's native click (updates the field AND re-renders the control). Clicks
+    // landing on the checkbox itself are ignored to avoid double-toggle.
+    onClickHandler: (e) => {
+      if (baseFieldsLocked) return;
+      if (e.target.closest(`[id="${confidentialCb.id}"]`)) return;
+      const input = document.getElementById(`${confidentialCb.id}-input`);
+      if (input) input.click();
+    },
+  });
+  // Reflect the checked state on the box via a class. (`:has(input:checked)` is
+  // unreliable here: SPARC re-renders the checkbox subtree on change and Blink
+  // does not always re-invalidate the ancestor's `:has` style.)
+  const syncConfToggleClass = () => {
+    confidentialCheckInline.instance?.toggleClass('pace-conf-toggle--on', !!confidentialField.value);
+  };
+  confidentialField.subscribe(syncConfToggleClass);
   const teamRow = new Container([teamCombo, confidentialCheckInline], { class: 'pace-team-conf-row' });
   const tagsCombo = new FieldLabel('Tags', createTagsToggle(tagsField, { isDisabled: baseFieldsLocked }));
   const objectiveInput = new FieldLabel('Descrição da iniciativa de melhoria', new TextArea(objectiveField, { placeholder: 'Qual o objectivo esperado?', rows: 3, isDisabled: baseFieldsLocked }));
@@ -532,32 +576,8 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
   const isEmRevisao = isEdit && currentStatus === STATUS.EM_REVISAO && !asApprover;
   const draftLabel = isPostSubmission ? 'Guardar' : 'Gravar Rascunho';
 
-  const step1DraftBtn = new Button(draftLabel, {
-    variant: 'secondary',
-    onClickHandler: () => saveAsDraft(step1DraftBtn),
-  });
+  // ===== WORKFLOW BUTTONS =====
 
-  const step1ContinueBtn = new Button('Continuar', {
-    variant: 'primary',
-    onClickHandler: () => {
-      if (!schema.isValid) {
-        schema.focusOnFirstInvalid();
-        Toast.error('Preencha o título e seleccione a equipa.');
-        return;
-      }
-      wizard.setView('step2b');
-    },
-  });
-
-  const step1CancelBtn = new Button('Cancelar', {
-    variant: 'secondary',
-    isOutlined: true,
-    onClickHandler: () => modal.close(),
-  });
-
-
-  // Workflow approval buttons (Aprovar / Validar / Submeter forward actions).
-  // Only on last step -- never alongside Continuar.
   const resolvedEmail = currentEmail || ContextStore.get('currentUser')?.get('email') || '';
   const resolvedIsOwner = initiative ? initiative.SubmittedByEmail === resolvedEmail : false;
   const workflowButtonsStep2b = (isEdit && context) ? buildWorkflowButtons({
@@ -575,58 +595,79 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     approvalsOnly: true,
   }) : [];
 
-  const step1View = new View([
-    new Container([
-      titleInput,
-      descInput,
-      teamRow,
-      tagsCombo,
-      objectiveInput,
-    ], { class: 'pace-initiative-form' }),
-    new Container(
-      [step1CancelBtn, step1DraftBtn, step1ContinueBtn],
-      { class: 'pace-modal-footer' },
-    ),
-  ]);
+  // ===== ACTION BUTTONS (built once, reused across steps) =====
 
-  // ===== STEP 2b -- Multi-category financial form (replaces old Step 2b + Step 3) =====
-  // Layout: shared general fields (TimePeriod, SavingCategory) + tabbed section with add/remove + totals
+  const draftBtn = new Button(draftLabel, {
+    variant: 'secondary',
+    onClickHandler: () => saveAsDraft(draftBtn),
+  });
 
-  const step2bBackBtn = new Button('Voltar', {
+  const backBtn = new Button('Voltar', {
     variant: 'secondary',
     isOutlined: true,
+    onClickHandler: () => wizard.previous(),
+  });
+
+  const continueBtn = new Button('Continuar', {
+    variant: 'primary',
     onClickHandler: () => {
-      wizard.setView('step1');
+      if (!schema.isValid) {
+        schema.focusOnFirstInvalid();
+        Toast.error('Preencha o título e seleccione a equipa.');
+        return;
+      }
+      wizard.next();
     },
   });
 
-  const step2bDraftBtn = new Button(draftLabel, {
-    variant: 'secondary',
-    onClickHandler: () => saveAsDraft(step2bDraftBtn),
+  const submitBtn = new Button('Submeter', {
+    variant: 'primary',
+    onClickHandler: () => submitInitiative(submitBtn),
   });
 
-  const step2bSubmitBtn = new Button('Submeter', {
+  const resubmitBtn = isEmRevisao ? new Button('Re-submeter', {
     variant: 'primary',
-    onClickHandler: () => submitInitiative(step2bSubmitBtn),
-  });
-
-  const step2bResubmitBtn = isEmRevisao ? new Button('Re-submeter', {
-    variant: 'primary',
-    onClickHandler: () => resubmitFromWizard(step2bResubmitBtn),
+    onClickHandler: () => resubmitFromWizard(resubmitBtn),
   }) : null;
 
   // Wire submit button disabled state to changeCounter + schema validity
   // When user has not touched financials, the button is always enabled (financials are optional)
   function refreshSubmitBtnState() {
-    step2bSubmitBtn.disabled = userTouchedFinancials() && !isFinancialsValid();
+    submitBtn.disabled = userTouchedFinancials() && !isFinancialsValid();
   }
   refreshSubmitBtnState();
   tabbedSection.changeCounter.subscribe(refreshSubmitBtnState);
   sharedFinancial.schema.get('timePeriod').subscribe(refreshSubmitBtnState);
-
   sharedFinancial.schema.get('savingCategory').subscribe(refreshSubmitBtnState);
 
-  const step2bView = new View([
+  // ===== FIVE STEP VIEWS =====
+
+  const contextoView = new View([
+    new Container([
+      titleInput,
+      teamRow,
+    ], { class: 'pace-initiative-form' }),
+  ]);
+
+  const problemaView = new View([
+    new Container([
+      descInput,
+    ], { class: 'pace-initiative-form' }),
+  ]);
+
+  const temaView = new View([
+    new Container([
+      tagsCombo,
+    ], { class: 'pace-initiative-form' }),
+  ]);
+
+  const planoView = new View([
+    new Container([
+      objectiveInput,
+    ], { class: 'pace-initiative-form' }),
+  ]);
+
+  const impactoView = new View([
     new Container([
       new Text('Contabilização de Ganhos/Impacto', { type: 'h4', class: 'pace-form-section-title' }),
       new Text(
@@ -636,43 +677,138 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
       new Container(sharedFinancial.components, { class: 'pace-shared-financial-fields' }),
       tabbedSection.container,
     ], { class: 'pace-initiative-form' }),
-    new Container(
-      isPostSubmission
-        ? [step2bBackBtn, step2bDraftBtn, ...(step2bResubmitBtn ? [step2bResubmitBtn] : []), ...workflowButtonsStep2b]
-        : [step2bBackBtn, step2bDraftBtn, ...(canAccess('submeter') ? [step2bSubmitBtn] : []), ...workflowButtonsStep2b],
-      { class: 'pace-modal-footer' },
-    ),
   ]);
 
-  // If editing with an existing financials row that had categories, jump to step2b
-  const selectedViewName = (isEdit && financials && categoryStates.size > 0) ? 'step2b' : 'step1';
+  // ===== STEPPER CONTAINER =====
+  // Build one Button per step; active/done classes are toggled via applyStepperClasses
 
-  // ===== ViewSwitcher Wizard =====
+  const stepperBtns = steps.map((step) => {
+    return new Button(step.n + ' · ' + step.label, {
+      class: 'pace-step-seg',
+      variant: 'secondary',
+      isOutlined: true,
+      onClickHandler: () => wizard.setView(step.id),
+    });
+  });
+
+  const stepperContainer = new Container(stepperBtns, { class: 'pace-stepper' });
+
+  // Apply active/done classes to the stepper for a given step index. Shared by the
+  // ViewSwitcher onRefreshHandler and the initial bootstrap (ViewSwitcher.render()
+  // does not fire onRefreshHandler for the initially-selected view).
+  function applyStepperClasses(stepIdx) {
+    stepperBtns.forEach((btn, i) => {
+      const el = btn.instance;
+      if (!el) return;
+      el.removeClass('pace-step-seg--active pace-step-seg--done');
+      if (i === stepIdx) {
+        el.addClass('pace-step-seg--active');
+      } else if (i < stepIdx) {
+        el.addClass('pace-step-seg--done');
+      }
+    });
+  }
+
+  // ===== FOOTER CONTAINER =====
+  // Children are rebuilt each step via the .children setter
+
+  const footerContainer = new Container([], { class: 'pace-modal-footer' });
+
+  // Helper: compute footer children for a given step index
+  function buildFooterChildren(stepIdx) {
+    const isFirst = stepIdx === 0;
+    const isLast = stepIdx === steps.length - 1;
+
+    const counter = new Text('passo ' + (stepIdx + 1) + ' de ' + steps.length, { type: 'span', class: 'pace-step-counter' });
+
+    if (!isLast) {
+      // Steps 01-04: counter, Gravar Rascunho, [Voltar], Continuar
+      const left = [counter];
+      const right = isFirst
+        ? [draftBtn, continueBtn]
+        : [draftBtn, backBtn, continueBtn];
+      return [
+        new Container(left, { class: 'pace-modal-footer__left' }),
+        new Container(right, { class: 'pace-modal-footer__right' }),
+      ];
+    }
+
+    // Step 05 (impacto): counter, Voltar, Gravar Rascunho, then submit/resubmit/workflow buttons
+    const impactoActions = isPostSubmission
+      ? [backBtn, draftBtn, ...(resubmitBtn ? [resubmitBtn] : []), ...workflowButtonsStep2b]
+      : [backBtn, draftBtn, ...(canAccess('submeter') ? [submitBtn] : []), ...workflowButtonsStep2b];
+
+    return [
+      new Container([counter], { class: 'pace-modal-footer__left' }),
+      new Container(impactoActions, { class: 'pace-modal-footer__right' }),
+    ];
+  }
+
+  // ===== HEADER BAND =====
+
+  const eyebrowText = isEdit ? 'Edição de iniciativa' : 'Nova submissão';
+  const titleText = isEdit
+    ? (asApprover ? 'Editar Iniciativa (Validador)' : 'Editar Iniciativa PDCA')
+    : 'Partilhar uma ideia';
+
+  const closeBtn = new Button(
+    new Container([getIcon('close-line')], { as: 'span', class: 'pace-modal-close-icon' }),
+    {
+      variant: 'secondary',
+      isOutlined: true,
+      class: 'pace-modal-close',
+      onClickHandler: () => modal.close(),
+    },
+  );
+
+  const headerBand = new Container([
+    closeBtn,
+    new Text(eyebrowText, { type: 'p', class: 'pace-modal-eyebrow' }),
+    new Text(titleText, { type: 'h2', class: 'pace-modal-title' }),
+    new Text(
+      'Em cinco passos — do contexto à contabilização do impacto — descreva a melhoria que quer ver no terreno.',
+      { type: 'p', class: 'pace-modal-subtitle' },
+    ),
+  ], { class: 'pace-modal-header-band' });
+
+  // ===== VIEWSWITCHER WIZARD =====
+
+  // If editing with an existing financials row that had categories, open directly on 'impacto'
+  const selectedViewName = (isEdit && financials && categoryStates.size > 0) ? 'impacto' : 'contexto';
 
   const wizard = new ViewSwitcher([
-    ['step1', step1View],
-    ['step2b', step2bView],
+    ['contexto', contextoView],
+    ['problema', problemaView],
+    ['tema',     temaView],
+    ['plano',    planoView],
+    ['impacto',  impactoView],
   ], {
     selectedViewName,
     onRefreshHandler: (viewName) => {
       if (!modal?.instance) return;
-      modal.instance.toggleClass('pace-form-modal--wide', viewName === 'step2b');
+
+      // Wide layout only on the financial step
+      modal.instance.toggleClass('pace-form-modal--wide', viewName === 'impacto');
+
+      // Locate current step index
+      const stepIdx = steps.findIndex(s => s.id === viewName);
+
+      // Update stepper button classes + footer children for this step
+      applyStepperClasses(stepIdx);
+      footerContainer.children = buildFooterChildren(stepIdx);
     },
   });
 
-  // ===== Modal =====
+  // ===== MODAL =====
 
   const modal = new Modal([
-    new Text(
-      isEdit
-        ? (asApprover ? 'Editar Iniciativa (Validador)' : 'Editar Iniciativa PDCA')
-        : 'Nova Iniciativa',
-      { type: 'h2', class: 'pace-modal-title' },
-    ),
+    headerBand,
+    stepperContainer,
     wizard,
+    footerContainer,
   ], {
     closeOnFocusLoss: false,
-    class: `pace-form-modal pace-initiative-modal${selectedViewName === 'step2b' ? ' pace-form-modal--wide' : ''}`,
+    class: `pace-form-modal pace-initiative-modal pt-v2${selectedViewName === 'impacto' ? ' pace-form-modal--wide' : ''}`,
     containerSelector: 'body',
     onCloseHandler: () => {
       hideOverlay();
@@ -694,7 +830,20 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     },
   });
 
+  // Trigger initial footer state after wizard is wired up
+  const initialStepIdx = steps.findIndex(s => s.id === selectedViewName);
+  footerContainer.children = buildFooterChildren(initialStepIdx);
+
   modal.render();
   modal.open();
+
+  // Bootstrap stepper active/done classes for the initial step. ViewSwitcher.render()
+  // does not fire onRefreshHandler, and the handler early-returns before render
+  // (modal.instance is null), so the initial highlight must be applied after open.
+  applyStepperClasses(initialStepIdx);
+
+  // Reflect any pre-checked confidential state (edit/replicate) on the box.
+  syncConfToggleClass();
+
   return modal;
 }

@@ -16,6 +16,7 @@ import {
   STATUS,
   statusLabel,
   statusDescription,
+  renderStatusCell,
 } from '../../utils/status-helpers.js';
 import {
   ownerName,
@@ -113,7 +114,7 @@ export default defineRoute((config) => {
       cells.pop();
       const mergedCell = new Container([cells[0], cells[1]], { class: 'pace-table-cell-stack' });
       const row = [mergedCell, cells[2], cells[3]];
-      row.splice(1, 0, new Text(statusDescription(item.Status), { type: 'span' }));
+      row.splice(1, 0, renderStatusCell(item));
       return new Container(row, { class: 'pace-table-row', onClickHandler: () => openInitiativeDetail(item, 'catalogo', loadData) });
     },
     emptyMessage: 'Sem iniciativas nesta categoria.',
@@ -277,5 +278,5 @@ export default defineRoute((config) => {
 
   loadData();
 
-  return createPageLayout([kpiRow, toggleContainer, filterBar, implementadosView, arquivoView]);
+  return createPageLayout([kpiRow, toggleContainer, filterBar, implementadosView, arquivoView], { contentClass: 'pt-v2' });
 });

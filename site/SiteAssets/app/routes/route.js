@@ -3,6 +3,7 @@ import {
   Container,
   Button,
   LinkButton,
+  Image,
   Toast,
   ContextStore,
   defineRoute,
@@ -12,7 +13,6 @@ import {
 import { getRecentForUser } from '../utils/notifications-api.js';
 import { openNewInitiativeModal } from '../utils/new-initiative.js';
 import { createPageLayout } from '../utils/navbar.js';
-import { APP_NAME, ORG_NAME } from '../utils/constants.js';
 import { hasProfile, ROLES } from '../utils/roles.js';
 
 export default defineRoute(async (config) => {
@@ -38,14 +38,21 @@ export default defineRoute(async (config) => {
   const isGestor = hasProfile(ROLES.GESTOR);
 
   const heroContent = [
-    new Text(`${APP_NAME.toUpperCase()} - ${ORG_NAME.toUpperCase()}`, { type: 'span', class: 'pace-hero-badge' }),
-    new Text(`Olá, ${firstName}`, { type: 'h1' }),
-    new Text('Bem-vindo à plataforma de melhoria contínua. Submeta ideias, acompanhe o progresso e quantifique o impacto das suas iniciativas.', { type: 'p' }),
+    new Container([
+      new Container([], { as: 'span', class: 'pace-hero-badge__dot' }),
+      new Text('PLACE · Plan · Do · Check · Act', { type: 'span' }),
+    ], { as: 'span', class: 'pace-hero-badge' }),
+    new Container([
+      new Text(`Olá, ${firstName}.`, { type: 'span' }),
+      new Text('O que vamos mudar hoje?', { type: 'span', class: 'pace-hero__title-accent' }),
+    ], { as: 'h1', class: 'pace-hero__title' }),
+    new Text('Submete ideias, acompanha o impacto e celebra as transformações que vais construindo com a tua equipa.', { type: 'p' }),
   ];
 
   if (!isGestor) {
-    const newInitiativeBtn = new Button('+ Nova Iniciativa', {
+    const newInitiativeBtn = new Button('+ Partilhar uma ideia', {
       variant: 'primary',
+      class: 'pt-btn-hero-primary pt-btn-lg',
       onClickHandler: () => {
         openNewInitiativeModal(() => {
           Toast.success('Iniciativa criada. A página será actualizada.');
@@ -55,13 +62,15 @@ export default defineRoute(async (config) => {
     heroContent.push(
       new Container([
         newInitiativeBtn,
-        new LinkButton('Ver as minhas iniciativas', 'pessoal', { variant: 'secondary', class: 'pace-hero-link-btn' }),
+        new LinkButton('Ver as minhas iniciativas', 'pessoal', { variant: 'secondary', class: 'pt-btn-hero-ghost pt-btn-lg' }),
       ], { class: 'pace-hero__actions' }),
     );
   }
 
   const hero = new Container([
+    new Container([], { class: 'pace-hero__pattern' }),
     new Container(heroContent, { class: 'pace-hero__content' }),
+    new Image('@/media/mascot.png', { class: 'pace-hero__visual' }),
   ], { class: 'pace-hero' });
 
   // -- Notifications (already date-filtered by CAML) --
@@ -89,13 +98,13 @@ export default defineRoute(async (config) => {
     : [];
 
   const notificationsSection = new Container([
-    new Text('Notificações (últimas 2 semanas)', { type: 'h2', class: 'pace-sec-title pace-sec-title--plain' }),
+    new Text('Notificações (últimas 2 semanas)', { type: 'h2', class: 'pt-section-header__title' }),
     new Container([...notifItems, ...emptyNotif], { as: 'div', class: 'pace-notif-list' }),
-  ], { class: 'pace-home-notifications' });
+  ], { class: 'pace-home-notifications pt-card' });
 
   const twoColGrid = new Container([
     notificationsSection,
   ], { class: 'pace-home-grid' });
 
-  return createPageLayout([hero, twoColGrid]);
+  return createPageLayout([hero, twoColGrid], { contentClass: 'pt-v2' });
 });

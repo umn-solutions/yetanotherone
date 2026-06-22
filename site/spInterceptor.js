@@ -52,15 +52,52 @@ var SPInterceptor = (function ($) {
       { Id: 2, Title: 'Sandbox Owners', Description: 'Default owners group', OwnerTitle: 'Admin' },
     ],
 
+    /**
+     * Stale principal returned by `ensureuser`, reproducing the on-prem
+     * duplicate User-Information-List bug: a low/empty-email row resolves
+     * instead of the valid one. `getuserbyid(STALE_USER_ID)/groups` returns []
+     * (the stale principal is in no group), so the OLD siteUserId-based access
+     * path grants nothing. The NEW email path (CurrentUser -> isUserInGroup)
+     * resolves access via the valid email in groupMembers below.
+     */
+    staleUser: {
+      Id: 999,
+      LoginName: _spPageContextInfo.userLoginName,
+      Title: 'John Doe',
+      Email: '', // empty -- the ghost UIL entry
+    },
+
+    /**
+     * Per-group members, keyed by group Title. Returned by
+     * `sitegroups/getbyname('Title')/users` (and `getbyid(n)` via Id->Title
+     * lookup), honoring `?$filter=Email eq '...'`. The valid john.doe row lives
+     * in 'Sandbox Owners' so email-based resolution grants OWNER access even
+     * though the stale principal (Id 999) is in no group. The empty-email ghost
+     * duplicate exercises getGroupUsers' dedupe/drop logic.
+     */
+    groupMembers: {
+      'Sandbox Members': [
+        { Id: 2, LoginName: 'i:0#.w|domain\\jsmith', Title: 'Jane Smith', Email: 'jane.smith@example.com' },
+      ],
+      'Sandbox Owners': [
+        { Id: 999, LoginName: _spPageContextInfo.userLoginName, Title: '', Email: '' }, // ghost dup
+        { Id: 1, LoginName: _spPageContextInfo.userLoginName, Title: 'John Doe', Email: 'john.doe@example.com' },
+      ],
+    },
+
     /** In-memory lists. Pre-populate to seed data for your routes. */
     lists: {},
   };
+
+  var STALE_USER_ID = 999;
 
   // Merge project-specific seed data from sharepointContext.js
   if (typeof _spMockData !== 'undefined') {
     if (_spMockData.user) $.extend(store.user, _spMockData.user);
     if (_spMockData.profile) $.extend(true, store.profile, _spMockData.profile);
     if (_spMockData.groups) store.groups = _spMockData.groups;
+    if (_spMockData.groupMembers) store.groupMembers = _spMockData.groupMembers;
+    if (_spMockData.staleUser) $.extend(store.staleUser, _spMockData.staleUser);
     if (_spMockData.lists) {
       Object.keys(_spMockData.lists).forEach(function (title) {
         store.lists[title] = _spMockData.lists[title];
@@ -330,6 +367,12 @@ var SPInterceptor = (function ($) {
     return out;
   }
 
+  // Extracts a raw (still URL-encoded) query-string value from a URL, or null.
+  function _getQueryParam(url, name) {
+    var val = (url.split(name + '=')[1] || '').split('&')[0];
+    return val || null;
+  }
+
   function _applyODataFilter(items, filterString) {
     if (!filterString) return items;
     var conditions = filterString.split(/\s+and\s+/i);
@@ -406,22 +449,50 @@ var SPInterceptor = (function ($) {
       });
     }
 
-    // Ensure user
+    // Ensure user -- returns the STALE principal (empty email, Id 999),
+    // reproducing the on-prem duplicate-UIL bug.
     if (m === 'POST' && url.includes('/_api/web/ensureuser')) {
-      _log('POST', url, 'ensureUser');
-      return _ok({ d: store.user });
+      _log('POST', url, 'ensureUser (stale principal)');
+      return _ok({ d: store.staleUser });
     }
 
-    // User groups by ID
-    if (m === 'GET' && /getuserbyid\(\d+\)\/groups/.test(url)) {
-      _log('GET', url, 'user groups');
-      return _ok({ d: { results: store.groups } });
+    // User groups by ID -- the stale principal belongs to no group, so the
+    // OLD siteUserId-based path returns []. Other IDs still see store.groups.
+    var groupsByIdMatch = url.match(/getuserbyid\((\d+)\)\/groups/);
+    if (m === 'GET' && groupsByIdMatch) {
+      var uid = parseInt(groupsByIdMatch[1], 10);
+      var ugroups = uid === STALE_USER_ID ? [] : store.groups;
+      _log('GET', url, 'user groups (id ' + uid + ') -> ' + ugroups.length);
+      return _ok({ d: { results: ugroups } });
     }
 
     // User profile (PeopleManager)
     if (m === 'GET' && url.includes('PeopleManager')) {
       _log('GET', url, 'user profile');
       return _ok({ d: store.profile });
+    }
+
+    // Group members: sitegroups/getbyid(n)|getbyname('Title')/users [?$filter=...]
+    // Resolves members by group Title (numeric id mapped via store.groups),
+    // then applies any server-side $filter (e.g. Email eq '...').
+    if (m === 'GET' && /\/_api\/web\/sitegroups\/(getbyid\(\d+\)|getbyname\([^)]*\))\/users/.test(url)) {
+      var byName = url.match(/getbyname\('([^']*)'\)\/users/);
+      var byId = url.match(/getbyid\((\d+)\)\/users/);
+      var groupTitle = null;
+      if (byName) {
+        groupTitle = decodeURIComponent(byName[1]).replace(/''/g, "'");
+      } else if (byId) {
+        var gid = parseInt(byId[1], 10);
+        var g = store.groups.filter(function (x) { return x.Id === gid; })[0];
+        groupTitle = g ? g.Title : null;
+      }
+      var members = (groupTitle && store.groupMembers[groupTitle]) || [];
+      var filterParam = _getQueryParam(url, '$filter');
+      if (filterParam) {
+        members = _applyODataFilter(members, decodeURIComponent(filterParam));
+      }
+      _log('GET', url, 'group members "' + groupTitle + '" -> ' + members.length);
+      return _ok({ value: members });
     }
 
     // Site groups
@@ -608,7 +679,7 @@ var SPInterceptor = (function ($) {
 
       // Get fields
       if (m === 'GET' && url.includes('/fields')) {
-        var filterParam = (url.split('$filter=')[1] || '').split('&')[0];
+        var filterParam = _getQueryParam(url, '$filter');
         var filteredFields = filterParam
           ? _applyODataFilter(list.fields, decodeURIComponent(filterParam))
           : list.fields;

@@ -12,7 +12,7 @@ import {
 } from '../../libs/nofbiz/nofbiz.base.js';
 
 import { getByStatuses, getByStatusesAndTeamScope } from '../../utils/initiatives-api.js';
-import { STATUS, statusLabel, statusDescription } from '../../utils/status-helpers.js';
+import { STATUS, statusLabel, statusDescription, renderStatusCell } from '../../utils/status-helpers.js';
 import { openInitiativeDetail } from '../../utils/side-panel-detail.js';
 import { createPageLayout } from '../../utils/navbar.js';
 import { buildKpi, mentorName, gestorName } from '../../utils/format-helpers.js';
@@ -83,7 +83,7 @@ export default defineRoute((config) => {
       new Text(item.Team || '', { type: 'span' }),
       new Text(mentorName(item), { type: 'span' }),
       new Text(gestorName(item), { type: 'span' }),
-      new Text(statusDescription(item.Status), { type: 'span' }),
+      renderStatusCell(item),
     ], { class: 'pace-table-row', onClickHandler: () => openInitiativeDetail(item, 'geral', () => reloadActive(true)) });
   }
 
@@ -281,5 +281,5 @@ export default defineRoute((config) => {
 
   loadInitial();
 
-  return createPageLayout([kpiRow, toggleContainer, filterBar, myTeamView, otherTeamView]);
+  return createPageLayout([kpiRow, toggleContainer, filterBar, myTeamView, otherTeamView], { contentClass: 'pt-v2' });
 });

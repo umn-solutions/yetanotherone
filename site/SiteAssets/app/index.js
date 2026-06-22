@@ -9,7 +9,7 @@ import {
 	Toast,
 	SystemError,
 } from "./libs/nofbiz/nofbiz.base.js";
-import { getByEmail, deriveRoles } from "./utils/org-hierarchy-api.js";
+import { getByEmail, getAllEmployees, deriveRoles } from "./utils/org-hierarchy-api.js";
 import { canAccess, isInGroup } from "./utils/roles.js";
 import { BOOTSTRAP_ADMIN_GROUP } from "./utils/constants.js";
 
@@ -27,8 +27,10 @@ function impersonateUser(currentUserEmails = [], impersonatedUserEmail = "") {
 }
 
 const appStyles = new StyleResource("@/css/styles.css");
-const [, user] = await Promise.all([
+const placeTheme = new StyleResource("@/css/place-theme.css");
+const [, , user] = await Promise.all([
 	appStyles.ready,
+	placeTheme.ready,
 	impersonateUser([""], ""),
 ]);
 
@@ -37,19 +39,24 @@ ContextStore.set("siteApi", siteApi);
 ContextStore.set("currentUser", user);
 
 let employee = null;
+let allOrgEmployees = null;
 let userRoles = ["colaborador"];
 let userOUID = "";
 let userDeptAncestorPath = "";
 
 try {
-	const results = await getByEmail(user.get("email"));
-	employee = results[0] || null;
+	const [byEmail, allEmp] = await Promise.all([
+		getByEmail(user.get("email")),
+		getAllEmployees(),
+	]);
+	employee = byEmail[0] || null;
+	allOrgEmployees = allEmp;
 } catch {
 	// OrgHierarchy list may not exist yet
 }
 
 if (employee) {
-	userRoles = deriveRoles(employee);
+	userRoles = deriveRoles(employee, allOrgEmployees);
 	userOUID = employee.OUID || "";
 	userDeptAncestorPath = employee.DeptAncestorPath || "";
 } else if (isInGroup(user, BOOTSTRAP_ADMIN_GROUP)) {

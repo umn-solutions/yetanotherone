@@ -235,19 +235,45 @@ export async function updateEmployeeRole(employeeId, appRole) {
 
 /**
  * Derives application roles from an OrgHierarchy employee record.
- * Priority: AppRole override > Category-based > default colaborador.
+ * Priority: AppRole override > OUID-head derivation > Category-based > default colaborador.
+ *
+ * The head of the first MENTOR_OUIDS entry is derived to 'mentor-manager' automatically
+ * (unless an explicit AppRole override already applies). The head is determined by
+ * pickTeamHead on the cached members array; because this function runs synchronously
+ * (called from route render paths), the caller must ensure OrgHierarchy data is cached
+ * before calling (getAllEmployees() loads the cache used here). In practice, routes load
+ * all employees first, so this is always satisfied.
+ *
  * @param {Object|null} employee
+ * @param {Object[]|null} [allEmployees] - Full OrgHierarchy list (used to find MENTOR_OUIDS head).
+ *   When omitted, mentor-manager auto-derivation is skipped.
  * @returns {string[]}
  */
-export function deriveRoles(employee) {
+export function deriveRoles(employee, allEmployees) {
   if (!employee) return ['colaborador'];
   const appRole = employee.AppRole || '';
   const category = employee.Category || '';
 
-  // Explicit AppRole override takes highest priority
+  // Explicit AppRole override takes highest priority.
+  // mentor-manager inherits mentor so any mentor-gated check also passes.
+  if (appRole === 'mentor-manager') return ['mentor-manager', 'mentor'];
   if (appRole === 'mentor') return ['mentor'];
   if (appRole === 'gestor') return ['gestor'];
   if (appRole === 'colaborador') return ['colaborador'];
+
+  // OUID-head derivation: the head of the primary mentor OU becomes mentor-manager.
+  // Requires the full employees list to identify the head; skip when not provided.
+  if (allEmployees && allEmployees.length > 0 && MENTOR_OUIDS.length > 0) {
+    const mentorOUID = MENTOR_OUIDS[0];
+    const ouMembers = allEmployees.filter(e => e.OUID === mentorOUID);
+    const head = pickTeamHead(ouMembers);
+    if (head && head.Title === employee.Title) {
+      return ['mentor-manager', 'mentor'];
+    }
+  }
+
+  // OUID-based mentor: members of MENTOR_OUIDS OUs become mentors
+  if (MENTOR_OUIDS.includes(employee.OUID)) return ['mentor'];
 
   // Category-based defaults (only when AppRole is empty/auto)
   if (GESTOR_CATEGORIES.includes(category)) return ['gestor'];

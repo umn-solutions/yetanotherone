@@ -31,9 +31,10 @@ function buildEventTitle(eventType, fromStatus, toStatus) {
  * @param {string} fromStatus
  * @param {string} toStatus
  * @param {string} [comment='']
+ * @param {Object} [extraFields={}] - Additional fields to persist on the event (e.g. ValidationLabel)
  * @returns {Promise<unknown>}
  */
-export async function createEvent(initiativeUUID, eventType, fromStatus, toStatus, comment = '') {
+export async function createEvent(initiativeUUID, eventType, fromStatus, toStatus, comment = '', extraFields = {}) {
   assertValidEventType(eventType);
   const user = ContextStore.get('currentUser');
   return listApi.createItem({
@@ -47,6 +48,7 @@ export async function createEvent(initiativeUUID, eventType, fromStatus, toStatu
     Actor: { email: user.get('email'), displayName: user.get('displayName') },
     ActorEmail: user.get('email'),
     Date: new Date().toISOString(),
+    ...extraFields,
   });
 }
 
