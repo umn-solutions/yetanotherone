@@ -1,7 +1,6 @@
 import {
   SidePanel,
   Container,
-  AccordionItem,
   Text,
   Button,
   Toast,
@@ -18,7 +17,7 @@ import { STATUS, statusLabel, chipClass, getNextFlowStatus, STATUS_LABELS } from
 import { getTeamLabel, getTeamName } from './roles.js';
 import { mentorName, gestorName } from './format-helpers.js';
 import { getByInitiative as getFinancials } from './financials-api.js';
-import { EVENT_TYPES, STATUS_DESCRIPTIONS, CATEGORY_LABELS, hasFinancialData } from './constants.js';
+import { EVENT_TYPES, STATUS_DESCRIPTIONS, CATEGORY_LABELS, metricsHaveFinancialData, formatSavingTypeShort } from './constants.js';
 import {
   hydrateCategoryStates,
   getPhaseEditability,
@@ -32,7 +31,7 @@ import { getByUUID } from './initiatives-api.js';
 import { getShareAccessType } from './shared-api.js';
 import { getByInitiative as getComments, createComment } from './comments-api.js';
 import { createEvent, getByInitiative as getEvents } from './initiative-events-api.js';
-import { createNotification } from './notifications-api.js';
+import { createEmail, EMAIL_EVENTS } from './emails.js';
 
 const TIME_PERIOD_DISPLAY = {
   Diario: 'Diário',
@@ -152,34 +151,54 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
   const financialDisposers = [];
 
   if (financials) {
+    // Pass-through for unknown category strings (new inferred strings not in SAVING_CAT_DISPLAY)
     const mapCat = (c) => SAVING_CAT_DISPLAY[c] || c;
     const catDisplay = Array.isArray(financials.SavingCategory)
       ? financials.SavingCategory.map(mapCat).join(', ')
       : (financials.SavingCategory ? mapCat(financials.SavingCategory) : '');
 
+    // Short display for SavingType
+    const rawSavingType = financials.SavingType || '';
+    const savingTypeDisplay = rawSavingType ? formatSavingTypeShort(rawSavingType) : '';
+
     const financialRows = [
       new Text('Dados Financeiros', { type: 'h3', class: 'pace-sec-title' }),
     ];
 
-    // Always-rendered rows
+    // Always-rendered rows (Categorias + Tipo Saving from stored values)
     if (catDisplay) {
       financialRows.push(new Container([
         new Text('Categorias de Savings', { type: 'span', class: 'pace-detail-label' }),
         new Text(catDisplay, { type: 'span', class: 'pace-detail-value' }),
       ], { class: 'pace-detail-row pace-detail-row--inline' }));
     }
-    if (financials.SavingType) {
+    if (savingTypeDisplay) {
       financialRows.push(new Container([
         new Text('Tipo Saving', { type: 'span', class: 'pace-detail-label' }),
-        new Text(financials.SavingType, { type: 'span', class: 'pace-detail-value' }),
+        new Text(savingTypeDisplay, { type: 'span', class: 'pace-detail-value' }),
       ], { class: 'pace-detail-row pace-detail-row--inline' }));
     }
 
-    if (hasFinancialData(financials.SavingCategory)) {
-      // All phases locked for display purposes; editability arg only sizes FormFields internally
-      const editability = getPhaseEditability(initiative.Status);
-      const categoryStates = hydrateCategoryStates(financials, editability);
+    // Always hydrate category states (even if qualidade-only, so text cards render)
+    const editability = getPhaseEditability(initiative.Status);
+    const categoryStates = hydrateCategoryStates(financials, editability);
 
+    // Per-category display -- always render when there are metric cards
+    for (const state of categoryStates.values()) {
+      const built = buildCategoryDisplay(state, {
+        timePeriod: financials.TimePeriod,
+        fteAnnualCost: 0, // set below when fteCost is available
+      });
+      financialDisposers.push(() => {
+        built.dispose();
+        state.dispose();
+      });
+      financialRows.push(new Container(built.components, { class: 'pace-financial-category-body' }));
+    }
+
+    // Período, FTE controller, and totals panel only when there are financial metrics
+    const enabledKeys = Array.isArray(financials.EnabledCategories) ? financials.EnabledCategories : [];
+    if (metricsHaveFinancialData(enabledKeys)) {
       if (financials.TimePeriod) {
         const periodLabel = TIME_PERIOD_DISPLAY[financials.TimePeriod] || financials.TimePeriod;
         financialRows.push(new Container([
@@ -194,24 +213,6 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
         canEdit: false,
       });
       financialDisposers.push(() => fteCost.dispose());
-
-      // Per-category display
-      for (const state of categoryStates.values()) {
-        const built = buildCategoryDisplay(state, {
-          timePeriod: financials.TimePeriod,
-          fteAnnualCost: fteCost.totalsOpt,
-        });
-        financialDisposers.push(() => {
-          built.dispose();
-          state.dispose();
-        });
-        const [, ...detailComponents] = built.components; // drop the h4 title (accordion header replaces it)
-        financialRows.push(new AccordionItem(
-          `Detalhes de ${CATEGORY_LABELS[state.key]}`,
-          new Container(detailComponents, { class: 'pace-financial-category-body' }),
-          { isInitialOpen: false }
-        ));
-      }
 
       // Totals panel
       const totalsResult = buildTotalsPanel(categoryStates, {
@@ -398,12 +399,11 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
           const loading = Toast.loading('A enviar comentário...');
           try {
             await createComment(initiative.UUID, body);
-            if (initiative.MentorEmail && initiative.MentorEmail !== currentEmail) {
-              await createNotification(initiative.UUID, initiative.MentorEmail, user.get('displayName') + ' comentou ' + initiative.Title, 'comment');
-            }
-            if (initiative.SubmittedByEmail && initiative.SubmittedByEmail !== currentEmail) {
-              await createNotification(initiative.UUID, initiative.SubmittedByEmail, user.get('displayName') + ' comentou ' + initiative.Title, 'comment');
-            }
+            await createEmail(EMAIL_EVENTS.COMMENT_ADDED, {
+              initiative,
+              actorName: user.get('displayName'),
+              excludeEmail: currentEmail,
+            }).send();
             loading.success('Comentário enviado.');
             commentField.value = '';
             // Re-fetch and rebuild comments display

@@ -25,10 +25,10 @@ import {
   deleteItem as deleteEvent,
 } from './initiative-events-api.js';
 import {
-  createNotification,
   getByInitiative as getNotifications,
   deleteItem as deleteNotification,
 } from './notifications-api.js';
+import { createEmail, EMAIL_EVENTS } from './emails.js';
 import { EVENT_TYPES, deriveSavingType } from './constants.js';
 import { assertToBeComplete, computeAnnualizedToBeTotalEur, resolveFinalValidationLabel } from './financial-forms.js';
 import { getAssignedGestor } from './routing-rules.js';
@@ -316,15 +316,19 @@ async function confirmWithUserComboBox(title, message) {
       value: new UserIdentity(emp.Email, emp.ShortName),
     }));
 
+  // Gestores may only grant read access; other roles may also grant collaborate.
+  const canShareCollaborate = canAccess('partilhar_colaborar');
+  const readOption = { label: 'Leitura', value: 'read' };
+  const typeOptions = canShareCollaborate
+    ? [readOption, { label: 'Colaboração', value: 'collaborate' }]
+    : [readOption];
+
   const personField = new FormField({ value: null });
-  const typeField = new FormField({ value: null });
+  const typeField = new FormField({ value: canShareCollaborate ? null : readOption });
   const commentField = new FormField({ value: '' });
 
   const personCombo = new ComboBox(personField, personOptions, { placeholder: 'Selecionar pessoa...' });
-  const typeCombo = new ComboBox(typeField, [
-    { label: 'Leitura', value: 'read' },
-    { label: 'Colaboração', value: 'collaborate' },
-  ], { placeholder: 'Selecionar...' });
+  const typeCombo = new ComboBox(typeField, typeOptions, { placeholder: 'Selecionar...', isDisabled: !canShareCollaborate });
   const commentInput = new TextArea(commentField, { placeholder: 'Comentário (opcional)...', rows: 3 });
 
   return new Promise((resolve) => {
@@ -402,14 +406,7 @@ async function confirmWithUserComboBox(title, message) {
  */
 export async function finalizeSubmission(initiative, fromStatus) {
   await createEvent(initiative.UUID, EVENT_TYPES.SUBMISSION, fromStatus, STATUS.SUBMETIDO);
-  if (initiative.MentorEmail) {
-    await createNotification(
-      initiative.UUID,
-      initiative.MentorEmail,
-      initiative.Title + ' submetido para validação.',
-      'state_change',
-    );
-  }
+  await createEmail(EMAIL_EVENTS.SUBMITTED, { initiative }).send();
 }
 
 /**
@@ -485,22 +482,8 @@ export async function performResubmitTransition(initiative) {
 
   await transitionStatus(initiative.Id, target, initiative['odata.etag'], extraFields);
   await createEvent(initiative.UUID, EVENT_TYPES.RESUBMISSION, STATUS.EM_REVISAO, target, eventComment);
-  if (initiative.MentorEmail) {
-    await createNotification(
-      initiative.UUID,
-      initiative.MentorEmail,
-      initiative.Title + ' re-submetido.',
-      'state_change',
-    );
-  }
-  if (assignedGestor) {
-    await createNotification(
-      initiative.UUID,
-      assignedGestor.email,
-      initiative.Title + ' requer validação de savings.',
-      'state_change',
-    );
-  }
+  await createEmail(EMAIL_EVENTS.RESUBMITTED, { initiative }).send();
+  await createEmail(EMAIL_EVENTS.SAVINGS_VALIDATION_REQUESTED, { initiative, gestorEmail: assignedGestor?.email }).send();
 }
 
 /**
@@ -553,14 +536,7 @@ export async function cancelInitiative(initiative, button, onSuccess) {
   try {
     await transitionStatus(initiative.Id, STATUS.CANCELADO, initiative['odata.etag']);
     await createEvent(initiative.UUID, EVENT_TYPES.CANCELLATION, initiative.Status, STATUS.CANCELADO);
-    if (initiative.MentorEmail) {
-      await createNotification(
-        initiative.UUID,
-        initiative.MentorEmail,
-        initiative.Title + ' foi cancelado.',
-        'state_change',
-      );
-    }
+    await createEmail(EMAIL_EVENTS.CANCELLED, { initiative }).send();
     loading.success('Iniciativa cancelada.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -654,12 +630,12 @@ export async function deleteInitiative(initiative, button, onSuccess) {
 
     // Post-delete notifications. Sent AFTER the cascade so they survive (the
     // cascade above wipes every existing Notification for this initiative).
-    // Title text is embedded in the message; click-through targets a now-dead
-    // record but the recipient still sees the alert in their inbox.
-    const deletionMessage = deleterName + ' eliminou ' + (initiative.Title || 'uma iniciativa') + '.';
-    for (const email of recipients) {
-      await createNotification(initiative.UUID, email, deletionMessage, 'state_change').catch(() => {});
-    }
+    // The bell record is written per-recipient only if their email send succeeds.
+    await createEmail(EMAIL_EVENTS.DELETED, {
+      initiative,
+      recipients: [...recipients],
+      actorName: deleterName,
+    }).send();
 
     loading.success('Iniciativa eliminada.');
     if (onSuccess) onSuccess();
@@ -696,14 +672,7 @@ export async function approveProject(initiative, button, onSuccess) {
       MentorEmail: user.get('email'),
     });
     await createEvent(initiative.UUID, EVENT_TYPES.MENTOR_APPROVAL, STATUS.SUBMETIDO, STATUS.VALIDADO_MENTOR);
-    if (initiative.SubmittedByEmail) {
-      await createNotification(
-        initiative.UUID,
-        initiative.SubmittedByEmail,
-        'Sua iniciativa foi aprovada pelo mentor.',
-        'state_change',
-      );
-    }
+    await createEmail(EMAIL_EVENTS.MENTOR_APPROVED, { initiative }).send();
     loading.success('Projecto aprovado.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -742,14 +711,7 @@ export async function rejectInitiative(initiative, button, onSuccess) {
   try {
     await transitionStatus(initiative.Id, STATUS.REJEITADO, initiative['odata.etag']);
     await createEvent(initiative.UUID, eventType, currentStatus, STATUS.REJEITADO, comment);
-    if (initiative.SubmittedByEmail) {
-      await createNotification(
-        initiative.UUID,
-        initiative.SubmittedByEmail,
-        initiative.Title + ' foi rejeitado.',
-        'state_change',
-      );
-    }
+    await createEmail(EMAIL_EVENTS.REJECTED, { initiative, reason: comment }).send();
     loading.success('Iniciativa rejeitada.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -794,14 +756,7 @@ export async function requestRevision(initiative, button, onSuccess) {
       PreviousStatus: previousStatus,
     });
     await createEvent(initiative.UUID, EVENT_TYPES.REVIEW_REQUEST, currentStatus, STATUS.EM_REVISAO, comment);
-    if (initiative.SubmittedByEmail) {
-      await createNotification(
-        initiative.UUID,
-        initiative.SubmittedByEmail,
-        initiative.Title + ' requer revisão.',
-        'state_change',
-      );
-    }
+    await createEmail(EMAIL_EVENTS.REVISION_REQUESTED, { initiative, reason: comment }).send();
     loading.success('Pedido de revisão enviado.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -834,14 +789,7 @@ export async function startExecution(initiative, button, onSuccess) {
       ExpectedEndDate: expectedEndDate,
     });
     await createEvent(initiative.UUID, EVENT_TYPES.EXECUTION_START, STATUS.VALIDADO_MENTOR, STATUS.EM_EXECUCAO);
-    if (initiative.MentorEmail) {
-      await createNotification(
-        initiative.UUID,
-        initiative.MentorEmail,
-        initiative.Title + ' iniciou execução.',
-        'state_change',
-      );
-    }
+    await createEmail(EMAIL_EVENTS.EXECUTION_STARTED, { initiative }).send();
     loading.success('Execução iniciada.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -890,14 +838,7 @@ export async function declareSavings(initiative, button, onSuccess) {
 
     await transitionStatus(initiative.Id, STATUS.POR_VALIDAR, initiative['odata.etag'], extraFields);
     await createEvent(initiative.UUID, EVENT_TYPES.SAVINGS_SUBMISSION, STATUS.EM_EXECUCAO, STATUS.POR_VALIDAR);
-    if (gestor) {
-      await createNotification(
-        initiative.UUID,
-        gestor.email,
-        initiative.Title + ' requer validação de savings.',
-        'state_change',
-      );
-    }
+    await createEmail(EMAIL_EVENTS.SAVINGS_VALIDATION_REQUESTED, { initiative, gestorEmail: gestor?.email }).send();
     loading.success('Pedido de validação enviado.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -932,14 +873,7 @@ export async function approveSavings(initiative, button, onSuccess) {
   try {
     await transitionStatus(initiative.Id, STATUS.VALIDADO_GESTOR, initiative['odata.etag']);
     await createEvent(initiative.UUID, EVENT_TYPES.BUSINESS_VALIDATION, STATUS.POR_VALIDAR, STATUS.VALIDADO_GESTOR);
-    if (initiative.MentorEmail) {
-      await createNotification(
-        initiative.UUID,
-        initiative.MentorEmail,
-        initiative.Title + ' - savings aprovados. Confirmação final pendente.',
-        'state_change',
-      );
-    }
+    await createEmail(EMAIL_EVENTS.SAVINGS_APPROVED, { initiative }).send();
     loading.success('Savings aprovados.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -975,21 +909,7 @@ export async function mentorFinalValidation(initiative, button, onSuccess) {
     await createEvent(initiative.UUID, EVENT_TYPES.MENTOR_FINAL_VALIDATION, STATUS.VALIDADO_GESTOR, STATUS.VALIDADO_FINAL);
 
     const actorEmail = ContextStore.get('currentUser').get('email');
-    const recipients = [
-      initiative.SubmittedByEmail,
-      initiative.GestorValidatorEmail,
-    ].filter(email => email && email !== actorEmail);
-    const seen = new Set();
-    for (const email of recipients) {
-      if (seen.has(email)) continue;
-      seen.add(email);
-      await createNotification(
-        initiative.UUID,
-        email,
-        'Savings confirmados pelo mentor. Aguarda validação final.',
-        'state_change',
-      );
-    }
+    await createEmail(EMAIL_EVENTS.MENTOR_FINAL_VALIDATED, { initiative, excludeEmail: actorEmail }).send();
 
     loading.success('Savings confirmados. Iniciativa aguarda validação final.');
     if (onSuccess) onSuccess();
@@ -1018,12 +938,12 @@ export async function mentorManagerValidation(initiative, button, onSuccess) {
   }
 
   const pickedDate = await confirmWithDate(
-    'Confirmar Implementação',
+    'Validar Implementação',
     'Confirma a implementação desta iniciativa e indique a data de implementação.',
     {
       defaultValue: __dayjs().format('YYYY-MM-DD'),
       label: 'Data de implementação',
-      confirmLabel: 'Confirmar Implementação',
+      confirmLabel: 'Validar Implementação',
     },
   );
   if (!pickedDate) return;
@@ -1052,75 +972,13 @@ export async function mentorManagerValidation(initiative, button, onSuccess) {
     await createEvent(initiative.UUID, EVENT_TYPES.OWNER_IMPLEMENTATION, STATUS.VALIDADO_FINAL, STATUS.IMPLEMENTADO);
 
     const actorEmail = ContextStore.get('currentUser').get('email');
-    const recipients = [
-      initiative.SubmittedByEmail,
-      initiative.MentorEmail,
-      initiative.GestorValidatorEmail,
-    ].filter(email => email && email !== actorEmail);
-    const seen = new Set();
-    for (const email of recipients) {
-      if (seen.has(email)) continue;
-      seen.add(email);
-      await createNotification(
-        initiative.UUID,
-        email,
-        'Iniciativa marcada como implementada.',
-        'state_change',
-      );
-    }
+    await createEmail(EMAIL_EVENTS.IMPLEMENTED, { initiative, excludeEmail: actorEmail }).send();
 
     loading.success('Iniciativa implementada.');
     if (onSuccess) onSuccess();
   } catch (error) {
     console.error(error);
     loading.error(actionErrorMessage(error, 'Erro ao confirmar implementação.'));
-  } finally {
-    button.isLoading = false;
-  }
-}
-
-/**
- * Owner marks as implemented: VALIDADO_FINAL -> IMPLEMENTADO
- */
-export async function markAsImplemented(initiative, button, onSuccess) {
-  if (!canTransitionTo(initiative.Status, STATUS.IMPLEMENTADO)) {
-    Toast.error('Transição de estado inválida.');
-    return;
-  }
-
-  const confirmed = await confirm(
-    'Marcar como Implementado',
-    'Tem a certeza que deseja marcar esta iniciativa como implementada?',
-  );
-  if (!confirmed) return;
-
-  button.isLoading = true;
-  const loading = Toast.loading('A marcar como implementado...');
-  try {
-    await transitionStatus(initiative.Id, STATUS.IMPLEMENTADO, initiative['odata.etag'], { ImplementedDate: new Date().toISOString() });
-    await createEvent(initiative.UUID, EVENT_TYPES.OWNER_IMPLEMENTATION, STATUS.VALIDADO_FINAL, STATUS.IMPLEMENTADO);
-    const actorEmail = ContextStore.get('currentUser').get('email');
-    const recipients = [
-      initiative.SubmittedByEmail,
-      initiative.MentorEmail,
-      initiative.GestorValidatorEmail,
-    ].filter(email => email && email !== actorEmail);
-    const seen = new Set();
-    for (const email of recipients) {
-      if (seen.has(email)) continue;
-      seen.add(email);
-      await createNotification(
-        initiative.UUID,
-        email,
-        'Iniciativa marcada como implementada.',
-        'state_change',
-      );
-    }
-    loading.success('Iniciativa implementada.');
-    if (onSuccess) onSuccess();
-  } catch (error) {
-    console.error(error);
-    loading.error(actionErrorMessage(error, 'Erro ao marcar como implementado.'));
   } finally {
     button.isLoading = false;
   }
@@ -1162,22 +1020,10 @@ export async function transferGestor(initiative, button, onSuccess) {
     await createEvent(initiative.UUID, EVENT_TYPES.TRANSFER, STATUS.POR_VALIDAR, STATUS.POR_VALIDAR, transferComment);
 
     // Notify new gestor
-    await createNotification(
-      initiative.UUID,
-      newIdentity.email,
-      initiative.Title + ' transferido para si para validação.',
-      'state_change',
-    );
+    await createEmail(EMAIL_EVENTS.GESTOR_TRANSFERRED, { initiative, recipients: newIdentity.email }).send();
 
     // Notify initiative owner
-    if (initiative.SubmittedByEmail) {
-      await createNotification(
-        initiative.UUID,
-        initiative.SubmittedByEmail,
-        'O gestor de ' + initiative.Title + ' foi alterado.',
-        'state_change',
-      );
-    }
+    await createEmail(EMAIL_EVENTS.GESTOR_CHANGED, { initiative }).send();
 
     loading.success('Iniciativa transferida com sucesso.');
     if (onSuccess) onSuccess();
@@ -1226,22 +1072,10 @@ export async function transferOwnership(initiative, button, onSuccess) {
     await createEvent(initiative.UUID, EVENT_TYPES.TRANSFER, initiative.Status, initiative.Status, transferComment);
 
     // Notify new owner
-    await createNotification(
-      initiative.UUID,
-      newIdentity.email,
-      initiative.Title + ' transferido para si.',
-      'state_change',
-    );
+    await createEmail(EMAIL_EVENTS.OWNERSHIP_TRANSFERRED, { initiative, recipients: newIdentity.email }).send();
 
     // Notify mentor if exists
-    if (initiative.MentorEmail) {
-      await createNotification(
-        initiative.UUID,
-        initiative.MentorEmail,
-        'O proprietário de ' + initiative.Title + ' foi alterado.',
-        'state_change',
-      );
-    }
+    await createEmail(EMAIL_EVENTS.OWNER_CHANGED, { initiative }).send();
 
     loading.success('Iniciativa transferida com sucesso.');
     if (onSuccess) onSuccess();
@@ -1269,12 +1103,11 @@ async function addAccessFlow(initiative) {
     const user = ContextStore.get('currentUser');
     const sharedBy = new UserIdentity(user.get('email'), user.get('displayName'));
     await shareInitiative(initiative.UUID, result.person, sharedBy, result.type);
-    await createNotification(
-      initiative.UUID,
-      result.person.email,
-      user.get('displayName') + ' concedeu-lhe acesso a ' + initiative.Title + '.',
-      'collaboration',
-    );
+    await createEmail(EMAIL_EVENTS.ACCESS_GRANTED, {
+      initiative,
+      recipients: result.person.email,
+      actorName: user.get('displayName'),
+    }).send();
     loading.success('Acesso concedido.');
     return true;
   } catch (error) {
@@ -1298,12 +1131,11 @@ function buildAccessRow(record, onRemoved) {
       try {
         await revokeAccess(record.Id, record['odata.etag'] || '*');
         const user = ContextStore.get('currentUser');
-        await createNotification(
-          record.InitiativeUUID,
-          record.SharedWithEmail,
-          user.get('displayName') + ' removeu o seu acesso à iniciativa.',
-          'collaboration',
-        ).catch(() => {});
+        await createEmail(EMAIL_EVENTS.ACCESS_REVOKED, {
+          initiativeUUID: record.InitiativeUUID,
+          recipients: record.SharedWithEmail,
+          actorName: user.get('displayName'),
+        }).send();
         loading.success('Acesso removido.');
         onRemoved(record);
       } catch (error) {

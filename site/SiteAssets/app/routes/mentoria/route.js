@@ -12,8 +12,9 @@ import {
   defineRoute,
   extractComboBoxValue,
 } from '../../libs/nofbiz/nofbiz.base.js';
-import { getUnassignedByStatuses, getByStatusesAndMentor, getByUUIDs } from '../../utils/initiatives-api.js';
+import { getUnassignedByStatuses, getByStatusesAndMentor, getByUUIDs, getByStatuses } from '../../utils/initiatives-api.js';
 import { getSharedWithMe } from '../../utils/shared-api.js';
+import { canAccess } from '../../utils/roles.js';
 import { STATUS, statusLabel, statusDescription, renderStatusCell } from '../../utils/status-helpers.js';
 import {
   ownerName,
@@ -40,6 +41,7 @@ export default defineRoute((config) => {
   let projectItems = [];
   let myValidadoGestor = [];
   let myTrackingItems = [];
+  let implementacaoItems = [];
   let colabItems = [];
   let sharedByMap = new Map();
   let teamOptions = [];
@@ -66,7 +68,7 @@ export default defineRoute((config) => {
     { class: 'pace-cta' }
   );
   const kpiRow = new Container([], { class: 'pace-kpi-row' });
-  const validationGrid = new Container([], { class: 'pace-validation-grid' });
+  const validationGrid = new Container([]);
   const toggleContainer = new Container([], { class: 'pace-toggle-wrapper' });
   const filterBar = new Container([], { class: 'pace-filters' });
   const minhasView = new View([], { showOnRender: true });
@@ -197,16 +199,18 @@ export default defineRoute((config) => {
   function buildUI() {
     const activeDataset = activeTab === 'minhas' ? myTrackingItems : colabItems;
     const filtered = applyFilters(activeDataset);
+    const isManager = canAccess('validar_implementacao_final');
 
     kpiRow.children = [
       buildKpi(String(projectItems.length), 'Validação Projecto'),
       buildKpi(String(myValidadoGestor.length), 'Confirmação Final'),
       buildKpi(String(myTrackingItems.length), 'Em Acompanhamento'),
+      ...(isManager ? [buildKpi(String(implementacaoItems.length), 'Confirmação de Implementação')] : []),
     ];
 
-    const showGrid = projectItems.length > 0 || myValidadoGestor.length > 0;
+    const showGrid = projectItems.length > 0 || myValidadoGestor.length > 0 || implementacaoItems.length > 0;
     if (showGrid) {
-      validationGrid.children = [
+      const gridColumns = [
         new Container(
           [
             new Text('Validação de Projecto', { type: 'h3' }),
@@ -227,6 +231,27 @@ export default defineRoute((config) => {
           ],
           { class: 'pace-validation-col pace-validation-col--savings pace-validation-col--scroll' }
         ),
+      ];
+      if (isManager) {
+        gridColumns.push(
+          new Container(
+            [
+              new Text('Confirmação de Implementação', { type: 'h3' }),
+              ...implementacaoItems.map((item) => buildPendingItem(item, 'implementacao')),
+              ...(implementacaoItems.length === 0
+                ? [new Text('Sem iniciativas pendentes de confirmação de implementação.', { type: 'p', class: 'pace-empty' })]
+                : []),
+            ],
+            { class: 'pace-validation-col pace-validation-col--implementacao pace-validation-col--scroll' }
+          )
+        );
+      }
+      validationGrid.children = [
+        new Container(gridColumns, {
+          class: isManager
+            ? 'pace-validation-grid pace-validation-grid--triple'
+            : 'pace-validation-grid',
+        }),
       ];
     } else {
       validationGrid.children = [];
@@ -253,7 +278,7 @@ export default defineRoute((config) => {
     const metaParts = [ownerName(item), item.ImpactedTeamOUID];
     if (type === 'projecto' && mentor !== '---') {
       metaParts.push(`Mentor: ${mentor}`);
-    } else if (type === 'savings') {
+    } else if (type === 'savings' || type === 'implementacao') {
       metaParts.push(`Gestor: ${gestorName(item)}`);
     }
     const metaText = metaParts.join(' | ');
@@ -263,6 +288,7 @@ export default defineRoute((config) => {
     const actionLabel = !canAct ? 'Ver'
       : item.Status === STATUS.SUBMETIDO ? 'Validar'
       : item.Status === STATUS.VALIDADO_GESTOR ? 'Confirmar'
+      : item.Status === STATUS.VALIDADO_FINAL ? 'Confirmar'
       : 'Ver';
 
     const metaChildren = [
@@ -331,6 +357,12 @@ export default defineRoute((config) => {
       ]);
 
       teamOptions = teams;
+
+      if (canAccess('validar_implementacao_final')) {
+        implementacaoItems = await getByStatuses([STATUS.VALIDADO_FINAL]);
+      } else {
+        implementacaoItems = [];
+      }
 
       const mySubmetidos = myItems.filter((i) => i.Status === STATUS.SUBMETIDO);
       projectItems = [...unassigned, ...mySubmetidos];

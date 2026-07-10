@@ -29,6 +29,9 @@ export const PERMISSION_MAP = {
   eliminar_proprio: ['colaborador', 'gestor', 'mentor', 'mentor-manager'],
   editar: ['colaborador', 'gestor', 'mentor', 'mentor-manager'],
   administracao: ['mentor', 'mentor-manager'],
+  // Sharing an initiative with collaborate (write) access. Gestores are excluded --
+  // they may only grant read access.
+  partilhar_colaborar: ['colaborador', 'mentor', 'mentor-manager'],
 };
 
 /**

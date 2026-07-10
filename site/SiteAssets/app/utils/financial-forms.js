@@ -1,6 +1,7 @@
 import {
   Container,
   Text,
+  TextArea,
   NumberInput,
   ComboBox,
   FormField,
@@ -16,19 +17,23 @@ import {
 
 import {
   ANNUALIZATION_FACTORS,
-  SAVING_CATEGORIES,
-  HARD_CATEGORIES,
   SOFT_CATEGORIES,
   CATEGORY_KEYS,
   CATEGORY_LABELS,
+  METRIC_DESCRIPTIONS,
   CATEGORY_DIRECTIONS,
   CATEGORY_FIELD_NAMES,
-  deriveSavingType,
+  INPUT_KEYS_BY_CATEGORY,
+  INPUT_LABELS_BY_CATEGORY,
   SOFT_SAVINGS_THRESHOLD_EUR,
   MENTOR_MANAGER_LABELS,
+  inferCategoriesFromMetrics,
+  inferSavingTypeFromMetrics,
+  formatSavingTypeShort,
+  metricsHaveFinancialData,
 } from './constants.js';
 
-import { createTagsToggle, createSegmentedToggle } from './tags-toggle.js';
+import { createSegmentedToggle } from './tags-toggle.js';
 
 import { STATUS } from './status-helpers.js';
 
@@ -41,46 +46,6 @@ export const FINANCIAL_TYPES = {
   EFICIENCIA: 'Eficiencia',
   PRODUCAO:   'Producao',
   GASTOS_GERAIS: 'GastosGerais',
-};
-
-/**
- * Per-category input field keys.
- * Eficiencia:    vp (Volume processado), tu (Tempo tratamento unitario)
- * Producao:      vp (Volume), mu (Montante medio unitario), tt (Taxa de transformacao %)
- * Gastos:        v  (Volume), c  (Custo unitario)
- * ReducaoRisco:  exp (Exposição ao risco), taxa (Taxa de provisionamento %)
- * ReducaoCusto:  co (Custos operacionais)
- */
-const INPUT_KEYS_BY_CATEGORY = {
-  eficiencia:    ['vp', 'tu'],
-  producao:      ['vp', 'mu', 'tt'],
-  gastos:        ['v', 'c'],
-  reducao_risco: ['exp', 'taxa'],
-  reducao_custo: ['co'],
-};
-
-/** Human-readable labels for each input field, keyed by category then input key. */
-const INPUT_LABELS_BY_CATEGORY = {
-  eficiencia: {
-    vp: 'Volume de Unidades Processadas',
-    tu: 'Tempo Médio por Unidade (min)',
-  },
-  producao: {
-    vp: 'Volume de Unidades',
-    mu: 'Valor Médio por Unidade (€)',
-    tt: 'Taxa de Transformação (%)',
-  },
-  gastos: {
-    v: 'Volume de Unidades',
-    c: 'Custo Unitário (€)',
-  },
-  reducao_risco: {
-    exp:  'Exposição ao risco (€)',
-    taxa: 'Taxa de provisionamento (%)',
-  },
-  reducao_custo: {
-    co: 'Custos operacionais (€)',
-  },
 };
 
 /** Per-input unit suffix. Empty string = no unit (raw counts/volumes). */
@@ -102,15 +67,16 @@ const CATEGORY_TOTAL_UNIT = {
 };
 
 /**
- * Categories that carry a mode toggle (e.g. evitado/reduzido for reducao_risco).
- * Each entry defines the default option value and the available options.
+ * Categories that carry a mode toggle.
+ * Each entry defines the default option value, the available options, and a label.
  */
 const CATEGORY_MODE_CONFIG = {
-  reducao_risco: {
-    default: 'reduzido',
+  reducao_custo: {
+    label: 'Tipo',
+    default: 'custo',
     options: [
-      { label: 'Risco reduzido', value: 'reduzido' },
-      { label: 'Risco evitado',  value: 'evitado'  },
+      { label: 'Custo evitado', value: 'custo' },
+      { label: 'Risco evitado', value: 'risco' },
     ],
   },
 };
@@ -316,6 +282,21 @@ export function assertToBeComplete(financials) {
   if (enabled.length === 0) return;
   for (const key of enabled) {
     if (!CATEGORY_KEYS.includes(key)) continue;
+    // qualidade: skip the numeric toBe check, but require non-empty text
+    if (key === 'qualidade') {
+      const fieldName = CATEGORY_FIELD_NAMES[key];
+      const raw = financials[fieldName];
+      const payload = (raw && typeof raw === 'object') ? raw : null;
+      const text = payload ? (payload.text || '') : '';
+      if (!text.trim()) {
+        throw new SystemError(
+          'IncompleteFinancials',
+          'Descreva a melhoria de qualidade antes de pedir validação.',
+          { breaksFlow: false },
+        );
+      }
+      continue;
+    }
     const fieldName = CATEGORY_FIELD_NAMES[key];
     const payload = financials[fieldName];
     const inputKeys = INPUT_KEYS_BY_CATEGORY[key] || [];
@@ -411,15 +392,25 @@ export function resolveFinalValidationLabel(initiative, financials) {
 
 /**
  * Creates a category state object holding FormFields for both phases (asIs, toBe).
+ * For the 'qualidade' metric, creates a text-only state (isText: true) with a
+ * single FormField for the description.
  * FormFields are always created (regardless of stored data) -- the serialize
  * step decides which phases to persist.
  *
- * @param {string} key - Category key ('eficiencia'|'producao'|'gastos')
+ * @param {string} key - Category key ('eficiencia'|'producao'|...|'qualidade')
  * @param {Object|null} storedPayload - Already-parsed JSON payload from SP (or null)
  * @param {{ asIs: boolean, toBe: boolean }} editability
  * @returns {CategoryState}
  */
 export function createCategoryState(key, storedPayload, editability) {
+  // Text-only special case for the qualidade metric
+  if (key === 'qualidade') {
+    const payload = storedPayload || {};
+    const text = new FormField({ value: payload.text || '' });
+    function dispose() { text.dispose(); }
+    return { key, text, isText: true, editability, dispose };
+  }
+
   const payload = storedPayload || {};
   const inputKeys = INPUT_KEYS_BY_CATEGORY[key];
 
@@ -446,7 +437,7 @@ export function createCategoryState(key, storedPayload, editability) {
     },
   };
 
-  // Mode toggle (e.g. evitado/reduzido for reducao_risco)
+  // Mode toggle (for reducao_custo: Custo evitado / Risco evitado)
   let mode = null;
   const modeConfig = CATEGORY_MODE_CONFIG[key];
   if (modeConfig) {
@@ -473,13 +464,18 @@ export function createCategoryState(key, storedPayload, editability) {
 /**
  * Serializes a category state to a JSON string for SP storage.
  * Returns '' if state is null/undefined (represents absent category).
- * Only phases with at least one non-empty input are written to the payload.
+ * For text-only states (qualidade), serializes { text }.
+ * For numeric states, only phases with at least one non-empty input are written.
  *
  * @param {CategoryState|null|undefined} state
  * @returns {string}
  */
 export function serializeCategory(state) {
   if (!state) return '';
+  // Text-only state (qualidade)
+  if (state.isText) {
+    return JSON.stringify({ text: state.text.value || '' });
+  }
   const payload = {};
   ['asIs', 'toBe'].forEach(phase => {
     const phaseObj = state[phase];
@@ -673,6 +669,19 @@ export function buildCategoryToBeForm(state, opts = {}) {
 export function buildCategoryDisplay(state, opts = {}) {
   const { timePeriod, fteAnnualCost = 0 } = opts;
   const unsubs = [];
+
+  // Text-only state (qualidade): render title + live description text
+  if (state.isText) {
+    const descTxt = new Text(state.text.value || '-', { type: 'span', class: 'pace-detail-value' });
+    const unsub = state.text.subscribe(v => { descTxt.children = v || '-'; });
+    unsubs.push(unsub);
+    const components = [
+      new Text(CATEGORY_LABELS[state.key], { type: 'h4', class: 'pace-form-section-title' }),
+      buildReadOnlyRow('Descrição', descTxt),
+    ];
+    return { components, dispose: () => { unsubs.forEach(u => u && u()); } };
+  }
+
   const sectionRows = [];
 
   function addPhaseSection(phaseLabel, phaseObj, totalFn) {
@@ -700,13 +709,13 @@ export function buildCategoryDisplay(state, opts = {}) {
     ...sectionRows,
   ];
 
-  // Mode sub-label (e.g. "Tipo de risco: Risco reduzido" for reducao_risco)
+  // Mode sub-label (e.g. "Tipo: Custo evitado" for reducao_custo)
   if (state.mode) {
     const modeConfig = CATEGORY_MODE_CONFIG[state.key];
     const currentModeValue = extractComboBoxValue(state.mode.value);
     const modeOption = modeConfig && modeConfig.options.find(o => o.value === currentModeValue);
     const modeTxt = new Text(modeOption ? modeOption.label : currentModeValue || '-', { type: 'span', class: 'pace-detail-value' });
-    components.push(buildReadOnlyRow('Tipo de risco', modeTxt));
+    components.push(buildReadOnlyRow(modeConfig ? modeConfig.label : 'Tipo', modeTxt));
   }
 
   if (showToBe) {
@@ -851,8 +860,9 @@ export function buildTotalsPanel(categoryStates, opts = {}) {
     fteCostTxt.children   = formatEur(aEficienciaEur);
   }
 
-  // Subscribe to all FormFields across enabled categories (numeric fields only, not mode)
+  // Subscribe to all FormFields across enabled categories (numeric fields only, skip text states)
   for (const state of categoryStates.values()) {
+    if (state.isText) continue;
     for (const phaseObj of [state.asIs, state.toBe]) {
       for (const field of Object.values(phaseObj)) {
         unsubs.push(field.subscribe(refresh));
@@ -1110,6 +1120,7 @@ export function buildImpactSummaryPanel(categoryStates, opts = {}) {
   }
 
   for (const state of categoryStates.values()) {
+    if (state.isText) continue;
     for (const phaseObj of [state.asIs, state.toBe]) {
       for (const field of Object.values(phaseObj)) {
         unsubs.push(field.subscribe(refresh));
@@ -1144,20 +1155,13 @@ const TIME_PERIOD_LABELS = {
   Diario: 'Diário',
   Mensal: 'Mensal',
 };
-const SAVING_CAT_LABELS = {
-  'Outros Benefícios Qualitativos': 'Outros Benefícios Qualitativos',
-  'Redução de custos': 'Redução de custos',
-  'Aumento de Vendas(NBI)': 'Aumento de Vendas(NBI)',
-  'Redução de risco': 'Redução de risco',
-  'Custos e riscos evitados': 'Custos e riscos evitados',
-  'Redução de tempo de execução de tarefas': 'Redução de tempo de execução de tarefas',
-};
 const TIME_PERIOD_OPTIONS = Object.keys(ANNUALIZATION_FACTORS).map(k => ({ label: TIME_PERIOD_LABELS[k] || k, value: k }));
 
 /**
- * Builds the shared financial schema (TimePeriod, SavingCategory, optional FTEAnnualCost).
- * Returns a pre-wired schema, the field-label components, and a dispose function.
- * Hydrates from an existing financials row when provided.
+ * Builds the shared financial schema (TimePeriod + optional FTEAnnualCost).
+ * SavingCategory/SavingType are now inferred from metrics, so they are no longer
+ * included here. Returns a pre-wired schema, the field-label components, and a
+ * dispose function. Hydrates from an existing financials row when provided.
  *
  * @param {Object|null} financials - Existing financials row, or null for new
  * @param {{ isMentorOrGestor?: boolean, readOnly?: boolean }} [opts]
@@ -1165,7 +1169,6 @@ const TIME_PERIOD_OPTIONS = Object.keys(ANNUALIZATION_FACTORS).map(k => ({ label
  */
 export function buildSharedFinancialSchema(financials, opts = {}) {
   const { isMentorOrGestor = false, readOnly = false } = opts;
-  const z = __zod;
 
   // TimePeriod -- defaults to Mensal for new initiatives; pre-fills from existing
   // financials on edit. (Period alone does not mark financials as "touched".)
@@ -1174,15 +1177,7 @@ export function buildSharedFinancialSchema(financials, opts = {}) {
     value: { label: TIME_PERIOD_LABELS[existingPeriod] || existingPeriod, value: existingPeriod },
   });
 
-  // SavingCategory -- empty for new initiatives (no auto-touch of financials).
-  const rawCats = financials?.SavingCategory;
-  const existingCats = Array.isArray(rawCats) ? rawCats : (rawCats ? [rawCats] : []);
-  const initialCats = financials ? existingCats.slice() : [];
-  const savingCategoryField = new FormField({
-    value: initialCats,
-  });
-
-  const schemaFields = { timePeriod: timePeriodField, savingCategory: savingCategoryField };
+  const schemaFields = { timePeriod: timePeriodField };
 
   // FTEAnnualCost -- mentor/gestor only
   let fteField = null;
@@ -1195,50 +1190,75 @@ export function buildSharedFinancialSchema(financials, opts = {}) {
 
   const components = [];
 
-  // Inferred SavingType (Hard Cost / Soft Cost / Outros) -- derived from selected categories
-  const savingTypeTxt = new Text(deriveSavingType(initialCats), { type: 'span', class: 'pace-detail-value pace-saving-type-value' });
-  const inferredUnsubs = [];
-
   if (readOnly) {
     components.push(
       buildReadOnlyRow('Período', new Text((existingPeriod && (TIME_PERIOD_LABELS[existingPeriod] || existingPeriod)) || '-', { type: 'span', class: 'pace-detail-value' })),
-      buildReadOnlyRow('Categorias de Savings', new Text(existingCats.map(c => SAVING_CAT_LABELS[c] || c).join(', ') || '-', { type: 'span', class: 'pace-detail-value' })),
-      buildReadOnlyRow('Classificação do Tipo de Saving', savingTypeTxt),
     );
     // Note: Custo Anual por FTE is rendered inside the Eficiencia card by buildCategoryDisplay
   } else {
     components.push(
-      new Container([
-        new FieldLabel('Categorias de Savings', createTagsToggle(savingCategoryField, { items: SAVING_CATEGORIES, dangerItems: HARD_CATEGORIES, gridClass: 'pace-tags-grid pace-savings-grid' }), { class: 'pace-required' }),
-        new Container([
-          buildReadOnlyRow('Classificação do Tipo de Saving', savingTypeTxt),
-          new Text('Nota: "Outros Benefícios Qualitativos" pode não conter dados financeiros. Nesses casos, os campos quantitativos abaixo são opcionais.', { type: 'p', class: 'pace-field-callout' }),
-        ], { class: 'pace-field-callout-row' }),
-      ], { class: 'pace-saving-cat-group' }),
-      new Container([], { as: 'hr', class: 'pace-form-divider' }),
-      new Text('Dados Quantitativos', { type: 'h4', class: 'pace-form-section-title' }),
       new Container([
         new FieldLabel('Período de Medição', createSegmentedToggle(timePeriodField, TIME_PERIOD_OPTIONS), { class: 'pace-required' }),
         new Text('Período base sobre o qual os valores de eficiência, produção ou gastos são medidos. Define o factor de anualização (Diário x252, Mensal x12) usado para converter o impacto recorrente em ganho anual.', { type: 'p', class: 'pace-field-callout pace-field-callout--wide' }),
       ], { class: 'pace-field-callout-row pace-field-callout-row--center' }),
     );
     // Note: FTE Anual cost input is rendered inside the Eficiencia tab by buildCategoryTabbedSection
-
-    inferredUnsubs.push(savingCategoryField.subscribe((v) => {
-      const arr = Array.isArray(v) ? v : (v ? [v] : []);
-      const labels = arr.map(o => (o && typeof o === 'object') ? (o.value || o.label) : o).filter(Boolean);
-      savingTypeTxt.children = deriveSavingType(labels);
-    }));
   }
 
   function dispose() {
-    inferredUnsubs.forEach(u => u && u());
     timePeriodField.dispose();
-    savingCategoryField.dispose();
     if (fteField) fteField.dispose();
   }
 
   return { schema, components, dispose };
+}
+
+// ---------------------------------------------------------------------------
+// Inferred classification section
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a read-only "Classificação do Saving" section that auto-refreshes
+ * whenever categoryStates changes (driven by changeCounter).
+ * Displays the inferred categories and Hard/Soft classification derived from
+ * the metrics the user has selected.
+ *
+ * @param {Map<string, CategoryState>} categoryStates
+ * @param {FormField<number>} changeCounter - From buildCategoryTabbedSection
+ * @returns {{ component: Container, refresh: () => void, dispose: () => void }}
+ */
+export function buildInferredClassification(categoryStates, changeCounter) {
+  const unsubs = [];
+
+  const categoriesTxt = new Text('-', { type: 'span', class: 'pace-detail-value' });
+  const classificationTxt = new Text('-', { type: 'span', class: 'pace-detail-value pace-saving-type-value' });
+
+  function refresh() {
+    const keys = Array.from(categoryStates.keys());
+    const cats = inferCategoriesFromMetrics(keys);
+    categoriesTxt.children = cats.join(', ') || '-';
+
+    const shortLabel = keys.length > 0 ? formatSavingTypeShort(inferSavingTypeFromMetrics(keys)) : '-';
+    classificationTxt.children = shortLabel;
+  }
+
+  const unsub = changeCounter.subscribe(refresh);
+  unsubs.push(unsub);
+  refresh();
+
+  const component = new Container([
+    new Text('Classificação do Saving', { type: 'h4', class: 'pace-form-section-title' }),
+    new Container([
+      buildReadOnlyRow('Categorias', categoriesTxt),
+      buildReadOnlyRow('Classificação', classificationTxt),
+    ], { class: 'pace-inferred-classification-rows' }),
+  ], { class: 'pace-inferred-classification' });
+
+  return {
+    component,
+    refresh,
+    dispose: () => { unsubs.forEach(u => u && u()); },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1283,6 +1303,45 @@ export function buildCategoryTabbedSection(categoryStates, opts = {}) {
 
   // -- Tab content builder --
   function buildTabView(key, state) {
+    // Text-only state (qualidade): render a TextArea instead of numeric As-Is/To-Be sections
+    if (state.isText) {
+      const removeUnsubs = [];
+      const disposeTextTab = () => { removeUnsubs.forEach(u => u && u()); };
+      builderResults.set(key, { dispose: disposeTextTab });
+
+      const editable = state.editability && state.editability.asIs;
+      let textContent;
+      if (editable) {
+        textContent = new FieldLabel('Descrição da melhoria', new TextArea(state.text, { placeholder: 'Descreva a melhoria de qualidade...', rows: 4 }));
+      } else {
+        const descTxt = new Text(state.text.value || '-', { type: 'span', class: 'pace-detail-value' });
+        const unsub = state.text.subscribe(v => { descTxt.children = v || '-'; });
+        removeUnsubs.push(unsub);
+        textContent = buildReadOnlyRow('Descrição da melhoria', descTxt);
+      }
+
+      const tabChildren = [
+        new Container([textContent], { class: 'pace-tab-form pace-qualidade-tab-form' }),
+      ];
+
+      if (canModify) {
+        const removeBtn = new Button('Remover Métrica', {
+          variant: 'danger',
+          isOutlined: true,
+          onClickHandler: () => {
+            state.dispose();
+            disposeTextTab();
+            builderResults.delete(key);
+            categoryStates.delete(key);
+            changeCounter.value = (changeCounter.value || 0) + 1;
+          },
+        });
+        tabChildren.push(new Container([removeBtn], { class: 'pace-tab-remove-row' }));
+      }
+
+      return new View(tabChildren);
+    }
+
     // FTE Anual cost input lives inside the Eficiencia tab inputs row (mentor/gestor only)
     const extraInputs = (key === 'eficiencia' && isMentorOrGestor && fteAnnualCostIsField)
       ? [new FieldLabel('Custo Anual por FTE (€)', new NumberInput(fteAnnualCost, { placeholder: '0', min: 0 }))]
@@ -1294,12 +1353,12 @@ export function buildCategoryTabbedSection(categoryStates, opts = {}) {
       dispose: () => { asIsResult.dispose(); toBeResult.dispose(); },
     });
 
-    // Mode toggle (e.g. evitado/reduzido for reducao_risco)
+    // Mode toggle (for reducao_custo: Custo evitado / Risco evitado)
     const modeToggleChildren = [];
     if (state.mode) {
       const modeConfig = CATEGORY_MODE_CONFIG[key];
       modeToggleChildren.push(
-        new FieldLabel('Tipo de risco', createSegmentedToggle(state.mode, modeConfig.options, { isDisabled: !canModify })),
+        new FieldLabel(modeConfig.label, createSegmentedToggle(state.mode, modeConfig.options, { isDisabled: !canModify })),
       );
     }
 
@@ -1373,36 +1432,27 @@ export function buildCategoryTabbedSection(categoryStates, opts = {}) {
   const addControls = canModify ? buildAddControls() : null;
 
   function buildAddControls() {
-    // Dynamically renders based on what's not yet in the map
-    const addContainer = new Container([], { class: 'pace-add-category-row' });
+    // Persistent section title + a 2x3 grid of add-buttons that refreshes as
+    // metrics are added/removed. Title stays even when all metrics are added.
+    const btnsContainer = new Container([], { class: 'pace-add-btns pace-add-btns--grid' });
+    const addContainer = new Container([
+      new Text('Métricas', { type: 'h4', class: 'pace-form-section-title' }),
+      btnsContainer,
+    ], { class: 'pace-add-category-section' });
 
     function refreshAddControls() {
       const available = CATEGORY_KEYS.filter(k => !categoryStates.has(k));
-      const isFull = categoryStates.size >= CATEGORY_KEYS.length;
-
-      if (available.length === 0 || isFull) {
-        addContainer.children = [];
-        return;
-      }
-
-      const btns = available.map(k => {
-        const btn = new Button('+ ' + CATEGORY_LABELS[k], {
-          variant: 'secondary',
-          onClickHandler: () => {
-            const editabilityForNew = editability || { asIs: true, toBe: false };
-            const state = createCategoryState(k, null, editabilityForNew);
-            categoryStates.set(k, state);
-            pendingFocusKey = k;
-            changeCounter.value = (changeCounter.value || 0) + 1;
-          },
-        });
-        return btn;
-      });
-
-      addContainer.children = [
-        new Text('Adicionar Métricas:', { type: 'span', class: 'pace-add-label' }),
-        new Container(btns, { class: 'pace-add-btns' }),
-      ];
+      btnsContainer.children = available.map(k => new Button('+ ' + CATEGORY_LABELS[k], {
+        variant: 'secondary',
+        title: METRIC_DESCRIPTIONS[k] || '',
+        onClickHandler: () => {
+          const editabilityForNew = editability || { asIs: true, toBe: false };
+          const state = createCategoryState(k, null, editabilityForNew);
+          categoryStates.set(k, state);
+          pendingFocusKey = k;
+          changeCounter.value = (changeCounter.value || 0) + 1;
+        },
+      }));
     }
 
     refreshAddControls();
@@ -1419,6 +1469,8 @@ export function buildCategoryTabbedSection(categoryStates, opts = {}) {
   const buildToBeTitle = () => new Text('Cálculos To-Be', { type: 'p', class: 'pace-totals-section-title' });
 
   function totalsAreaChildren() {
+    const keys = Array.from(categoryStates.keys());
+    if (!metricsHaveFinancialData(keys)) return [];
     return [
       buildAsIsTitle(), asIsTotalsResult.component,
       buildToBeTitle(), toBeTotalsResult.component,

@@ -1,7 +1,5 @@
-import { SiteApi, generateUUIDv4, __dayjs, sendEmail } from '../libs/nofbiz/nofbiz.base.js';
+import { SiteApi, generateUUIDv4, __dayjs } from '../libs/nofbiz/nofbiz.base.js';
 import { FULL_SCAN } from './sp-paging.js';
-
-const EMAIL_SUBJECT = 'PLACE - New Notification';
 
 const siteApi = new SiteApi();
 const listApi = siteApi.list('Notifications');
@@ -26,17 +24,17 @@ export async function getUnreadCount(email) {
 }
 
 /**
- * Creates a new notification and, best-effort, emails the recipient.
- * The email send is fire-and-secondary: a failure never prevents notification creation
- * and does not change the return value.
+ * Creates a bell notification record in the Notifications SP list.
+ * Does NOT send email -- email is handled by the emails module which calls this
+ * only after a successful email send (per-recipient).
  * @param {string} initiativeUUID
  * @param {string} recipientEmail
  * @param {string} title
  * @param {string} type
  * @returns {Promise<unknown>}
  */
-export async function createNotification(initiativeUUID, recipientEmail, title, type) {
-  const result = await listApi.createItem({
+export async function createNotificationRecord(initiativeUUID, recipientEmail, title, type) {
+  return listApi.createItem({
     Title: title,
     UUID: generateUUIDv4(),
     InitiativeUUID: initiativeUUID,
@@ -45,16 +43,6 @@ export async function createNotification(initiativeUUID, recipientEmail, title, 
     IsRead: 'false',
     CreatedDate: new Date().toISOString(),
   });
-
-  if (recipientEmail) {
-    try {
-      await sendEmail({ to: recipientEmail, subject: EMAIL_SUBJECT, body: title });
-    } catch (err) {
-      console.warn('[notifications] email send failed', err);
-    }
-  }
-
-  return result;
 }
 
 /**

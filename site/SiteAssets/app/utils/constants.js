@@ -49,10 +49,22 @@ export const SAVING_CATEGORIES = [
   'Outros Benefícios Qualitativos',
 ];
 
-export const HARD_CATEGORIES = ['Redução de custos', 'Aumento de Vendas(NBI)', 'Redução de risco'];
-export const SOFT_CATEGORIES = ['Custos e riscos evitados', 'Redução de tempo de execução de tarefas'];
+export const HARD_CATEGORIES = [
+  'Redução de custos', 'Aumento de Vendas(NBI)', 'Redução de risco',
+  // inferred strings from new metric model:
+  'Aumento de Produção (PNB)', 'Gastos Gerais', 'Redução do Custo do Risco',
+];
+export const SOFT_CATEGORIES = [
+  'Custos e riscos evitados', 'Redução de tempo de execução de tarefas',
+  // inferred strings from new metric model:
+  'Eficiência Operacional', 'Custo ou Risco Evitado',
+];
 
-export const NO_FINANCIALS_CATEGORIES = ['Outros Benefícios Qualitativos', 'Redução de tempo de execução de tarefas'];
+export const NO_FINANCIALS_CATEGORIES = [
+  'Outros Benefícios Qualitativos', 'Redução de tempo de execução de tarefas',
+  // inferred strings from new metric model:
+  'Melhoria de Qualidade',
+];
 
 /**
  * Returns true if at least one selected category requires financial data.
@@ -136,14 +148,25 @@ export const INITIATIVE_TAGS = [
 
 // -- Multi-category financial forms metadata --
 
-export const CATEGORY_KEYS = ['eficiencia', 'producao', 'gastos', 'reducao_risco', 'reducao_custo'];
+export const CATEGORY_KEYS = ['eficiencia', 'producao', 'gastos', 'reducao_risco', 'reducao_custo', 'qualidade'];
 
 export const CATEGORY_LABELS = {
   eficiencia:    'Eficiência',
   producao:      'Produção',
-  gastos:        'Gastos Gerais',
-  reducao_risco: 'Redução de risco',
-  reducao_custo: 'Redução de custo',
+  gastos:        'Redução de Custo | Redução OPEX',
+  reducao_risco: 'Redução de Custo de Risco',
+  reducao_custo: 'Custo ou Risco Evitado',
+  qualidade:     'Qualidade',
+};
+
+/** Hover tooltip (native title attr) shown on each metric add-button. */
+export const METRIC_DESCRIPTIONS = {
+  producao:      'Aumento de PNB resultante do aumento de produção',
+  gastos:        'Redução de FTEs, redução das despesas com contratos temporários, redução de despesas com outsourcings/fornecedores, redução do tempo de trabalho extra, redução de custos com material de escritório ou correio',
+  reducao_risco: 'Melhoria do processo de recuperação, redução de taxa de reincidência na recuperação de crédito',
+  eficiencia:    'Redução de tempo/volume de tarefas',
+  reducao_custo: 'Custo evitado: recrutamento evitado, multas e penalizações evitadas. Risco evitado: provisões evitadas',
+  qualidade:     'Aumento da taxa de satisfação do cliente ou parceiro (fidelização, imagem), alterações com impacto na qualidade',
 };
 
 // 'decrease' = saving = AsIs - ToBe (Eficiencia time, Gastos cost)
@@ -163,4 +186,115 @@ export const CATEGORY_FIELD_NAMES = {
   gastos:        'GastosGeraisData',
   reducao_risco: 'ReducaoRiscoData',
   reducao_custo: 'ReducaoCustoData',
+  qualidade:     'QualidadeData',
 };
+
+/**
+ * Per-category input field keys (order matters for column output).
+ * Eficiencia:    vp (Volume processado), tu (Tempo tratamento unitario)
+ * Producao:      vp (Volume), mu (Montante medio unitario), tt (Taxa de transformacao %)
+ * Gastos:        v  (Volume), c  (Custo unitario)
+ * ReducaoRisco:  exp (Exposição ao risco), taxa (Taxa de provisionamento %)
+ * ReducaoCusto:  co (Custos operacionais)
+ */
+export const INPUT_KEYS_BY_CATEGORY = {
+  eficiencia:    ['vp', 'tu'],
+  producao:      ['vp', 'mu', 'tt'],
+  gastos:        ['v', 'c'],
+  reducao_risco: ['exp', 'taxa'],
+  reducao_custo: ['co'],
+};
+
+/** Human-readable labels for each input field, keyed by category then input key. */
+export const INPUT_LABELS_BY_CATEGORY = {
+  eficiencia: {
+    vp: 'Volume de Unidades Processadas',
+    tu: 'Tempo Médio por Unidade (min)',
+  },
+  producao: {
+    vp: 'Volume de Unidades',
+    mu: 'Valor Médio por Unidade (€)',
+    tt: 'Taxa de Transformação (%)',
+  },
+  gastos: {
+    v: 'Volume de Unidades',
+    c: 'Custo Unitário (€)',
+  },
+  reducao_risco: {
+    exp:  'Exposição ao risco (€)',
+    taxa: 'Taxa de provisionamento (%)',
+  },
+  reducao_custo: {
+    co: 'Custos operacionais (€)',
+  },
+  // qualidade has no numeric inputs -- omitted intentionally (text-only metric)
+};
+
+// -- Metric-to-saving inference map --
+
+/**
+ * Maps each metric key to its inferred saving category and type.
+ * Used to auto-derive SavingCategory/SavingType when the user adds metrics.
+ */
+export const METRIC_SAVING_INFERENCE = {
+  producao:      { category: 'Aumento de Produção (PNB)',   type: 'Hard Cost' },
+  gastos:        { category: 'Gastos Gerais',               type: 'Hard Cost' },
+  reducao_risco: { category: 'Redução do Custo do Risco',   type: 'Hard Cost' },
+  eficiencia:    { category: 'Eficiência Operacional',      type: 'Soft Cost' },
+  reducao_custo: { category: 'Custo ou Risco Evitado',      type: 'Soft Cost' },
+  qualidade:     { category: 'Melhoria de Qualidade',       type: 'Soft Cost' },
+};
+
+/**
+ * Returns a deduplicated array of inferred saving categories from the given metric keys.
+ * @param {string[]} keys - Metric keys (subset of CATEGORY_KEYS)
+ * @returns {string[]}
+ */
+export function inferCategoriesFromMetrics(keys) {
+  const cats = [];
+  for (const key of keys) {
+    const inf = METRIC_SAVING_INFERENCE[key];
+    if (inf && !cats.includes(inf.category)) cats.push(inf.category);
+  }
+  return cats;
+}
+
+/**
+ * Infers the overall SavingType from the given metric keys.
+ * Priority: Hard Cost > Soft Cost > Outros Benefícios Qualitativos.
+ * @param {string[]} keys - Metric keys
+ * @returns {'Hard Cost'|'Soft Cost'|'Outros Benefícios Qualitativos'}
+ */
+export function inferSavingTypeFromMetrics(keys) {
+  let hasSoft = false;
+  for (const key of keys) {
+    const inf = METRIC_SAVING_INFERENCE[key];
+    if (!inf) continue;
+    if (inf.type === 'Hard Cost') return 'Hard Cost';
+    if (inf.type === 'Soft Cost') hasSoft = true;
+  }
+  return hasSoft ? 'Soft Cost' : 'Outros Benefícios Qualitativos';
+}
+
+/**
+ * Metric keys that carry no numeric/financial data (text-only metrics).
+ * These are excluded from € totals and from numeric validation.
+ */
+export const NO_FINANCIAL_METRICS = ['qualidade'];
+
+/**
+ * Returns true if at least one of the given metric keys produces financial data.
+ * @param {string[]} keys
+ * @returns {boolean}
+ */
+export function metricsHaveFinancialData(keys) {
+  if (!Array.isArray(keys)) return false;
+  return keys.some(k => !NO_FINANCIAL_METRICS.includes(k));
+}
+
+/** Short display label for a SavingType. Passes unknown values through unchanged. */
+export function formatSavingTypeShort(type) {
+  if (type === 'Hard Cost') return 'Hard';
+  if (type === 'Soft Cost') return 'Soft';
+  return type || '-';
+}

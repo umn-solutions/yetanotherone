@@ -359,3 +359,27 @@ export function getCachedGestorMap() {
 export function pickTeamHead(ouMembers) {
   return ouMembers && ouMembers.length ? ouMembers[0] : null;
 }
+
+/**
+ * Returns all users whose derived roles include 'mentor' (covers both 'mentor' and 'mentor-manager').
+ * Sorted by displayName, deduped by email.
+ * @returns {Promise<Array<{ email: string, displayName: string, employeeId: string }>>}
+ */
+export async function getMentorUsers() {
+  const all = await getAllEmployees();
+  const seen = new Set();
+  const mentors = [];
+  for (const emp of all) {
+    if (!emp.Email) continue;
+    const roles = deriveRoles(emp, all);
+    if (!roles.includes('mentor')) continue;
+    if (seen.has(emp.Email)) continue;
+    seen.add(emp.Email);
+    mentors.push({
+      email: emp.Email,
+      displayName: emp.ShortName || emp.Title || emp.Email,
+      employeeId: emp.Title,
+    });
+  }
+  return mentors.sort((a, b) => a.displayName.localeCompare(b.displayName));
+}

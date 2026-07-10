@@ -2484,7 +2484,12 @@
 }
 
 @media (max-width: 980px) {
-  .pt-v2 .pace-validation-grid { grid-template-columns: 1fr; }
+  .pt-v2 .pace-validation-grid,
+  .pt-v2 .pace-validation-grid--triple { grid-template-columns: 1fr; }
+}
+
+.pt-v2 .pace-validation-grid--triple {
+  grid-template-columns: 1fr 1fr 1fr;
 }
 
 .pt-v2 .pace-validation-col {
@@ -2549,6 +2554,14 @@
 .pt-v2 .pace-validation-col--savings h3 { color: #8A5E00; }
 .pt-v2 .pace-validation-col--savings h3::before {
   background-color: var(--pt-status-warn);
+  opacity: 1;
+}
+.pt-v2 .pace-validation-col--implementacao {
+  border-top-color: var(--pt-status-info);
+}
+.pt-v2 .pace-validation-col--implementacao h3 { color: #1A4F8A; }
+.pt-v2 .pace-validation-col--implementacao h3::before {
+  background-color: var(--pt-status-info);
   opacity: 1;
 }
 
@@ -3492,3 +3505,39 @@
 .pt-v2 .pace-access-name { color: var(--pt-ink); font-weight: var(--pt-fw-semibold); }
 
 .pt-v2 .pace-empty-hint { color: var(--pt-ink-muted); font-size: 13px; }
+
+/* -- Inferred classification section (Classificação do Saving) -- */
+
+.pt-v2 .pace-inferred-classification {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background-color: var(--pt-surface-alt);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-r-md);
+}
+
+.pt-v2 .pace-inferred-classification .pace-form-section-title {
+  margin-bottom: 4px;
+}
+
+.pt-v2 .pace-inferred-classification-rows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 32px;
+  margin-top: 6px;
+}
+
+.pt-v2 .pace-inferred-classification-rows .pace-detail-row {
+  flex: 1 1 200px;
+  margin-top: 0;
+}
+
+/* -- Qualidade text-only metric tab -- */
+
+.pt-v2 .pace-qualidade-tab-form .nofbiz__fieldlabel {
+  width: 100%;
+}
+
+.pt-v2 .pace-qualidade-tab-form .nofbiz__textarea {
+  min-height: 100px;
+}

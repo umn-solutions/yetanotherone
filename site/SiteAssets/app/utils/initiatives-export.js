@@ -10,8 +10,11 @@ import { statusLabel } from './status-helpers.js';
 import { ownerName, mentorName, gestorName } from './format-helpers.js';
 import {
   CATEGORY_KEYS,
+  CATEGORY_LABELS,
   CATEGORY_DIRECTIONS,
   CATEGORY_FIELD_NAMES,
+  INPUT_KEYS_BY_CATEGORY,
+  INPUT_LABELS_BY_CATEGORY,
   deriveSavingType,
   annualizeSavings,
 } from './constants.js';
@@ -74,6 +77,39 @@ function flattenCategory(payloadJson, categoryKey, timePeriod) {
 }
 
 /**
+ * Resolves a single phase object from a stored (possibly already-parsed) payload.
+ * Handles legacy `estimated` as an alias for `toBe`.
+ * @param {Object|string|null} payloadJson
+ * @param {'asIs'|'toBe'} phase
+ * @returns {Object|null}
+ */
+function getPhaseObjFromPayload(payloadJson, phase) {
+  let payload = payloadJson;
+  if (!payload) return null;
+  if (typeof payload === 'string') {
+    try { payload = JSON.parse(payload); } catch (err) { console.warn('[initiatives-export.getPhaseObjFromPayload] JSON parse failed', { payload, err }); return null; }
+  }
+  if (typeof payload !== 'object') return null;
+  if (phase === 'toBe') return payload.toBe || payload.estimated || null;
+  return payload[phase] || null;
+}
+
+/**
+ * Returns the mode string from a stored payload, or '' if absent.
+ * @param {Object|string|null} payloadJson
+ * @returns {string}
+ */
+function getModeFromPayload(payloadJson) {
+  let payload = payloadJson;
+  if (!payload) return '';
+  if (typeof payload === 'string') {
+    try { payload = JSON.parse(payload); } catch (err) { console.warn('[initiatives-export.getModeFromPayload] JSON parse failed', { payload, err }); return ''; }
+  }
+  if (typeof payload !== 'object') return '';
+  return payload.mode || '';
+}
+
+/**
  * Serializes an array of comments to a pipe-joined string.
  * Format per entry: [YYYY-MM-DD by AuthorName] body (newlines stripped).
  * Sorted ascending by CommentDate.
@@ -128,11 +164,11 @@ function serializeEvents(arr) {
 /**
  * Builds a single flat row for the CSV.
  * @param {Object} item - Initiative record
- * @param {{ finMap: Map, commentsMap: Map, eventsMap: Map, isPrivileged: boolean, includeSection: boolean }} ctx
+ * @param {{ finMap: Map, commentsMap: Map, eventsMap: Map, isPrivileged: boolean, includeSection: boolean, detailed: boolean }} ctx
  * @returns {Object}
  */
 function buildRow(item, ctx) {
-  const { finMap, commentsMap, eventsMap, isPrivileged, includeSection } = ctx;
+  const { finMap, commentsMap, eventsMap, isPrivileged, includeSection, detailed } = ctx;
   const fin = finMap.get(item.UUID) || null;
 
   const savingCat = fin
@@ -164,13 +200,60 @@ function buildRow(item, ctx) {
   row.ImplementedDate       = item.ImplementedDate ? String(item.ImplementedDate).slice(0, 10) : '';
 
   row.TimePeriod            = timePeriod;
-  row.SavingType            = fin ? deriveSavingType(savingCat) : '';
+  // Prefer stored SavingType; fall back to derivation from categories for legacy rows
+  row.SavingType            = fin ? (fin.SavingType || deriveSavingType(savingCat)) : '';
   row.SavingCategory        = savingCat.join('; ');
 
   for (const key of CATEGORY_KEYS) {
+    const label = CATEGORY_LABELS[key];
+    const payloadJson = fin ? fin[CATEGORY_FIELD_NAMES[key]] : null;
+
+    // qualidade: text-only metric -- emit one description column, skip numeric columns
+    if (key === 'qualidade') {
+      if (detailed) {
+        let qualText = '';
+        if (fin && payloadJson) {
+          const parsed = typeof payloadJson === 'object' ? payloadJson : (() => { try { return JSON.parse(payloadJson); } catch (err) { console.warn('[initiatives-export] QualidadeData parse failed', { payloadJson, err }); return {}; } })();
+          qualText = parsed.text || '';
+        }
+        row['Qualidade Descrição'] = qualText;
+      }
+      continue;
+    }
+
     const colName = key.charAt(0).toUpperCase() + key.slice(1).replace(/_([a-z])/g, (_, c) => c.toUpperCase()) + 'AnnualSaving';
+    const inputKeys = INPUT_KEYS_BY_CATEGORY[key] || [];
+    const inputLabels = INPUT_LABELS_BY_CATEGORY[key] || {};
+
+    if (detailed) {
+      // Mode column (reducao_custo only -- toggle moved from reducao_risco)
+      if (key === 'reducao_custo') {
+        row[label + ' Modo'] = fin ? getModeFromPayload(payloadJson) : '';
+      }
+
+      // Per-phase raw inputs and bruto total (only when inputKeys is non-empty)
+      if (inputKeys.length > 0) {
+        for (const phase of ['asIs', 'toBe']) {
+          const phaseLabel = phase === 'asIs' ? 'AsIs' : 'ToBe';
+          const phaseObj = fin ? getPhaseObjFromPayload(payloadJson, phase) : null;
+
+          for (const ik of inputKeys) {
+            const colHeader = label + ' ' + phaseLabel + ' ' + inputLabels[ik];
+            row[colHeader] = (fin && phaseObj != null)
+              ? (phaseObj[ik] != null ? phaseObj[ik] : '')
+              : '';
+          }
+
+          row[label + ' ' + phaseLabel + ' Total (bruto)'] = (fin && phaseObj != null)
+            ? computePhaseTotalFromJson(key, phaseObj)
+            : '';
+        }
+      }
+    }
+
+    // Annualized saving column -- always present for numeric metrics
     row[colName] = fin
-      ? flattenCategory(fin[CATEGORY_FIELD_NAMES[key]], key, timePeriod)
+      ? flattenCategory(payloadJson, key, timePeriod)
       : 0;
   }
 
@@ -197,10 +280,11 @@ function buildRow(item, ctx) {
  *   filenamePrefix: string,
  *   label?: string,
  *   dedupe?: boolean,
+ *   detailed?: boolean,
  * }} opts
  * @returns {Button}
  */
-export function createExportButton({ getRows, filenamePrefix, label = 'Exportar', dedupe = false }) {
+export function createExportButton({ getRows, filenamePrefix, label = 'Exportar', dedupe = false, detailed = false }) {
   const btn = new Button([
     new Container([getIcon('download-line')], { as: 'span', class: 'pace-btn-icon' }),
     label,
@@ -238,7 +322,7 @@ export function createExportButton({ getRows, filenamePrefix, label = 'Exportar'
           eventsApi.getAllAsMap(),
         ]);
 
-        const ctx = { finMap, commentsMap, eventsMap, isPrivileged, includeSection };
+        const ctx = { finMap, commentsMap, eventsMap, isPrivileged, includeSection, detailed };
         const serialised = rows.map((item) => buildRow(item, ctx));
 
         const csv = dataToCSV(serialised, { bom: true });

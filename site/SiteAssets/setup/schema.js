@@ -46,6 +46,7 @@ export const SCHEMA = {
     { title: 'GastosGeraisData', multiline: true },
     { title: 'ReducaoRiscoData', multiline: true },
     { title: 'ReducaoCustoData', multiline: true },
+    { title: 'QualidadeData', multiline: true },
     { title: 'FTEAnnualCost' },
     { title: 'LastModifiedBy', multiline: true },
     { title: 'LastModifiedByEmail' },
@@ -105,6 +106,16 @@ export const SCHEMA = {
     { title: 'Title', indexed: true, builtIn: true },
     { title: 'FTETarget' },
     { title: 'CategoryTargets', multiline: true },
+    { title: 'LastModifiedBy', multiline: true },
+    { title: 'LastModifiedByEmail' },
+    { title: 'LastModifiedDate' },
+  ],
+
+  MentorTeams: [
+    { title: 'Title', indexed: true, builtIn: true },       // stores MentorEmail (one record per mentor)
+    { title: 'MentorEmail', indexed: true },
+    { title: 'Mentor', multiline: true },                   // JSON UserIdentity {email, displayName}
+    { title: 'Teams', multiline: true },                    // JSON array of team OUID strings
     { title: 'LastModifiedBy', multiline: true },
     { title: 'LastModifiedByEmail' },
     { title: 'LastModifiedDate' },

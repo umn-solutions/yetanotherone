@@ -4,12 +4,18 @@ import {
   SystemError, ContextStore,
 } from '../../libs/nofbiz/nofbiz.base.js';
 import { createPageLayout } from '../../utils/navbar.js';
-import { importFromCSV, getAllEmployees, deriveRoles, updateEmployeeRole } from '../../utils/org-hierarchy-api.js';
+import { importFromCSV, getAllEmployees, deriveRoles, updateEmployeeRole, getTeamOptions, getMentorUsers } from '../../utils/org-hierarchy-api.js';
 import { buildKpi } from '../../utils/format-helpers.js';
 import {
   getAllTargets, getTargetByYear, createTarget, updateTarget, deleteTarget,
   computeTargetTotals, FINANCIAL_CATEGORIES, getCategoryType,
 } from '../../utils/savings-targets-api.js';
+import {
+  getAllMentorTeams, getMentorTeamsByEmail, createMentorTeams, updateMentorTeams, deleteMentorTeams,
+  findTeamConflicts,
+} from '../../utils/mentor-teams-api.js';
+import { createExportButton } from '../../utils/initiatives-export.js';
+import * as initiativesApi from '../../utils/initiatives-api.js';
 
 export default defineRoute((config) => {
   config.setRouteTitle('Admin');
@@ -307,6 +313,8 @@ export default defineRoute((config) => {
 
   const configView = new View([], { showOnRender: true });
 
+  const exportarView = new View([], { showOnRender: true });
+
   // -- Tab 2: Dados (Employee Table) --
 
   const rowKeyToTitle = new Map();
@@ -424,9 +432,9 @@ export default defineRoute((config) => {
     const currentRole = deriveRoles(emp)[0];
     const currentAppRole = emp.AppRole || '';
 
-    const roleField = new FormField(
-      APP_ROLE_OPTIONS.find(o => o.value === currentAppRole) || APP_ROLE_OPTIONS[0]
-    );
+    const roleField = new FormField({
+      value: APP_ROLE_OPTIONS.find(o => o.value === currentAppRole) || APP_ROLE_OPTIONS[0],
+    });
     const roleCombo = new ComboBox(roleField, APP_ROLE_OPTIONS, {
       placeholder: 'Seleccionar perfil...',
       allowFiltering: false,
@@ -585,10 +593,11 @@ export default defineRoute((config) => {
     }
   }
 
-  // -- Tab 4: Configurações (Savings Targets) --
+  // -- Tab 4: Configurações (Savings Targets + Mentor Teams) --
 
   let configLoaded = false;
   let configTargets = [];
+  let mentorTeamsData = [];
 
   /**
    * Formats a number as a compact Euro string (e.g. 80000 -> "€ 80.0k").
@@ -626,6 +635,17 @@ export default defineRoute((config) => {
     },
   });
 
+  const mentorTeamsList = new List({
+    headers: ['Mentor', 'Equipas'],
+    data: [],
+    emptyListMessage: 'Nenhum mentor configurado. Clique em "Adicionar Mentor" para começar.',
+    onItemSelectHandler: (rowData) => {
+      const mentorEmail = rowData[0];
+      const record = mentorTeamsData.find((r) => r.MentorEmail === mentorEmail);
+      if (record) showMentorTeamsDialog(record);
+    },
+  });
+
   async function refreshConfigList() {
     try {
       configTargets = await getAllTargets();
@@ -636,11 +656,24 @@ export default defineRoute((config) => {
     }
   }
 
+  async function refreshMentorTeamsList() {
+    try {
+      mentorTeamsData = await getAllMentorTeams();
+      mentorTeamsList.data = mentorTeamsData.map((r) => [
+        r.MentorEmail,
+        Array.isArray(r.Teams) && r.Teams.length > 0 ? r.Teams.join(', ') : '(nenhuma)',
+      ]);
+    } catch (err) {
+      console.error('[admin/refreshMentorTeamsList] failed', err);
+      Toast.error('Erro ao carregar configuração de mentores.');
+    }
+  }
+
   async function loadConfigTab() {
     if (configLoaded) return;
     configView.children = [new Loader([], {})];
     try {
-      await refreshConfigList();
+      await Promise.all([refreshConfigList(), refreshMentorTeamsList()]);
 
       const configCtaBanner = new Container(
         [
@@ -662,10 +695,38 @@ export default defineRoute((config) => {
       );
 
       const addBtn = new Button('Adicionar Ano', {
+        class: 'admin-section-add-btn',
         onClickHandler: () => showTargetDialog(null),
       });
 
-      configView.children = [configCtaBanner, addBtn, targetsList];
+      const mentorCtaBanner = new Container(
+        [
+          new Container(
+            [
+              new Text('Mentores por Equipa', {
+                type: 'span',
+                class: 'pace-cta-text',
+              }),
+              new Text(
+                'Iniciativas submetidas por equipas com mentor atribuído são encaminhadas automaticamente para esse mentor. Equipas sem mentor seguem o fluxo partilhado normal.',
+                { type: 'p', class: 'pace-cta-text' }
+              ),
+            ],
+            { as: 'div' }
+          ),
+        ],
+        { class: 'pace-cta' }
+      );
+
+      const mentorAddBtn = new Button('Adicionar Mentor', {
+        class: 'admin-section-add-btn',
+        onClickHandler: () => showMentorTeamsDialog(null),
+      });
+
+      configView.children = [
+        configCtaBanner, addBtn, targetsList,
+        mentorCtaBanner, mentorAddBtn, mentorTeamsList,
+      ];
       configLoaded = true;
     } catch (err) {
       console.error('[admin/loadConfigTab] failed', err);
@@ -863,6 +924,197 @@ export default defineRoute((config) => {
   }
 
   /**
+   * Opens the create/edit dialog for a mentor-team assignment.
+   * @param {object|null} record - Existing MentorTeams record for edit, or null for create.
+   */
+  async function showMentorTeamsDialog(record) {
+    const isEdit = record !== null;
+
+    // Pre-load mentor users and team options before building the dialog
+    let mentorOptions = [];
+    let teamOptions = [];
+    try {
+      const [mentors, teams] = await Promise.all([getMentorUsers(), getTeamOptions()]);
+      mentorOptions = mentors.map((m) => ({ label: m.displayName, value: m.email }));
+      teamOptions = teams;
+    } catch (err) {
+      console.error('[admin/showMentorTeamsDialog] failed to load options', err);
+      Toast.error('Erro ao carregar dados. Tente novamente.');
+      return;
+    }
+
+    // -- Mentor selector (single; disabled/prefilled in edit mode) --
+    const initialMentor = isEdit
+      ? (mentorOptions.find((o) => o.value === record.MentorEmail) || { label: record.MentorEmail, value: record.MentorEmail })
+      : null;
+    const mentorField = new FormField({ value: initialMentor });
+    const mentorCombo = new ComboBox(mentorField, mentorOptions, {
+      placeholder: 'Seleccionar mentor...',
+      allowFiltering: true,
+      isDisabled: isEdit,
+    });
+    const mentorLabel = new FieldLabel('Mentor', mentorCombo, { position: 'top' });
+
+    // -- Teams multi-selector --
+    const initialTeams = isEdit && Array.isArray(record.Teams)
+      ? record.Teams.map((ouid) => teamOptions.find((o) => o.value === ouid) || { label: ouid, value: ouid })
+      : [];
+    const teamsField = new FormField({ value: initialTeams });
+    const teamsCombo = new ComboBox(teamsField, teamOptions, {
+      placeholder: 'Seleccionar equipas...',
+      allowFiltering: true,
+      allowMultiple: true,
+    });
+    const teamsLabel = new FieldLabel('Equipas', teamsCombo, { position: 'top' });
+
+    // -- Dialog buttons --
+    const cancelBtn = new Button('Cancelar', {
+      variant: 'secondary',
+      onClickHandler: () => { dialog.close(); dialog.remove(); },
+    });
+
+    const saveBtn = new Button(isEdit ? 'Guardar' : 'Adicionar', {
+      onClickHandler: async () => {
+        const selectedMentor = mentorField.value;
+        const mentorEmail = selectedMentor && typeof selectedMentor === 'object'
+          ? selectedMentor.value
+          : (selectedMentor || '');
+
+        if (!mentorEmail) {
+          Toast.error('Seleccione um mentor.');
+          return;
+        }
+
+        const rawTeams = teamsField.value;
+        const selectedTeams = Array.isArray(rawTeams)
+          ? rawTeams.map((o) => (typeof o === 'object' ? o.value : o))
+          : (rawTeams && typeof rawTeams === 'object' ? [rawTeams.value] : []);
+
+        // Uniqueness enforcement: check if any requested team is held by a different mentor
+        let conflicts = [];
+        try {
+          conflicts = await findTeamConflicts(selectedTeams, isEdit ? record.MentorEmail : undefined);
+        } catch (err) {
+          console.error('[admin/showMentorTeamsDialog] findTeamConflicts failed', err);
+          Toast.error('Erro ao verificar conflitos. Tente novamente.');
+          return;
+        }
+
+        if (conflicts.length > 0) {
+          const details = conflicts.map((c) => `${c.ouid} (${c.mentorName})`).join(', ');
+          Toast.error(`Equipas já atribuídas a outro mentor: ${details}`);
+          return;
+        }
+
+        saveBtn.isLoading = true;
+        const loading = Toast.loading(isEdit ? 'A guardar configuração...' : 'A criar configuração...');
+
+        try {
+          if (isEdit) {
+            // Re-fetch to get fresh etag
+            const fresh = await getMentorTeamsByEmail(record.MentorEmail);
+            if (!fresh) throw new SystemError('NotFound', `Configuração para ${record.MentorEmail} não encontrada.`, { breaksFlow: false });
+            await updateMentorTeams(fresh.Id, { teams: selectedTeams }, fresh['odata.etag']);
+            loading.success('Configuração actualizada com sucesso.');
+          } else {
+            const mentorDisplayName = selectedMentor.label || mentorEmail;
+            await createMentorTeams({ mentor: { email: mentorEmail, displayName: mentorDisplayName }, teams: selectedTeams });
+            loading.success('Configuração criada com sucesso.');
+          }
+
+          dialog.close();
+          dialog.remove();
+          await refreshMentorTeamsList();
+        } catch (err) {
+          console.error('[admin/saveMentorTeams] failed', err);
+          loading.error(err.message || 'Erro ao guardar configuração.');
+        } finally {
+          saveBtn.isLoading = false;
+        }
+      },
+    });
+
+    const footerButtons = [cancelBtn];
+
+    if (isEdit) {
+      const deleteBtn = new Button('Eliminar', {
+        variant: 'danger',
+        onClickHandler: () => { showDeleteMentorConfirmDialog(record, dialog); },
+      });
+      footerButtons.push(deleteBtn);
+    }
+
+    footerButtons.push(saveBtn);
+
+    const dialogTitle = isEdit
+      ? `Editar Mentor — ${record.MentorEmail}`
+      : 'Novo Mentor por Equipa';
+
+    const dialog = new Dialog({
+      title: dialogTitle,
+      class: 'pace-dialog--overflow-visible pt-v2',
+      content: new Container([mentorLabel, teamsLabel], { class: 'admin-mentor-dialog__content' }),
+      footer: footerButtons,
+      variant: 'default',
+      closeOnFocusLoss: false,
+      containerSelector: 'body',
+    });
+
+    dialog.render();
+    dialog.open();
+  }
+
+  /**
+   * Shows a confirm-before-delete dialog for a mentor-teams record.
+   */
+  function showDeleteMentorConfirmDialog(record, parentDialog) {
+    const cancelBtn = new Button('Cancelar', {
+      variant: 'secondary',
+      onClickHandler: () => { confirmDialog.close(); confirmDialog.remove(); },
+    });
+
+    const confirmBtn = new Button('Confirmar Eliminação', {
+      variant: 'danger',
+      onClickHandler: async () => {
+        confirmBtn.isLoading = true;
+        const loading = Toast.loading('A eliminar configuração...');
+        try {
+          const fresh = await getMentorTeamsByEmail(record.MentorEmail);
+          if (!fresh) throw new SystemError('NotFound', `Configuração para ${record.MentorEmail} não encontrada.`, { breaksFlow: false });
+          await deleteMentorTeams(fresh.Id, fresh['odata.etag']);
+          loading.success('Configuração eliminada com sucesso.');
+          confirmDialog.close();
+          confirmDialog.remove();
+          parentDialog.close();
+          parentDialog.remove();
+          await refreshMentorTeamsList();
+        } catch (err) {
+          console.error('[admin/deleteMentorTeams] failed', err);
+          loading.error(err.message || 'Erro ao eliminar configuração.');
+        } finally {
+          confirmBtn.isLoading = false;
+        }
+      },
+    });
+
+    const confirmDialog = new Dialog({
+      title: 'Confirmar Eliminação',
+      class: 'pt-v2',
+      content: new Text(
+        `Tem a certeza que pretende remover a configuração de equipas do mentor ${record.MentorEmail}? Esta acção não pode ser revertida.`,
+        { type: 'p' }
+      ),
+      footer: [cancelBtn, confirmBtn],
+      variant: 'warning',
+      closeOnFocusLoss: false,
+      containerSelector: 'body',
+    });
+
+    confirmDialog.render();
+    confirmDialog.open();
+  }
+
+  /**
    * Shows a confirm-before-delete dialog.
    */
   function showDeleteConfirmDialog(target, parentDialog, parentUnsubscribers) {
@@ -915,6 +1167,57 @@ export default defineRoute((config) => {
     confirmDialog.open();
   }
 
+  // -- Tab 5: Exportação --
+
+  let exportLoaded = false;
+
+  async function loadExportarTab() {
+    if (exportLoaded) return;
+    exportarView.children = [new Loader([], {})];
+    try {
+      const allInitiatives = await initiativesApi.getAll();
+
+      const exportCtaBanner = new Container(
+        [
+          new Container(
+            [
+              new Text('Exportação de Iniciativas', {
+                type: 'span',
+                class: 'pace-cta-text',
+              }),
+              new Text(
+                'Exportar todas as iniciativas para um ficheiro CSV (aberto no Excel). Inclui iniciativas confidenciais e todos os dados financeiros.',
+                { type: 'p', class: 'pace-cta-text' }
+              ),
+            ],
+            { as: 'div' }
+          ),
+        ],
+        { class: 'pace-cta' }
+      );
+
+      const countText = new Text(`${allInitiatives.length} iniciativa(s)`, {
+        type: 'p',
+        class: 'pace-filter-count',
+      });
+
+      const exportBtn = createExportButton({
+        getRows: () => allInitiatives,
+        filenamePrefix: 'todas-iniciativas',
+        label: 'Exportar todas as iniciativas',
+        detailed: true,
+      });
+
+      exportarView.children = [exportCtaBanner, countText, exportBtn];
+      exportLoaded = true;
+    } catch (err) {
+      console.error('[admin/loadExportarTab] failed', err);
+      exportarView.children = [
+        new Text('Erro ao carregar iniciativas para exportação.', { type: 'p' }),
+      ];
+    }
+  }
+
   // -- Tab assembly --
 
   const tabs = new TabGroup([
@@ -922,12 +1225,14 @@ export default defineRoute((config) => {
     { key: 'dados', label: 'Dados', view: dadosView },
     { key: 'hierarquia', label: 'Hierarquia', view: hierarquiaView },
     { key: 'config', label: 'Configurações', view: configView },
+    { key: 'exportar', label: 'Exportação', view: exportarView },
   ], {
     selectedTabKey: 'importar',
     onTabChangeHandler: (tabConfig) => {
       if (tabConfig.key === 'dados') loadDadosTab();
       if (tabConfig.key === 'hierarquia') loadHierarquiaTab();
       if (tabConfig.key === 'config') loadConfigTab();
+      if (tabConfig.key === 'exportar') loadExportarTab();
     },
   });
 

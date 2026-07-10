@@ -30,18 +30,17 @@ import {
   CATEGORY_KEYS,
   CATEGORY_LABELS,
   CATEGORY_FIELD_NAMES,
-  deriveSavingType,
-  hasFinancialData,
+  inferCategoriesFromMetrics,
+  inferSavingTypeFromMetrics,
 } from './constants.js';
 import {
   createCategoryState,
   serializeCategory,
   hydrateCategoryStates,
   getPhaseEditability,
-  buildCategoryAsIsForm,
   buildCategoryTabbedSection,
   buildSharedFinancialSchema,
-  extractCategoryLabels,
+  buildInferredClassification,
 } from './financial-forms.js';
 import { canViewFteCost } from './fte-cost-field.js';
 import { create, update, getByUUID as getInitiativeByUUID } from './initiatives-api.js';
@@ -50,6 +49,7 @@ import { create as createFinancials, getByInitiative as getFinancials, update as
 import { createEvent } from './initiative-events-api.js';
 import { finalizeSubmission, performResubmitTransition } from './workflow-actions.js';
 import { buildWorkflowButtons } from './workflow-buttons.js';
+import { getMentorForTeam } from './mentor-teams-api.js';
 
 /**
  * Opens a Modal form for creating a new initiative.
@@ -167,39 +167,29 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     isMentorOrGestor: showFte,
   });
 
-  // -- Touched check: user engaged with financials if they added a category tab or selected a saving category --
-  const userTouchedFinancials = () =>
-    categoryStates.size > 0
-    || extractCategoryLabels(sharedFinancial.schema.get('savingCategory')).length > 0;
+  // -- Touched check: user engaged with financials if they added at least one metric --
+  const userTouchedFinancials = () => categoryStates.size > 0;
 
   // -- Validation helpers --
   function getFinancialsErrors() {
     const errs = [];
 
-    const cats = extractCategoryLabels(sharedFinancial.schema.get('savingCategory'));
-
     // If user has not engaged with financials at all, skip all validation
-    if (cats.length === 0 && categoryStates.size === 0) {
+    if (categoryStates.size === 0) {
       return errs;
     }
 
-    if (cats.length === 0) {
-      errs.push('Selecione pelo menos uma categoria de savings.');
-      return errs;
-    }
+    const periodVal = sharedFinancial.schema.get('timePeriod').value;
+    const period = periodVal && typeof periodVal === 'object' ? periodVal.value : periodVal;
+    if (!period) errs.push('Selecione o período de medição.');
 
-    const quantRequired = hasFinancialData(cats);
-
-    if (quantRequired && categoryStates.size === 0) {
-      errs.push('Adicione pelo menos uma métrica (' + CATEGORY_KEYS.map(k => CATEGORY_LABELS[k]).join(', ') + ').');
-    }
-
-    if (categoryStates.size > 0) {
-      const periodVal = sharedFinancial.schema.get('timePeriod').value;
-      const period = periodVal && typeof periodVal === 'object' ? periodVal.value : periodVal;
-      if (!period) errs.push('Selecione o período de medição.');
-
-      for (const [key, state] of categoryStates) {
+    for (const [key, state] of categoryStates) {
+      if (state.isText) {
+        // qualidade: require non-empty description text
+        if (!state.text.value || !state.text.value.trim()) {
+          errs.push('Métrica "Qualidade": descreva a melhoria.');
+        }
+      } else {
         const incomplete = Object.values(state.asIs).some(field => {
           const v = field.value;
           return v === '' || v === null || v === undefined || !(parseFloat(v) > 0);
@@ -218,17 +208,17 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
 
   // -- Collect financial fields for save --
   function collectFinancialFields() {
-    const sharedParsed = sharedFinancial.schema.parseForList();
     const timePeriodVal = sharedFinancial.schema.get('timePeriod').value;
     const timePeriod = timePeriodVal && typeof timePeriodVal === 'object' ? timePeriodVal.value : (timePeriodVal || '');
-    const savingCatLabels = extractCategoryLabels(sharedFinancial.schema.get('savingCategory'));
+    const keys = Array.from(categoryStates.keys());
 
     const fields = {
       TimePeriod: timePeriod,
-      SavingCategory: savingCatLabels,
-      SavingType: deriveSavingType(savingCatLabels),
-      EnabledCategories: Array.from(categoryStates.keys()),
+      SavingCategory: inferCategoriesFromMetrics(keys),
+      SavingType: inferSavingTypeFromMetrics(keys),
+      EnabledCategories: keys,
     };
+    // Loop covers ALL CATEGORY_KEYS including qualidade; serializeCategory handles text states
     for (const key of CATEGORY_KEYS) {
       fields[CATEGORY_FIELD_NAMES[key]] = serializeCategory(categoryStates.get(key));
     }
@@ -435,6 +425,22 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
         finalTitle = fields.Title;
       } else {
         const uuid = generateUUIDv4();
+
+        // Auto-assign mentor based on ImpactedTeamOUID (pre-routing).
+        // A failure here must NOT block submission -- fall through with empty mentor fields.
+        const impactedTeamOUID = fields.ImpactedTeamOUID || '';
+        if (impactedTeamOUID) {
+          try {
+            const autoMentor = await getMentorForTeam(impactedTeamOUID);
+            if (autoMentor) {
+              fields.Mentor = { email: autoMentor.email, displayName: autoMentor.displayName };
+              fields.MentorEmail = autoMentor.email;
+            }
+          } catch (err) {
+            console.warn('[submitInitiative] getMentorForTeam failed, submitting without auto-assign', { impactedTeamOUID, err });
+          }
+        }
+
         await create({
           ...fields,
           UUID: uuid,
@@ -446,7 +452,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
           await createFinancials(uuid, collectFinancialFields());
         }
         finalUUID = uuid;
-        finalMentorEmail = '';
+        finalMentorEmail = fields.MentorEmail || '';
         finalTitle = fields.Title;
       }
 
@@ -630,15 +636,14 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     onClickHandler: () => resubmitFromWizard(resubmitBtn),
   }) : null;
 
-  // Wire submit button disabled state to changeCounter + schema validity
-  // When user has not touched financials, the button is always enabled (financials are optional)
+  // Wire submit button disabled state to changeCounter + timePeriod validity
+  // When user has not touched financials (no metrics), the button is always enabled
   function refreshSubmitBtnState() {
     submitBtn.disabled = userTouchedFinancials() && !isFinancialsValid();
   }
   refreshSubmitBtnState();
   tabbedSection.changeCounter.subscribe(refreshSubmitBtnState);
   sharedFinancial.schema.get('timePeriod').subscribe(refreshSubmitBtnState);
-  sharedFinancial.schema.get('savingCategory').subscribe(refreshSubmitBtnState);
 
   // ===== FIVE STEP VIEWS =====
 
@@ -667,6 +672,9 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     ], { class: 'pace-initiative-form' }),
   ]);
 
+  // Build inferred classification section (reads from categoryStates via changeCounter)
+  const inferredClassification = buildInferredClassification(categoryStates, tabbedSection.changeCounter);
+
   const impactoView = new View([
     new Container([
       new Text('Contabilização de Ganhos/Impacto', { type: 'h4', class: 'pace-form-section-title' }),
@@ -676,6 +684,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
       ),
       new Container(sharedFinancial.components, { class: 'pace-shared-financial-fields' }),
       tabbedSection.container,
+      inferredClassification.component,
     ], { class: 'pace-initiative-form' }),
   ]);
 
@@ -820,6 +829,8 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
       sharedFinancial.dispose();
       // Dispose tabbed section (subscriptions, totals, builder results)
       tabbedSection.dispose();
+      // Dispose inferred classification subscriptions
+      inferredClassification.dispose();
       // Dispose step 1 fields
       titleField.dispose();
       descriptionField.dispose();

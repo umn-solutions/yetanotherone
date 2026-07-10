@@ -14,8 +14,6 @@ import {
   approveSavings,
   mentorFinalValidation,
   mentorManagerValidation,
-  markAsImplemented,
-  transferGestor,
   transferOwnership,
   manageAccessAction,
   declareSavings,
@@ -177,11 +175,6 @@ export function buildWorkflowButtons({
         buttons.push(cancelBtn);
       }
     } else if (status === STATUS.VALIDADO_FINAL) {
-      const implBtn = new Button('Marcar como Implementado', {
-        variant: 'primary',
-        onClickHandler: () => markAsImplemented(initiative, implBtn, handleSuccess),
-      });
-      buttons.push(implBtn);
       if (!approvalsOnly && canAccess('cancelar_proprio')) {
         const cancelBtn = new Button('Cancelar', {
           variant: 'danger',
@@ -271,7 +264,7 @@ export function buildWorkflowButtons({
       }
     } else if (status === STATUS.VALIDADO_FINAL) {
       if (canAccess('validar_implementacao_final')) {
-        const implConfirmBtn = new Button('Confirmar Implementação', {
+        const implConfirmBtn = new Button('Validar Implementação', {
           variant: 'primary',
           onClickHandler: () => mentorManagerValidation(initiative, implConfirmBtn, handleSuccess),
         });
@@ -328,13 +321,6 @@ export function buildWorkflowButtons({
           onClickHandler: () => requestRevision(initiative, revisionBtn, handleSuccess),
         });
         buttons.push(revisionBtn);
-      }
-      if (!approvalsOnly) {
-        const transferBtn = new Button('Transferir', {
-          variant: 'secondary',
-          onClickHandler: () => transferGestor(initiative, transferBtn, handleSuccess),
-        });
-        buttons.push(transferBtn);
       }
     }
   }

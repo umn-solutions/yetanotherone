@@ -1,12 +1,13 @@
 /* Admin route -- route-specific overrides only */
 
-/* Role edit dialog -- prevent content scrollbar and let ComboBox dropdown overlap */
-.nofbiz__dialog__content:has(.admin-role-dialog__content) {
-  overflow: visible;
+/* ComboBox dialogs (role edit, mentor-by-team) -- min-width only; overflow comes from pace-dialog--overflow-visible */
+.nofbiz__dialog__content:has(.admin-role-dialog__content),
+.nofbiz__dialog__content:has(.admin-mentor-dialog__content) {
   min-width: 360px;
 }
 
-.admin-role-dialog__content {
+.admin-role-dialog__content,
+.admin-mentor-dialog__content {
   display: flex;
   flex-direction: column;
   gap: var(--space-m);
@@ -17,11 +18,13 @@
   font-weight: var(--font-weight-semibold);
 }
 
-.admin-role-dialog__content .nofbiz__combobox {
+.admin-role-dialog__content .nofbiz__combobox,
+.admin-mentor-dialog__content .nofbiz__combobox {
   width: 100%;
 }
 
-.admin-role-dialog__content .nofbiz__combobox__dropdown {
+.admin-role-dialog__content .nofbiz__combobox__dropdown,
+.admin-mentor-dialog__content .nofbiz__combobox__dropdown {
   position: absolute;
   z-index: calc(var(--z-modal) + 1);
 }
@@ -86,6 +89,11 @@
 .admin-result-card--error {
   border-color: var(--color-danger-primary);
   background: var(--color-danger-bg);
+}
+
+/* Section "add" buttons -- gap before their table */
+.admin-section-add-btn {
+  margin-bottom: var(--space-m);
 }
 
 /* Hierarchy tree */
