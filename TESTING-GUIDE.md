@@ -14,8 +14,10 @@ Mentoria, Gestor, Catálogo, Configuração, mais "Ajuda"/Instruções.
 Os quatro perfis são `colaborador`, `gestor`, `mentor` e `mentor-manager`. Os perfis
 vêm da importação da OrgHierarchy (ou de uma substituição manual na Configuração). Teste
 cada cenário autenticado com o perfil relevante. Se a OrgHierarchy estiver vazia, pertencer
-ao grupo SharePoint "PACE Owners" concede acesso bootstrap (mentor + gestor + colaborador)
-e mostra um aviso "Modo bootstrap".
+ao grupo SharePoint "PACE Owners" concede acesso bootstrap (mentor + gestor + colaborador, mas
+NÃO mentor-manager -- logo "Validar Implementação" não fica disponível neste modo). É mostrado o
+aviso "Modo bootstrap: acesso via grupo SharePoint. Importe a hierarquia na página Configuração."
+e cada perfil na barra de navegação recebe o sufixo "(Bootstrap)".
 
 | Área | Separador | Perfis com acesso |
 |------|-----------|-------------------|
@@ -32,7 +34,7 @@ e mostra um aviso "Modo bootstrap".
 
 # 1. Ciclo de vida e fluxos de validação
 
-Enquanto colaborador, crio uma iniciativa através do assistente de 5 passos ("+ Partilhar uma ideia"), preencho Contexto -> Problema -> Tema -> Plano -> Impacto, e ou guardo um rascunho ("Gravar Rascunho") ou submeto ("Submeter").
+Enquanto colaborador, crio uma iniciativa através do assistente de 5 passos ("+ Partilhar uma iniciativa"), preencho Contexto -> Problema -> Tema -> Plano -> Impacto, e ou guardo um rascunho ("Gravar Rascunho") ou submeto ("Submeter").
 Pontos a verificar
 - Passos: 01 Contexto (Título + Equipa + Confidencial), 02 Problema (descrição), 03 Tema (Tags), 04 Plano (objectivo), 05 Impacto (métricas financeiras).
 - "Continuar" e ambas as acções de guardar bloqueiam até o Título estar preenchido e a Equipa seleccionada; o campo inválido recebe foco e surge um toast vermelho ("Preencha o título e seleccione a equipa.").
@@ -100,11 +102,12 @@ Enquanto interveniente, concedo ou revogo acesso ("Gerir Acesso") e adiciono per
 Pontos a verificar
 - O diálogo lista apenas partilhas delegadas (proprietário/mentor/gestor têm acesso implícito e não são mostrados).
 - O tipo de acesso é "Leitura" (read) ou "Colaboração" (collaborate); colaboradores ganham acesso de escrita, leitores não.
+- Um gestor só consegue conceder "Leitura"; a opção "Colaboração" está reservada a colaborador/mentor/mentor-manager (o selector de tipo esconde "Colaboração" quando o utilizador é gestor).
 - Adicionar/remover uma pessoa dispara os emails ACCESS_GRANTED / ACCESS_REVOKED.
 
 Enquanto utilizador a editar um registo que outra pessoa alterou, deparo-me com um conflito de ETag.
 Pontos a verificar
-- Um conflito de edição concorrente (HTTP 412) mostra "A iniciativa foi modificada por outro utilizador. Recarregue a página e tente novamente." e NÃO sobrescreve.
+- Um conflito de edição concorrente (HTTP 412), nas acções de fluxo, mostra "A iniciativa foi modificada por outro utilizador. Recarregue a página e tente novamente."; no assistente de edição a mensagem é "Outra pessoa editou esta iniciativa. Feche e reabra para recarregar." Em ambos os casos NÃO sobrescreve.
 - Os campos de texto sincronizam num debounce de 300ms; o assistente descarrega as edições pendentes (blur) antes de cada gravação, para não perder a última tecla.
 
 ---
@@ -116,6 +119,8 @@ o envio tem sucesso, escreve um registo de notificação (sino) mostrado na pág
 "Notificações (últimas 2 semanas)". Verifique AMBOS: a caixa de entrada e a lista do Início
 do destinatário após cada acção. Os emails nunca lançam erro: um destinatário falhado é
 registado em log e ignorado, e o actor é sempre excluído da auto-notificação onde indicado.
+Se a mesma pessoa acumular papéis (ex.: o mentor é também o proprietário), os destinatários são
+deduplicados: recebe apenas UM email e UM registo de sino, não um por papel.
 
 Enquanto mentor, recebo um email quando uma iniciativa é submetida ou re-submetida para mim.
 Pontos a verificar
@@ -238,7 +243,7 @@ Pontos a verificar
 
 Enquanto colaborador, abro o Início e vejo um hero personalizado e as minhas notificações recentes.
 Pontos a verificar
-- O hero saúda pelo primeiro nome; "+ Partilhar uma ideia" e "Ver as minhas iniciativas" aparecem para utilizadores não-gestor (o CTA fica oculto para gestor).
+- O hero saúda pelo primeiro nome; "+ Partilhar uma iniciativa" e "Ver as minhas iniciativas" aparecem para utilizadores não-gestor (o CTA fica oculto para gestor).
 - "Notificações (últimas 2 semanas)" lista os registos de sino do mais recente para o mais antigo, com tempo relativo ("hoje", "há N dias", "há N semanas"); vazio mostra "Sem notificações recentes."
 
 Enquanto colaborador, abro o Pessoal e giro as minhas iniciativas.
@@ -269,7 +274,7 @@ Enquanto utilizador, abro o Catálogo e navego o trabalho concluído.
 Pontos a verificar
 - O separador "Implementados" mostra a data de implementação e KPIs (Iniciativas Implementadas, Equipas Impactadas, Utilizadores Envolvidos).
 - O separador "Arquivo" mostra Cancelado + Rejeitado com uma coluna de estado.
-- O painel de detalhe a partir do Catálogo oculta a linha temporal de progresso e a caixa de comentários (vista de arquivo); "Replicar" copia o conteúdo para um novo rascunho.
+- O painel de detalhe a partir do Catálogo oculta a linha temporal de progresso e a caixa de comentários (vista de arquivo); "Replicar" (só disponível no Catálogo) abre o assistente com os campos de CONTEÚDO copiados (Título, Descrição, Tema/Tags, Plano, Impacto/financeiros) num novo Rascunho do utilizador actual -- os metadados de propriedade e de fluxo (estado, mentor, gestor, eventos, comentários) NÃO são copiados.
 
 Enquanto mentor/mentor-manager, abro a Configuração e administro a plataforma.
 Pontos a verificar
