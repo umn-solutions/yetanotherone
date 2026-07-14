@@ -1522,7 +1522,7 @@
 .pace-header__right { gap: 16px; }
 
 .pace-header__logo {
-  height: 32px;
+  height: 1.5em;
   max-height: 100%;
   width: auto;
   display: block;

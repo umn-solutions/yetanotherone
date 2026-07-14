@@ -43,7 +43,6 @@ function createHeader() {
       new Image('@/media/logo-2.png', { class: 'pace-header__logo' }),
       new Container([], { as: 'span', class: 'pace-header__divider' }),
       new Container([
-        new Text('PLACE', { type: 'span', class: 'pace-header__platform-name' }),
         new Text('Plataforma de melhoria contínua', { type: 'span', class: 'pace-header__platform-sub' }),
       ], { class: 'pace-header__platform' }),
     ], { class: 'pace-header__left' }),
