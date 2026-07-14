@@ -40,6 +40,7 @@ function createHeader() {
   return new Container([
     new Container([
       new Image('@/media/cetelem-logo.png', { class: 'pace-header__logo' }),
+      new Image('@/media/logo-2.png', { class: 'pace-header__logo' }),
       new Container([], { as: 'span', class: 'pace-header__divider' }),
       new Container([
         new Text('PLACE', { type: 'span', class: 'pace-header__platform-name' }),
@@ -71,7 +72,7 @@ function createTabBar() {
     });
   });
 
-  const ctaButton = canAccess('pessoal') ? [new Button('+ Partilhar uma ideia', {
+  const ctaButton = canAccess('pessoal') ? [new Button('+ Partilhar uma iniciativa', {
     class: 'pace-tabs__cta',
     onClickHandler: () => {
       openNewInitiativeModal(() => {

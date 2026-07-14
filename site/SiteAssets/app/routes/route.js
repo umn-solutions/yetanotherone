@@ -46,11 +46,11 @@ export default defineRoute(async (config) => {
       new Text(`Olá, ${firstName}.`, { type: 'span' }),
       new Text('O que vamos mudar hoje?', { type: 'span', class: 'pace-hero__title-accent' }),
     ], { as: 'h1', class: 'pace-hero__title' }),
-    new Text('Submete ideias, acompanha o impacto e celebra as transformações que vais construindo com a tua equipa.', { type: 'p' }),
+    new Text('Submete iniciativas, acompanha o impacto e celebra as transformações que vais construindo com a tua equipa.', { type: 'p' }),
   ];
 
   if (!isGestor) {
-    const newInitiativeBtn = new Button('+ Partilhar uma ideia', {
+    const newInitiativeBtn = new Button('+ Partilhar uma iniciativa', {
       variant: 'primary',
       class: 'pt-btn-hero-primary pt-btn-lg',
       onClickHandler: () => {

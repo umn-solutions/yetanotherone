@@ -758,7 +758,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
   const eyebrowText = isEdit ? 'Edição de iniciativa' : 'Nova submissão';
   const titleText = isEdit
     ? (asApprover ? 'Editar Iniciativa (Validador)' : 'Editar Iniciativa PDCA')
-    : 'Partilhar uma ideia';
+    : 'Partilhar uma iniciativa';
 
   const closeBtn = new Button(
     new Container([getIcon('close-line')], { as: 'span', class: 'pace-modal-close-icon' }),

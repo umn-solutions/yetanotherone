@@ -132,18 +132,15 @@ export const STATUS_DESCRIPTIONS = {
 };
 
 export const INITIATIVE_TAGS = [
-  'Automação de processos',
-  'Conhecimento e formação',
-  'Excel, VBA e PowerBI',
-  'Gestão de dados',
-  'Gestão de incidentes',
-  'IA (Inteligência Artificial)',
-  'Indicadores de Desempenho',
+  'Automação de Processo',
   'Organização',
+  'Conhecimento e formação',
+  'Reputação e satisfação de cliente/parceiro',
+  'Aumento da produção',
   'Padronização',
-  'Procedimentos',
-  'Redução de erros',
-  'Reputação e satisfação do cliente',
+  'Otimização de processos',
+  'Redução de custos',
+  'IA',
 ];
 
 // -- Multi-category financial forms metadata --
