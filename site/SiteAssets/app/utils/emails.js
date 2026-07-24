@@ -13,7 +13,7 @@
  * send() never throws -- failures are caught per-recipient, logged, and skipped.
  */
 
-import { sendEmail, escapeHtml, SystemError, __dayjs } from '../libs/nofbiz/nofbiz.base.js';
+import { sendEmail, escapeHtml, SystemError } from '../libs/nofbiz/nofbiz.base.js';
 import { createNotificationRecord } from './notifications-api.js';
 
 const NOTIFICATION_TYPE = {
