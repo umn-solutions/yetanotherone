@@ -14,7 +14,7 @@ import {
 } from '../libs/nofbiz/nofbiz.base.js';
 
 import { STATUS, statusLabel, chipClass, getNextFlowStatus, STATUS_LABELS } from './status-helpers.js';
-import { getTeamLabel, getTeamName } from './roles.js';
+import { getTeamLabel, getTeamName, isMentorUser } from './roles.js';
 import { mentorName, gestorName } from './format-helpers.js';
 import { getByInitiative as getFinancials } from './financials-api.js';
 import { EVENT_TYPES, STATUS_DESCRIPTIONS, CATEGORY_LABELS, metricsHaveFinancialData, formatSavingTypeShort } from './constants.js';
@@ -27,6 +27,7 @@ import {
 } from './financial-forms.js';
 import { buildFteCostController } from './fte-cost-field.js';
 import { buildWorkflowButtons } from './workflow-buttons.js';
+import { reassignRole } from './workflow-actions.js';
 import { getByUUID } from './initiatives-api.js';
 import { getShareAccessType } from './shared-api.js';
 import { getByInitiative as getComments, createComment } from './comments-api.js';
@@ -132,9 +133,39 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
     dadosPairs.push(['Validação Final', initiative.FinalValidationLabel]);
   }
 
+  // -- Mentor-only reassign controls --
+  // Visible only to mentors/mentor-managers. On success the panel closes and the
+  // route-level onSuccess is invoked (same pattern as footer workflow buttons).
+  // panelRef is a holder set after panel construction to avoid a forward-reference.
+  const panelRef = { current: null };
+  const handleReassignSuccess = () => {
+    panelRef.current?.close();
+    if (onSuccess) onSuccess();
+  };
+
+  const mentorReassignChildren = [];
+  if (isMentorUser()) {
+    const reassignMentorBtn = new Button('Alterar Mentor', {
+      variant: 'secondary',
+      isOutlined: true,
+      class: 'pace-reassign-btn',
+      onClickHandler: () => reassignRole({ role: 'mentor', initiative, button: reassignMentorBtn, onSuccess: handleReassignSuccess }),
+    });
+    const reassignGestorBtn = new Button('Alterar Gestor', {
+      variant: 'secondary',
+      isOutlined: true,
+      class: 'pace-reassign-btn',
+      onClickHandler: () => reassignRole({ role: 'gestor', initiative, button: reassignGestorBtn, onSuccess: handleReassignSuccess }),
+    });
+    mentorReassignChildren.push(
+      new Container([reassignMentorBtn, reassignGestorBtn], { class: 'pace-reassign-actions' })
+    );
+  }
+
   const dadosGerais = new Container([
     new Text('Dados Gerais', { type: 'h3', class: 'pace-sec-title' }),
     buildInfoGrid(dadosPairs),
+    ...mentorReassignChildren,
   ]);
 
   // -- Description, Objective --
@@ -449,6 +480,9 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
     class: 'pt-v2',
   });
 
+  // Wire the panelRef used by the mentor reassign buttons (built earlier, before panel existed)
+  panelRef.current = panel;
+
   // Click-outside-to-close (replaces focusout-based default which mis-fires on DOM refresh)
   const outsideClickHandler = (e) => {
     const root = panel.instance?.[0];
@@ -472,6 +506,7 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
     onSuccess,
     canAct,
     currentEmail,
+    shareType,
   });
   if (footerButtons.length > 0) {
     footerContainer.children = footerButtons;

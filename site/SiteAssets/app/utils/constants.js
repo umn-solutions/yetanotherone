@@ -1,5 +1,6 @@
 export const APP_NAME = 'Place';
 export const ORG_NAME = 'pcdfdpgrenhas';
+export const MENTOR_TEAM_EMAIL = 'mentoria@place.pt'; // TODO: replace with real mentor team mailbox
 
 export const EVENT_TYPES = {
   CREATION: 'Creation',
@@ -98,10 +99,17 @@ export function deriveSavingType(category) {
   return 'Outros Benefícios Qualitativos';
 }
 
+// -- FTE capacity model --
+export const WORKDAYS_PER_YEAR = 252;      // work days per year
+export const WORK_HOURS_PER_DAY = 8;       // hours per work day
+export const FTE_HOURS_PER_MONTH = 158.4;  // 1 FTE monthly capacity
+// Annual FTE capacity in minutes: 158.4 h/mo * 12 mo * 60 min = 114048
+export const FTE_MINUTES_PER_YEAR = FTE_HOURS_PER_MONTH * 12 * 60;
+
 // -- Annualization --
 
 export const ANNUALIZATION_FACTORS = {
-  'Diario': 252,
+  'Diario': WORKDAYS_PER_YEAR,
   'Mensal': 12,
 };
 
@@ -166,14 +174,14 @@ export const METRIC_DESCRIPTIONS = {
   qualidade:     'Aumento da taxa de satisfação do cliente ou parceiro (fidelização, imagem), alterações com impacto na qualidade',
 };
 
-// 'decrease' = saving = AsIs - ToBe (Eficiencia time, Gastos cost)
-// 'increase' = gain   = ToBe - AsIs (Producao revenue, Reducao Risco, Reducao Custo)
+// 'decrease' = saving = AsIs - ToBe (Eficiencia time, Gastos cost, Reducao Risco, Reducao Custo)
+// 'increase' = gain   = ToBe - AsIs (Producao revenue)
 export const CATEGORY_DIRECTIONS = {
   eficiencia:    'decrease',
   producao:      'increase',
   gastos:        'decrease',
-  reducao_risco: 'increase',
-  reducao_custo: 'increase',
+  reducao_risco: 'decrease',
+  reducao_custo: 'decrease',
 };
 
 // Maps internal key to the SP list field name that stores the JSON payload

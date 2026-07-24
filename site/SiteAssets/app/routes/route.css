@@ -33,3 +33,20 @@
   gap: 4px;
   align-items: center;
 }
+
+/* Mentor contacts card — text-to-button breathing room + centered button */
+.pace-mentor-contacts {
+  display: flex;
+  flex-direction: column;
+}
+
+.pace-mentor-contacts__text {
+  margin: 0 0 20px 0;
+}
+
+.pace-mentor-contacts__btn {
+  align-self: center;
+  white-space: nowrap;
+  padding-left: 32px;
+  padding-right: 32px;
+}

@@ -1,4 +1,4 @@
-import { SiteApi, SystemError, generateUUIDv4 } from '../libs/nofbiz/nofbiz.base.js';
+import { SiteApi, SystemError } from '../libs/nofbiz/nofbiz.base.js';
 import { FULL_SCAN } from './sp-paging.js';
 import { STATUS } from './status-helpers.js';
 
@@ -15,6 +15,44 @@ function assertValidStatus(value, field) {
       `Invalid ${field} value: "${value}". Must be one of: ${[...VALID_STATUSES].join(', ')}.`,
     );
   }
+}
+
+// -- Human-readable initiative UID (PDCA-XXXXXXX) --
+const UID_PREFIX = 'PDCA-';
+const UID_LENGTH = 7;
+// Crockford-style alphabet: ambiguous chars (0 1 I L O U) removed for readability.
+const UID_ALPHABET = '23456789ABCDEFGHJKMNPQRSTVWXYZ';
+const UID_MAX_ATTEMPTS = 20;
+
+function randomUIDBody() {
+  const bytes = new Uint8Array(UID_LENGTH);
+  crypto.getRandomValues(bytes);
+  let out = '';
+  for (let i = 0; i < UID_LENGTH; i++) {
+    out += UID_ALPHABET[bytes[i] % UID_ALPHABET.length];
+  }
+  return out;
+}
+
+/**
+ * Generates a unique, human-readable initiative UID of the form `PDCA-XXXXXXX`.
+ * Checks each candidate against the Initiatives list and retries on collision,
+ * guaranteeing the returned UID is not already in use.
+ * @returns {Promise<string>}
+ */
+export async function generateInitiativeUID() {
+  for (let attempt = 0; attempt < UID_MAX_ATTEMPTS; attempt++) {
+    const candidate = UID_PREFIX + randomUIDBody();
+    try {
+      const existing = await listApi.getItemByUUID(candidate);
+      if (!existing || existing.length === 0) return candidate;
+    } catch (err) {
+      console.error('[generateInitiativeUID] uniqueness check failed', { candidate, err });
+      throw new SystemError('UIDGenerationError', 'Não foi possível verificar a unicidade do identificador. Tente novamente.', { cause: err, breaksFlow: false });
+    }
+  }
+  console.error('[generateInitiativeUID] exhausted attempts without finding a free UID');
+  throw new SystemError('UIDGenerationError', 'Não foi possível gerar um identificador único. Tente novamente.', { breaksFlow: false });
 }
 
 /**
@@ -185,9 +223,10 @@ export async function getByStatusAndGestor(status, gestorEmail) {
 export async function create(fields) {
   assertValidStatus(fields.Status, 'Status');
   assertValidStatus(fields.PreviousStatus, 'PreviousStatus');
+  const uuid = fields.UUID || await generateInitiativeUID();
   return listApi.createItem({
     ...fields,
-    UUID: fields.UUID || generateUUIDv4(),
+    UUID: uuid,
   });
 }
 

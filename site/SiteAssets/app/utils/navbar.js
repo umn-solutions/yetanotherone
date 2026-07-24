@@ -8,6 +8,30 @@ registerIcons('place', {
 
 const HEADER_ROUTES = ['instrucoes'];
 
+// Routes that already inject their own hero inside the route file.
+// createPageLayout will NOT inject a shared hero for these.
+const INLINE_HERO_ROUTES = new Set(['inicio', 'mentoria', 'gestor', 'instrucoes']);
+
+// Hero config for routes that need a shared top banner injected by the layout.
+const HERO_CONFIGS = {
+  geral: {
+    title: 'Visão Geral',
+    subtitle: 'Acompanhe as iniciativas em curso em todas as equipas da organização.',
+  },
+  catalogo: {
+    title: 'Catálogo',
+    subtitle: 'Consulte as iniciativas implementadas e arquivadas ao longo do tempo.',
+  },
+  pessoal: {
+    title: 'As Minhas Iniciativas',
+    subtitle: 'Crie e faça a gestão das suas iniciativas de melhoria contínua.',
+  },
+  admin: {
+    title: 'Administração',
+    subtitle: 'Configure mentores, equipas e outras definições da plataforma.',
+  },
+};
+
 const TAB_LABELS = {
   inicio: 'Página Inicial',
   instrucoes: 'Instruções',
@@ -83,12 +107,31 @@ function createTabBar() {
   return new Container([...tabLinks, ...ctaButton], { as: 'nav', class: 'pace-tabs' });
 }
 
+function getRouteKey() {
+  const hash = location.hash.replace(/^#\/?/, '').split('?')[0].trim();
+  return hash || 'inicio';
+}
+
+function createHeroBanner(routeKey) {
+  const cfg = HERO_CONFIGS[routeKey];
+  if (!cfg) return null;
+  return new Container(
+    [
+      new Text(cfg.title, { type: 'h2', class: 'pace-cta-title' }),
+      new Text(cfg.subtitle, { type: 'p' }),
+    ],
+    { class: 'pace-cta' }
+  );
+}
+
 export function createPageLayout(content, options = {}) {
   const { contentClass = '' } = options;
   const mainClass = contentClass ? `pace-content ${contentClass}` : 'pace-content';
+  const routeKey = getRouteKey();
+  const hero = INLINE_HERO_ROUTES.has(routeKey) ? null : createHeroBanner(routeKey);
   return [
     createHeader(),
     createTabBar(),
-    new Container(content, { as: 'main', class: mainClass }),
+    new Container(hero ? [hero, ...(Array.isArray(content) ? content : [content])] : content, { as: 'main', class: mainClass }),
   ];
 }

@@ -17,6 +17,7 @@ import {
 
 import {
   ANNUALIZATION_FACTORS,
+  FTE_MINUTES_PER_YEAR,
   SOFT_CATEGORIES,
   CATEGORY_KEYS,
   CATEGORY_LABELS,
@@ -169,13 +170,13 @@ export function formatFte(val) {
 }
 
 /**
- * Formats a € monetary value with 2 decimal places.
+ * Formats a € monetary value with 3 decimal places.
  * @param {number} val
  * @returns {string}
  */
 export function formatEur(val) {
-  if (!val || isNaN(val)) return '0,00 €';
-  return val.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+  if (!val || isNaN(val)) return '0,000 €';
+  return val.toLocaleString('pt-PT', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' €';
 }
 
 /**
@@ -268,10 +269,10 @@ function getToBePhase(payload) {
 }
 
 /**
- * Validates that every enabled category has a complete toBe phase
- * (all input fields present and > 0). Used as the gate for transitions
- * that mark savings as ready for validation (declareSavings, resubmit
- * targeting POR_VALIDAR).
+ * Validates that every enabled category has both a complete As-Is phase and a
+ * complete To-Be phase (all input fields present and > 0) before a transition
+ * into POR_VALIDAR (declareSavings, resubmit targeting POR_VALIDAR).
+ * For the qualidade category, requires non-empty description text instead.
  *
  * @param {Object|null} financials - Financials row from SP (auto-parsed)
  * @throws {SystemError} name='IncompleteFinancials', breaksFlow:false
@@ -282,7 +283,8 @@ export function assertToBeComplete(financials) {
   if (enabled.length === 0) return;
   for (const key of enabled) {
     if (!CATEGORY_KEYS.includes(key)) continue;
-    // qualidade: skip the numeric toBe check, but require non-empty text
+    const categoryLabel = CATEGORY_LABELS[key] || key;
+    // qualidade: skip the numeric As-Is/To-Be check, but require non-empty text
     if (key === 'qualidade') {
       const fieldName = CATEGORY_FIELD_NAMES[key];
       const raw = financials[fieldName];
@@ -291,7 +293,7 @@ export function assertToBeComplete(financials) {
       if (!text.trim()) {
         throw new SystemError(
           'IncompleteFinancials',
-          'Descreva a melhoria de qualidade antes de pedir validação.',
+          'Categoria "' + categoryLabel + '": descreva a melhoria de qualidade antes de pedir validação.',
           { breaksFlow: false },
         );
       }
@@ -300,15 +302,29 @@ export function assertToBeComplete(financials) {
     const fieldName = CATEGORY_FIELD_NAMES[key];
     const payload = financials[fieldName];
     const inputKeys = INPUT_KEYS_BY_CATEGORY[key] || [];
+    // Check As-Is completeness
+    const asIsPayload = payload && payload.asIs;
+    const asIsIncomplete = !asIsPayload || inputKeys.some(ik => {
+      const v = asIsPayload[ik];
+      return v == null || v === '' || !(parseFloat(v) > 0);
+    });
+    if (asIsIncomplete) {
+      throw new SystemError(
+        'IncompleteFinancials',
+        'Categoria "' + categoryLabel + '": preencha todos os valores As-Is antes de pedir validação.',
+        { breaksFlow: false },
+      );
+    }
+    // Check To-Be completeness
     const toBe = getToBePhase(payload);
-    const incomplete = !toBe || inputKeys.some(ik => {
+    const toBeIncomplete = !toBe || inputKeys.some(ik => {
       const v = toBe[ik];
       return v == null || v === '' || !(parseFloat(v) > 0);
     });
-    if (incomplete) {
+    if (toBeIncomplete) {
       throw new SystemError(
         'IncompleteFinancials',
-        'Preencha todos os valores To-Be da categoria "' + (CATEGORY_LABELS[key] || key) + '" antes de pedir validação.',
+        'Categoria "' + categoryLabel + '": preencha todos os valores To-Be antes de pedir validação.',
         { breaksFlow: false },
       );
     }
@@ -348,7 +364,7 @@ export function computeAnnualizedToBeTotalEur(financials) {
     const raw = computeRawPhaseTotal(key, getToBePhase(payload));
     if (key === 'eficiencia') {
       // Eficiencia raw is minutes per period -> annualized minutes -> FTE-years -> €
-      totalEur += ((raw * factor) / 120960) * fteCost;
+      totalEur += ((raw * factor) / FTE_MINUTES_PER_YEAR) * fteCost;
     } else {
       totalEur += raw * factor;
     }
@@ -820,11 +836,11 @@ export function buildTotalsPanel(categoryStates, opts = {}) {
 
     // Per-period eficiencia values
     const pTime         = rawEficiencia;
-    const pEficienciaEur = (pTime * fteCost) / 120960;
+    const pEficienciaEur = (pTime * fteCost) / FTE_MINUTES_PER_YEAR;
 
     // Annualised eficiencia values
     const aTime         = rawEficiencia * factor;
-    const fte           = aTime / 120960;
+    const fte           = aTime / FTE_MINUTES_PER_YEAR;
     const aEficienciaEur = fte * fteCost;
 
     // Sum up all € categories (excluding eficiencia which goes via FTE)
@@ -1034,8 +1050,8 @@ export function buildImpactSummaryPanel(categoryStates, opts = {}) {
   /**
    * Computes the total € for all non-eficiencia categories in the given phase.
    * Each category's direction determines its contribution sign.
-   * - 'increase' (producao, reducao_risco, reducao_custo): benefit = toBe - asIs
-   * - 'decrease' (gastos): benefit = asIs - toBe
+   * - 'increase' (producao): benefit = toBe - asIs
+   * - 'decrease' (gastos, reducao_risco, reducao_custo): benefit = asIs - toBe
    * Eficiencia is excluded here (handled via FTE conversion separately).
    */
   const phaseEur = (phaseKey, fteCost) => {
@@ -1046,7 +1062,7 @@ export function buildImpactSummaryPanel(categoryStates, opts = {}) {
       if (!categoryStates.has(key)) continue;
       total += catVal(key, phaseKey);
     }
-    return total + (catVal('eficiencia', phaseKey) * fteCost) / 120960;
+    return total + (catVal('eficiencia', phaseKey) * fteCost) / FTE_MINUTES_PER_YEAR;
   };
 
   const signClass = (v) => (v >= 0 ? 'pace-impact--pos' : 'pace-impact--neg');
@@ -1070,7 +1086,7 @@ export function buildImpactSummaryPanel(categoryStates, opts = {}) {
         ? catVal(key, 'toBe') - catVal(key, 'asIs')
         : catVal(key, 'asIs') - catVal(key, 'toBe');
     }
-    benefit += ((catVal('eficiencia', 'asIs') - catVal('eficiencia', 'toBe')) * fteCost) / 120960;
+    benefit += ((catVal('eficiencia', 'asIs') - catVal('eficiencia', 'toBe')) * fteCost) / FTE_MINUTES_PER_YEAR;
     return benefit;
   };
 
@@ -1079,7 +1095,9 @@ export function buildImpactSummaryPanel(categoryStates, opts = {}) {
   const annualPill = new Container([], { class: 'pace-impact-pill' });
   const timePeriodPill = new Container([], { class: 'pace-impact-pill' });
   const timeAnnualPill = new Container([], { class: 'pace-impact-pill' });
+  const fteAnnualPill = new Container([], { class: 'pace-impact-pill' });
   const fmtTime = (v) => (v > 0 ? '+' : '') + displayValue(v) + ' min';
+  const fmtFteSigned = (v) => (v > 0 ? '+' : '') + formatFte(v);
 
   function refresh() {
     const period = getPeriod();
@@ -1116,6 +1134,11 @@ export function buildImpactSummaryPanel(categoryStates, opts = {}) {
         new Text('Tempo (Anual)', { type: 'span', class: 'pace-impact-pill-label' }),
         new Text(fmtTime(annualTimeDiff), { type: 'span', class: 'pace-impact-pill-value ' + timeColour }),
       ];
+      const annualFteDiff = annualTimeDiff / FTE_MINUTES_PER_YEAR;
+      fteAnnualPill.children = [
+        new Text('FTE (Anual)', { type: 'span', class: 'pace-impact-pill-label' }),
+        new Text(fmtFteSigned(annualFteDiff), { type: 'span', class: 'pace-impact-pill-value ' + timeColour }),
+      ];
     }
   }
 
@@ -1134,7 +1157,7 @@ export function buildImpactSummaryPanel(categoryStates, opts = {}) {
     new Text('Impacto Financeiro Projectado', { type: 'span', class: 'pace-impact-title' }),
     new Container([
       new Container([periodPill, annualPill], { class: 'pace-impact-group' }),
-      ...(hasEficiencia ? [new Container([timePeriodPill, timeAnnualPill], { class: 'pace-impact-group' })] : []),
+      ...(hasEficiencia ? [new Container([timePeriodPill, timeAnnualPill, fteAnnualPill], { class: 'pace-impact-group' })] : []),
     ], { class: 'pace-impact-row' }),
   ], { class: 'pace-impact-summary' });
 

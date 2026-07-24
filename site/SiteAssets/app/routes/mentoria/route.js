@@ -14,7 +14,7 @@ import {
 } from '../../libs/nofbiz/nofbiz.base.js';
 import { getUnassignedByStatuses, getByStatusesAndMentor, getByUUIDs, getByStatuses } from '../../utils/initiatives-api.js';
 import { getSharedWithMe } from '../../utils/shared-api.js';
-import { canAccess } from '../../utils/roles.js';
+import { canAccess, isMentorUser } from '../../utils/roles.js';
 import { STATUS, statusLabel, statusDescription, renderStatusCell } from '../../utils/status-helpers.js';
 import {
   ownerName,
@@ -346,12 +346,15 @@ export default defineRoute((config) => {
   async function loadData() {
     const loading = Toast.loading('A carregar iniciativas...');
     try {
+      // Mentors/mentor-managers see all initiatives across all teams (total visibility).
+      // Non-mentors see only initiatives assigned to them as mentor.
+      const isMentor = isMentorUser();
+      const trackingStatuses = [STATUS.SUBMETIDO, STATUS.VALIDADO_MENTOR, STATUS.EM_EXECUCAO, STATUS.POR_VALIDAR, STATUS.VALIDADO_GESTOR, STATUS.VALIDADO_FINAL];
       const [unassigned, myItems, sharedRecords, teams] = await Promise.all([
         getUnassignedByStatuses([STATUS.SUBMETIDO]),
-        getByStatusesAndMentor(
-          [STATUS.SUBMETIDO, STATUS.VALIDADO_MENTOR, STATUS.EM_EXECUCAO, STATUS.POR_VALIDAR, STATUS.VALIDADO_GESTOR, STATUS.VALIDADO_FINAL],
-          currentEmail
-        ),
+        isMentor
+          ? getByStatuses(trackingStatuses)
+          : getByStatusesAndMentor(trackingStatuses, currentEmail),
         getSharedWithMe(currentEmail),
         getTeamOptions(),
       ]);

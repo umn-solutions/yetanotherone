@@ -116,3 +116,30 @@ export function getTeamName(ouid) {
   const label = getTeamLabel(ouid);
   return label?.split(' - ')[1] ?? label;
 }
+
+/**
+ * Returns true if the current user has the mentor or mentor-manager role.
+ * Mentors have total cross-team visibility (all initiatives, including confidential ones).
+ * @returns {boolean}
+ */
+export function isMentorUser() {
+  return hasAnyProfile([ROLES.MENTOR, ROLES.MENTOR_MANAGER]);
+}
+
+/**
+ * Returns true when the current user is authorized to manage (share/revoke) access
+ * to the given initiative. Authorized if any of the following:
+ *  - They are the initiative owner (SubmittedByEmail == currentEmail)
+ *  - They have 'collaborate' delegated access (passed as shareType)
+ *  - They hold a privileged role (mentor, mentor-manager) per PERMISSION_MAP
+ * @param {string} currentEmail
+ * @param {Object} initiative
+ * @param {string|null} shareType - 'collaborate', 'read', or null
+ * @returns {boolean}
+ */
+export function canManageAccess(currentEmail, initiative, shareType) {
+  if (initiative.SubmittedByEmail === currentEmail) return true;
+  if (shareType === 'collaborate') return true;
+  if (hasAnyProfile([ROLES.MENTOR, ROLES.MENTOR_MANAGER, ROLES.GESTOR])) return true;
+  return false;
+}

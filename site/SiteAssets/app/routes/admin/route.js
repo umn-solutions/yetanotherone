@@ -1,7 +1,7 @@
 import {
   Text, Container, Button, Dialog, Toast, View, Loader, List,
   TabGroup, AccordionItem, FormField, TextInput, ComboBox, NumberInput, FieldLabel, defineRoute,
-  SystemError, ContextStore,
+  SystemError, ContextStore, extractComboBoxValue,
 } from '../../libs/nofbiz/nofbiz.base.js';
 import { createPageLayout } from '../../utils/navbar.js';
 import { importFromCSV, getAllEmployees, deriveRoles, updateEmployeeRole, getTeamOptions, getMentorUsers } from '../../utils/org-hierarchy-api.js';
@@ -925,6 +925,8 @@ export default defineRoute((config) => {
 
   /**
    * Opens the create/edit dialog for a mentor-team assignment.
+   * Teams are managed as a list (one row per team with a Remove button) rather than
+   * a multi-select combo, mirroring the "Gerir Acesso" UX in workflow-actions.js.
    * @param {object|null} record - Existing MentorTeams record for edit, or null for create.
    */
   async function showMentorTeamsDialog(record) {
@@ -932,11 +934,11 @@ export default defineRoute((config) => {
 
     // Pre-load mentor users and team options before building the dialog
     let mentorOptions = [];
-    let teamOptions = [];
+    let allTeamOptions = [];
     try {
       const [mentors, teams] = await Promise.all([getMentorUsers(), getTeamOptions()]);
       mentorOptions = mentors.map((m) => ({ label: m.displayName, value: m.email }));
-      teamOptions = teams;
+      allTeamOptions = teams;
     } catch (err) {
       console.error('[admin/showMentorTeamsDialog] failed to load options', err);
       Toast.error('Erro ao carregar dados. Tente novamente.');
@@ -944,10 +946,10 @@ export default defineRoute((config) => {
     }
 
     // -- Mentor selector (single; disabled/prefilled in edit mode) --
-    const initialMentor = isEdit
+    const initialMentorOption = isEdit
       ? (mentorOptions.find((o) => o.value === record.MentorEmail) || { label: record.MentorEmail, value: record.MentorEmail })
       : null;
-    const mentorField = new FormField({ value: initialMentor });
+    const mentorField = new FormField({ value: initialMentorOption });
     const mentorCombo = new ComboBox(mentorField, mentorOptions, {
       placeholder: 'Seleccionar mentor...',
       allowFiltering: true,
@@ -955,17 +957,95 @@ export default defineRoute((config) => {
     });
     const mentorLabel = new FieldLabel('Mentor', mentorCombo, { position: 'top' });
 
-    // -- Teams multi-selector --
-    const initialTeams = isEdit && Array.isArray(record.Teams)
-      ? record.Teams.map((ouid) => teamOptions.find((o) => o.value === ouid) || { label: ouid, value: ouid })
+    // -- Teams list: one row per assigned team, with Remove control --
+    // assignedTeams is the live array of ouid strings (source of truth on save).
+    const assignedTeams = isEdit && Array.isArray(record.Teams)
+      ? record.Teams.slice()
       : [];
-    const teamsField = new FormField({ value: initialTeams });
-    const teamsCombo = new ComboBox(teamsField, teamOptions, {
-      placeholder: 'Seleccionar equipas...',
+
+    // Container that holds the team rows (rebuilt on every add/remove).
+    const teamsListContainer = new Container([], { class: 'admin-mentor-teams-list' });
+
+    /**
+     * Builds the options available for the add-team ComboBox:
+     * all teams minus those already in assignedTeams.
+     */
+    function getAvailableTeamOptions() {
+      return allTeamOptions.filter((o) => !assignedTeams.includes(o.value));
+    }
+
+    // Single-select ComboBox for adding one team at a time.
+    // Initialized with available options right away (avoids a dataset setter call before render).
+    const addTeamField = new FormField({ value: null });
+    const addTeamCombo = new ComboBox(addTeamField, getAvailableTeamOptions(), {
+      placeholder: 'Adicionar equipa...',
       allowFiltering: true,
-      allowMultiple: true,
     });
-    const teamsLabel = new FieldLabel('Equipas', teamsCombo, { position: 'top' });
+    const addTeamLabel = new FieldLabel('Adicionar Equipa', addTeamCombo, { position: 'top' });
+
+    /**
+     * Builds a single assigned-team row: label chip + Remove button.
+     * Mirrors buildAccessRow from workflow-actions.js.
+     * @param {string} ouid
+     * @returns {Container}
+     */
+    function buildTeamRow(ouid) {
+      const option = allTeamOptions.find((o) => o.value === ouid);
+      const displayLabel = option ? option.label : ouid;
+
+      const removeBtn = new Button('Remover', {
+        variant: 'danger',
+        isOutlined: true,
+        onClickHandler: () => {
+          const idx = assignedTeams.indexOf(ouid);
+          if (idx >= 0) assignedTeams.splice(idx, 1);
+          rebuildTeamsList();
+          // Refresh available options in the add ComboBox after removal.
+          addTeamCombo.dataset = getAvailableTeamOptions();
+        },
+      });
+
+      return new Container(
+        [
+          new Container(
+            [new Text(displayLabel, { type: 'span', class: 'pace-access-name' })],
+            { class: 'pace-access-row-info' }
+          ),
+          removeBtn,
+        ],
+        { class: 'pace-access-row' }
+      );
+    }
+
+    /**
+     * Rebuilds the teams list container from the current assignedTeams array.
+     */
+    function rebuildTeamsList() {
+      if (assignedTeams.length === 0) {
+        teamsListContainer.children = [
+          new Text('Nenhuma equipa atribuída.', { type: 'p', class: 'pace-empty-hint' }),
+        ];
+        return;
+      }
+      teamsListContainer.children = assignedTeams.map(buildTeamRow);
+    }
+
+    // Initial render of teams list.
+    rebuildTeamsList();
+
+    // When user picks a team in the add-combo, append it and reset the combo.
+    addTeamField.subscribe((val) => {
+      if (!val) return;
+      const ouid = extractComboBoxValue(val);
+      if (typeof ouid !== 'string' || !ouid) return;
+      if (!assignedTeams.includes(ouid)) {
+        assignedTeams.push(ouid);
+        rebuildTeamsList();
+        addTeamCombo.dataset = getAvailableTeamOptions();
+      }
+      // Reset the combo so the user can pick the next team.
+      addTeamField.value = null;
+    });
 
     // -- Dialog buttons --
     const cancelBtn = new Button('Cancelar', {
@@ -976,24 +1056,22 @@ export default defineRoute((config) => {
     const saveBtn = new Button(isEdit ? 'Guardar' : 'Adicionar', {
       onClickHandler: async () => {
         const selectedMentor = mentorField.value;
-        const mentorEmail = selectedMentor && typeof selectedMentor === 'object'
-          ? selectedMentor.value
-          : (selectedMentor || '');
+        const mentorEmail = extractComboBoxValue(selectedMentor) || '';
 
         if (!mentorEmail) {
           Toast.error('Seleccione um mentor.');
           return;
         }
 
-        const rawTeams = teamsField.value;
-        const selectedTeams = Array.isArray(rawTeams)
-          ? rawTeams.map((o) => (typeof o === 'object' ? o.value : o))
-          : (rawTeams && typeof rawTeams === 'object' ? [rawTeams.value] : []);
+        if (assignedTeams.length === 0) {
+          Toast.error('Adicione pelo menos uma equipa.');
+          return;
+        }
 
-        // Uniqueness enforcement: check if any requested team is held by a different mentor
+        // Uniqueness enforcement: check if any requested team is held by a different mentor.
         let conflicts = [];
         try {
-          conflicts = await findTeamConflicts(selectedTeams, isEdit ? record.MentorEmail : undefined);
+          conflicts = await findTeamConflicts(assignedTeams, isEdit ? record.MentorEmail : undefined);
         } catch (err) {
           console.error('[admin/showMentorTeamsDialog] findTeamConflicts failed', err);
           Toast.error('Erro ao verificar conflitos. Tente novamente.');
@@ -1011,14 +1089,14 @@ export default defineRoute((config) => {
 
         try {
           if (isEdit) {
-            // Re-fetch to get fresh etag
+            // Re-fetch to get fresh etag before update.
             const fresh = await getMentorTeamsByEmail(record.MentorEmail);
             if (!fresh) throw new SystemError('NotFound', `Configuração para ${record.MentorEmail} não encontrada.`, { breaksFlow: false });
-            await updateMentorTeams(fresh.Id, { teams: selectedTeams }, fresh['odata.etag']);
+            await updateMentorTeams(fresh.Id, { teams: assignedTeams }, fresh['odata.etag']);
             loading.success('Configuração actualizada com sucesso.');
           } else {
-            const mentorDisplayName = selectedMentor.label || mentorEmail;
-            await createMentorTeams({ mentor: { email: mentorEmail, displayName: mentorDisplayName }, teams: selectedTeams });
+            const mentorDisplayName = (selectedMentor && typeof selectedMentor === 'object' ? selectedMentor.label : null) || mentorEmail;
+            await createMentorTeams({ mentor: { email: mentorEmail, displayName: mentorDisplayName }, teams: assignedTeams });
             loading.success('Configuração criada com sucesso.');
           }
 
@@ -1053,7 +1131,10 @@ export default defineRoute((config) => {
     const dialog = new Dialog({
       title: dialogTitle,
       class: 'pace-dialog--overflow-visible pt-v2',
-      content: new Container([mentorLabel, teamsLabel], { class: 'admin-mentor-dialog__content' }),
+      content: new Container(
+        [mentorLabel, teamsListContainer, addTeamLabel],
+        { class: 'admin-mentor-dialog__content' }
+      ),
       footer: footerButtons,
       variant: 'default',
       closeOnFocusLoss: false,

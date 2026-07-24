@@ -1,7 +1,7 @@
 import { Button } from '../libs/nofbiz/nofbiz.base.js';
 
 import { STATUS } from './status-helpers.js';
-import { canAccess } from './roles.js';
+import { canAccess, canManageAccess } from './roles.js';
 import {
   submitInitiative,
   resubmitInitiative,
@@ -36,6 +36,7 @@ import { openEditInitiativeModal, openReplicateInitiativeModal } from './new-ini
  * @param {boolean} [params.excludeEdit=false] - omit Editar/Rever/Submeter/Re-submeter (caller is an edit form)
  * @param {boolean} [params.excludeShare=false] - omit Partilhar
  * @param {boolean} [params.approvalsOnly=false] - only forward workflow actions (Aprovar/Validar/Submeter/etc); drop Cancelar/Rejeitar/Solicitar Revisão/Transferir/Eliminar/Replicar
+ * @param {'collaborate'|'read'|null} [params.shareType=null] - the current user's delegated share type for this initiative
  * @returns {Button[]}
  */
 export function buildWorkflowButtons({
@@ -51,6 +52,7 @@ export function buildWorkflowButtons({
   excludeEdit = false,
   excludeShare = false,
   approvalsOnly = false,
+  shareType = null,
 }) {
   const buttons = [];
   const writeAccess = hasWriteAccess ?? isOwner;
@@ -346,7 +348,10 @@ export function buildWorkflowButtons({
     }
   }
 
-  if (!excludeShare && !approvalsOnly && context !== 'catalogo') {
+  // Only authorized users may manage access: the owner, collaborate-access holders,
+  // and privileged roles (mentor, mentor-manager, gestor). Read-only shared users
+  // are excluded.
+  if (!excludeShare && !approvalsOnly && context !== 'catalogo' && canManageAccess(currentEmail, initiative, shareType)) {
     const manageBtn = new Button('Gerir Acesso', {
       variant: 'secondary',
       isOutlined: true,

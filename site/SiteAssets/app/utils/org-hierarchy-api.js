@@ -314,7 +314,7 @@ let _gestorMapCache = null;
 /**
  * Fetches and caches the gestor map derived from OrgHierarchy.
  * For each OU, the highest-Category-ranked employee is the gestor.
- * The root employee (no ManagerId) is the COMEX fallback.
+ * comexFallback is the highest-ranked direct report of the root (COMEX level); never the root/CEO; null if none.
  * @returns {Promise<{ gestorMap: Object, comexFallback: Object|null, byId: Map<string, Object>, byOUID: Map<string, Object[]> }>}
  */
 export async function getGestorMap() {
@@ -344,9 +344,20 @@ export async function getGestorMap() {
     if (best) gestorMap[code] = { email: best.Email, displayName: best.ShortName };
   }
 
-  const comexFallback = rootEmployee
-    ? { email: rootEmployee.Email, displayName: rootEmployee.ShortName }
-    : null;
+  // comexFallback: highest-ranked direct report of the root, never the root/CEO itself.
+  let comexFallback = null;
+  if (rootEmployee) {
+    const directReports = all.filter(e => e.ManagerId === rootEmployee.Title);
+    if (directReports.length > 0) {
+      directReports.sort(
+        (a, b) =>
+          ((CATEGORY_RANK[a.Category] ?? Infinity) - (CATEGORY_RANK[b.Category] ?? Infinity)) ||
+          (a.Title < b.Title ? -1 : a.Title > b.Title ? 1 : 0)
+      );
+      const best = directReports[0];
+      comexFallback = { email: best.Email, displayName: best.ShortName };
+    }
+  }
 
   _gestorMapCache = { gestorMap, comexFallback, byId, byOUID };
   return _gestorMapCache;
@@ -358,6 +369,20 @@ export function getCachedGestorMap() {
 
 export function pickTeamHead(ouMembers) {
   return ouMembers && ouMembers.length ? ouMembers[0] : null;
+}
+
+/**
+ * Resolves the immediate manager (one level up) for an employee.
+ * @param {string} employeeId
+ * @returns {Promise<{email:string,name:string}|null>}
+ */
+export async function getManagerAbove(employeeId) {
+  if (!employeeId) return null;
+  const emp = await getEmployee(employeeId);
+  if (!emp || !emp.ManagerId) return null;
+  const mgr = await getEmployee(emp.ManagerId);
+  if (!mgr || !mgr.Email) return null;
+  return { email: mgr.Email, name: mgr.ShortName || '' };
 }
 
 /**

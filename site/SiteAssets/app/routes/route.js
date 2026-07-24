@@ -7,6 +7,7 @@ import {
   Toast,
   ContextStore,
   defineRoute,
+  getIcon,
   __dayjs,
 } from '../libs/nofbiz/nofbiz.base.js';
 
@@ -14,6 +15,7 @@ import { getRecentForUser } from '../utils/notifications-api.js';
 import { openNewInitiativeModal } from '../utils/new-initiative.js';
 import { createPageLayout } from '../utils/navbar.js';
 import { hasProfile, ROLES } from '../utils/roles.js';
+import { MENTOR_TEAM_EMAIL } from '../utils/constants.js';
 
 export default defineRoute(async (config) => {
   config.setRouteTitle('Início');
@@ -102,8 +104,19 @@ export default defineRoute(async (config) => {
     new Container([...notifItems, ...emptyNotif], { as: 'div', class: 'pace-notif-list' }),
   ], { class: 'pace-home-notifications pt-card' });
 
+  // -- Mentor team contacts --
+  const mentorContactsSection = new Container([
+    new Text('Equipa de mentores', { type: 'h2', class: 'pt-section-header__title' }),
+    new Text('A nossa equipa de mentores está pronta para ajudar. Tens dúvidas sobre a tua iniciativa ou precisas de orientação? Fala connosco.', { type: 'p', class: 'pace-mentor-contacts__text' }),
+    new LinkButton([
+      new Container([getIcon('mail-line')], { as: 'span', class: 'pace-btn-icon' }),
+      'Contactar por email',
+    ], `mailto:${MENTOR_TEAM_EMAIL}`, { variant: 'primary', class: 'pt-btn-hero-primary pace-mentor-contacts__btn' }),
+  ], { class: 'pace-mentor-contacts pt-card' });
+
   const twoColGrid = new Container([
     notificationsSection,
+    mentorContactsSection,
   ], { class: 'pace-home-grid' });
 
   return createPageLayout([hero, twoColGrid], { contentClass: 'pt-v2' });

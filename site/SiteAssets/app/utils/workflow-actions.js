@@ -13,11 +13,12 @@ import {
   extractComboBoxValue,
   UserIdentity,
   SystemError,
+  PeoplePicker,
   __dayjs,
 } from '../libs/nofbiz/nofbiz.base.js';
 
 import { STATUS, canTransitionTo, statusLabel } from './status-helpers.js';
-import { canAccess } from './roles.js';
+import { canAccess, isMentorUser, canManageAccess } from './roles.js';
 import { transitionStatus, update, deleteItem as deleteInitiativeItem } from './initiatives-api.js';
 import {
   createEvent,
@@ -36,12 +37,13 @@ import {
   getByInitiative as getFinancials,
   deleteItem as deleteFinancials,
 } from './financials-api.js';
-import { getAllEmployees, deriveRoles } from './org-hierarchy-api.js';
+import { getAllEmployees, deriveRoles, getManagerAbove } from './org-hierarchy-api.js';
 import {
   shareInitiative,
   getAllByInitiative as getAllSharedRecords,
   unshareInitiative as deleteSharedRecord,
   revokeAccess,
+  getShareAccessType,
 } from './shared-api.js';
 import {
   getByInitiative as getComments,
@@ -406,7 +408,19 @@ async function confirmWithUserComboBox(title, message) {
  */
 export async function finalizeSubmission(initiative, fromStatus) {
   await createEvent(initiative.UUID, EVENT_TYPES.SUBMISSION, fromStatus, STATUS.SUBMETIDO);
-  await createEmail(EMAIL_EVENTS.SUBMITTED, { initiative }).send();
+  const currentUser = ContextStore.get('currentUser');
+  const ownerName = initiative.SubmittedBy?.displayName || (currentUser && currentUser.get('displayName')) || '';
+  const dataHora = __dayjs().format('DD/MM/YYYY HH:mm');
+  await createEmail(EMAIL_EVENTS.SUBMITTED_OWNER, { initiative, ownerName, dataHora }).send();
+  let manager = null;
+  try {
+    manager = await getManagerAbove(currentUser && currentUser.get('employeeId'));
+  } catch (err) {
+    console.error('[finalizeSubmission] manager lookup failed', err);
+  }
+  if (manager) {
+    await createEmail(EMAIL_EVENTS.SUBMITTED_MANAGER, { initiative, ownerName, dataHora, manager }).send();
+  }
 }
 
 /**
@@ -482,8 +496,7 @@ export async function performResubmitTransition(initiative) {
 
   await transitionStatus(initiative.Id, target, initiative['odata.etag'], extraFields);
   await createEvent(initiative.UUID, EVENT_TYPES.RESUBMISSION, STATUS.EM_REVISAO, target, eventComment);
-  await createEmail(EMAIL_EVENTS.RESUBMITTED, { initiative }).send();
-  await createEmail(EMAIL_EVENTS.SAVINGS_VALIDATION_REQUESTED, { initiative, gestorEmail: assignedGestor?.email }).send();
+  await createEmail(EMAIL_EVENTS.RESUBMITTED, { initiative, gestor: assignedGestor }).send();
 }
 
 /**
@@ -575,27 +588,9 @@ export async function deleteInitiative(initiative, button, onSuccess) {
       getAllSharedRecords(initiative.UUID).catch(() => []),
     ]);
 
-    // Capture stakeholders before cascade so post-delete notifications reach
-    // everyone with a stake in this initiative (owner, mentor, gestor, active
-    // collaborators). Deleter is excluded.
     const deleterUser = ContextStore.get('currentUser');
     const deleterEmail = deleterUser.get('email');
     const deleterName = deleterUser.get('displayName');
-    const recipients = new Set();
-    if (initiative.SubmittedByEmail && initiative.SubmittedByEmail !== deleterEmail) {
-      recipients.add(initiative.SubmittedByEmail);
-    }
-    if (initiative.MentorEmail && initiative.MentorEmail !== deleterEmail) {
-      recipients.add(initiative.MentorEmail);
-    }
-    if (initiative.GestorValidatorEmail && initiative.GestorValidatorEmail !== deleterEmail) {
-      recipients.add(initiative.GestorValidatorEmail);
-    }
-    for (const s of shares) {
-      if (s.Status === 'active' && s.SharedWithEmail && s.SharedWithEmail !== deleterEmail) {
-        recipients.add(s.SharedWithEmail);
-      }
-    }
 
     // Best-effort cascade: collect per-child failures instead of bailing on the
     // first error. Parent delete is skipped if any child remains, so re-runs
@@ -628,13 +623,11 @@ export async function deleteInitiative(initiative, button, onSuccess) {
 
     await deleteInitiativeItem(initiative.Id, initiative['odata.etag'] || '*');
 
-    // Post-delete notifications. Sent AFTER the cascade so they survive (the
-    // cascade above wipes every existing Notification for this initiative).
-    // The bell record is written per-recipient only if their email send succeeds.
+    // Post-delete notification sent to the actor (deleter) only, after the
+    // cascade wipes existing Notification records for this initiative.
     await createEmail(EMAIL_EVENTS.DELETED, {
       initiative,
-      recipients: [...recipients],
-      actorName: deleterName,
+      actor: { email: deleterEmail, name: deleterName },
     }).send();
 
     loading.success('Iniciativa eliminada.');
@@ -1087,6 +1080,130 @@ export async function transferOwnership(initiative, button, onSuccess) {
   }
 }
 
+/**
+ * Shows a Dialog with a PeoplePicker to select a new person for a role.
+ * Returns { identity: UserIdentity } on confirm, or null on cancel/empty selection.
+ * @param {string} title
+ * @param {string} message
+ * @param {string} [placeholderText]
+ * @returns {Promise<{ identity: UserIdentity } | null>}
+ */
+function confirmWithPeoplePicker(title, message, placeholderText = 'Pesquisar pessoa...') {
+  const personField = new FormField({ value: null });
+  const picker = new PeoplePicker(personField, { placeholder: placeholderText });
+
+  return new Promise((resolve) => {
+    const dialog = new Dialog({
+      title,
+      variant: 'info',
+      class: 'pace-dialog--overflow-visible pt-v2',
+      content: new Container([
+        new Text(message, { type: 'p' }),
+        new FieldLabel('Pessoa', picker),
+        picker,
+      ]),
+      backdrop: true,
+      closeOnFocusLoss: false,
+      containerSelector: 'body',
+      footer: [
+        new Button('Cancelar', {
+          variant: 'secondary',
+          onClickHandler: () => {
+            dialog.close();
+            dialog.remove();
+            picker.remove();
+            personField.dispose();
+            resolve(null);
+          },
+        }),
+        new Button('Confirmar', {
+          variant: 'primary',
+          onClickHandler: () => {
+            const selected = personField.value;
+            if (!selected) {
+              Toast.error('Selecione uma pessoa.');
+              return;
+            }
+            // PeoplePicker stores UserIdentity as .value on the option
+            const identity = selected?.value instanceof UserIdentity
+              ? selected.value
+              : new UserIdentity(selected?.value?.email || '', selected?.value?.displayName || selected?.label || '');
+            dialog.close();
+            dialog.remove();
+            picker.remove();
+            personField.dispose();
+            resolve({ identity });
+          },
+        }),
+      ],
+    });
+    dialog.render();
+    dialog.open();
+  });
+}
+
+/**
+ * Generic mentor-facing role reassignment (Mentor or Gestor fields).
+ * Writes an update to the initiative and logs a TRANSFER timeline event.
+ *
+ * @param {Object} params
+ * @param {'mentor'|'gestor'} params.role - Which role to reassign
+ * @param {Object} params.initiative
+ * @param {Button} params.button
+ * @param {() => void} [params.onSuccess]
+ */
+export async function reassignRole({ role, initiative, button, onSuccess }) {
+  if (!isMentorUser()) {
+    console.warn('[reassignRole] unauthorized attempt by non-mentor');
+    Toast.error('Sem permissão para esta acção.');
+    return;
+  }
+
+  const isMentor = role === 'mentor';
+  const dialogTitle = isMentor ? 'Alterar Mentor Responsável' : 'Alterar Gestor Validador';
+  const dialogMessage = isMentor
+    ? 'Selecione o novo mentor responsável por esta iniciativa.'
+    : 'Selecione o novo gestor validador desta iniciativa.';
+
+  const result = await confirmWithPeoplePicker(dialogTitle, dialogMessage);
+  if (!result) return;
+
+  const newIdentity = result.identity;
+  if (!newIdentity.email) {
+    Toast.error('Não foi possível determinar o email da pessoa selecionada.');
+    return;
+  }
+
+  const fields = isMentor
+    ? { Mentor: newIdentity, MentorEmail: newIdentity.email }
+    : { GestorValidator: newIdentity, GestorValidatorEmail: newIdentity.email };
+
+  const roleLabel = isMentor ? 'Mentor' : 'Gestor';
+  const comment = `${roleLabel} alterado para ${newIdentity.displayName}.`;
+
+  button.isLoading = true;
+  const loading = Toast.loading(`A alterar ${roleLabel.toLowerCase()}...`);
+  try {
+    await update(initiative.Id, fields, initiative['odata.etag']);
+    await createEvent(initiative.UUID, EVENT_TYPES.TRANSFER, initiative.Status, initiative.Status, comment);
+
+    // Reuse the gestor-change email event when reassigning gestor (notifies owner).
+    // For mentor, no dedicated email event exists -- skip to avoid inventing templates.
+    if (!isMentor) {
+      await createEmail(EMAIL_EVENTS.GESTOR_CHANGED, { initiative }).send();
+      await createEmail(EMAIL_EVENTS.GESTOR_TRANSFERRED, { initiative, recipients: newIdentity.email }).send();
+    }
+
+    loading.success(`${roleLabel} alterado com sucesso.`);
+    if (onSuccess) onSuccess();
+  } catch (error) {
+    console.error(`[reassignRole] failed for role=${role}`, error);
+    loading.error(actionErrorMessage(error, `Erro ao alterar ${roleLabel.toLowerCase()}.`));
+  } finally {
+    button.isLoading = false;
+  }
+}
+
 // Implicit-access roles (owner, mentor, gestor) are not listed here -- the
 // manage-access dialog only shows users with a delegated entry in
 // InitiativesSharedAccess (Status === 'active').
@@ -1158,9 +1275,30 @@ function buildAccessRow(record, onRemoved) {
 /**
  * Gerir Acesso: lists delegated-access entries with remove + add controls.
  * Implicit access (owner, mentor, gestor) is not shown.
+ * Only authorized users (owner, collaborate-access, or privileged role) may invoke this.
  */
 export async function manageAccessAction(initiative, button, onSuccess) {
+  const currentEmail = ContextStore.get('currentUser').get('email');
+
+  // Defense-in-depth: verify authorization even when the button-level gate passed.
+  // shareType must be determined before we know if this is 'collaborate' or 'read'.
+  // We use canManageAccess with a lazy share-type check: fetch the share record first.
   button.isLoading = true;
+  let shareType = null;
+  try {
+    shareType = await getShareAccessType(initiative.UUID, currentEmail).catch(err => {
+      console.warn('[manageAccessAction] getShareAccessType failed', err);
+      return null;
+    });
+  } catch (_) { /* non-critical -- fall through to role check */ }
+
+  if (!canManageAccess(currentEmail, initiative, shareType)) {
+    console.warn('[manageAccessAction] unauthorized access attempt', { currentEmail, uuid: initiative.UUID });
+    Toast.error('Sem permissão para gerir o acesso desta iniciativa.');
+    button.isLoading = false;
+    return;
+  }
+
   let activeShares = [];
   try {
     const all = await getAllSharedRecords(initiative.UUID);

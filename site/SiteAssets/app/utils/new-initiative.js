@@ -16,7 +16,6 @@ import {
   ViewSwitcher,
   ContextStore,
   fromFieldValue,
-  generateUUIDv4,
   getIcon,
   __zod,
 } from '../libs/nofbiz/nofbiz.base.js';
@@ -43,7 +42,7 @@ import {
   buildInferredClassification,
 } from './financial-forms.js';
 import { canViewFteCost } from './fte-cost-field.js';
-import { create, update, getByUUID as getInitiativeByUUID } from './initiatives-api.js';
+import { create, update, getByUUID as getInitiativeByUUID, generateInitiativeUID } from './initiatives-api.js';
 import { STATUS, canTransitionTo, areBaseFieldsLocked } from './status-helpers.js';
 import { create as createFinancials, getByInitiative as getFinancials, update as updateFinancials } from './financials-api.js';
 import { createEvent } from './initiative-events-api.js';
@@ -170,42 +169,6 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
   // -- Touched check: user engaged with financials if they added at least one metric --
   const userTouchedFinancials = () => categoryStates.size > 0;
 
-  // -- Validation helpers --
-  function getFinancialsErrors() {
-    const errs = [];
-
-    // If user has not engaged with financials at all, skip all validation
-    if (categoryStates.size === 0) {
-      return errs;
-    }
-
-    const periodVal = sharedFinancial.schema.get('timePeriod').value;
-    const period = periodVal && typeof periodVal === 'object' ? periodVal.value : periodVal;
-    if (!period) errs.push('Selecione o período de medição.');
-
-    for (const [key, state] of categoryStates) {
-      if (state.isText) {
-        // qualidade: require non-empty description text
-        if (!state.text.value || !state.text.value.trim()) {
-          errs.push('Métrica "Qualidade": descreva a melhoria.');
-        }
-      } else {
-        const incomplete = Object.values(state.asIs).some(field => {
-          const v = field.value;
-          return v === '' || v === null || v === undefined || !(parseFloat(v) > 0);
-        });
-        if (incomplete) {
-          errs.push('Métrica "' + CATEGORY_LABELS[key] + '": preencha todos os campos com valores maiores que zero.');
-        }
-      }
-    }
-    return errs;
-  }
-
-  function isFinancialsValid() {
-    return getFinancialsErrors().length === 0;
-  }
-
   // -- Collect financial fields for save --
   function collectFinancialFields() {
     const timePeriodVal = sharedFinancial.schema.get('timePeriod').value;
@@ -319,7 +282,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
       } else {
         const currentUser = ContextStore.get('currentUser');
         const identity = { email: currentUser.get('email'), displayName: currentUser.get('displayName') };
-        const uuid = generateUUIDv4();
+        const uuid = await generateInitiativeUID();
         await create({
           ...fields,
           UUID: uuid,
@@ -361,15 +324,6 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     if (!canTransitionTo(fromStatus, STATUS.SUBMETIDO)) {
       Toast.error('Transição de estado inválida.');
       return;
-    }
-
-    if (userTouchedFinancials()) {
-      const errs = getFinancialsErrors();
-      if (errs.length > 0) {
-        sharedFinancial.schema.focusOnFirstInvalid();
-        errs.forEach(msg => Toast.error(msg));
-        return;
-      }
     }
 
     btn.isLoading = true;
@@ -424,7 +378,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
         finalMentorEmail = initiative.MentorEmail;
         finalTitle = fields.Title;
       } else {
-        const uuid = generateUUIDv4();
+        const uuid = await generateInitiativeUID();
 
         // Auto-assign mentor based on ImpactedTeamOUID (pre-routing).
         // A failure here must NOT block submission -- fall through with empty mentor fields.
@@ -481,15 +435,6 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
       Toast.error('Preencha o título e seleccione a equipa.');
       return;
     }
-    if (userTouchedFinancials()) {
-      const errs = getFinancialsErrors();
-      if (errs.length > 0) {
-        sharedFinancial.schema.focusOnFirstInvalid();
-        errs.forEach(msg => Toast.error(msg));
-        return;
-      }
-    }
-
     btn.isLoading = true;
     showOverlay();
     const loading = Toast.loading('A re-submeter...');
@@ -550,11 +495,12 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
   const titleInput = new FieldLabel('Título', new TextInput(titleField, { placeholder: 'Ex: Redução do tempo de...', isDisabled: baseFieldsLocked }), { class: 'pace-required' });
   const descInput = new FieldLabel('Descrição do problema identificado', new TextArea(descriptionField, { placeholder: 'Descreva a situação actual', rows: 3, isDisabled: baseFieldsLocked }));
   const teamCombo = new FieldLabel('Equipa', new ComboBox(teamField, teamOptions, { placeholder: 'Seleccionar...', isDisabled: baseFieldsLocked }), { class: 'pace-required' });
-  const confidentialCb = new CheckBox(confidentialField, { title: 'Confidencial', isDisabled: baseFieldsLocked });
+  const confidentialHelp = 'Uma iniciativa confidencial restringe a visibilidade à equipa de mentoria, ao gestor atribuído e a quem tenha acesso delegado.';
+  const confidentialCb = new CheckBox(confidentialField, { title: confidentialHelp, isDisabled: baseFieldsLocked });
   const confidentialCheckInline = new Container([
     confidentialCb,
     new Container([getIcon('lock-line')], { as: 'span', class: 'pace-conf-icon' }),
-    new Text('Confidencial', { type: 'span' }),
+    new Text('Confidencial', { type: 'span', title: confidentialHelp }),
   ], {
     class: 'pace-checkbox-row pace-conf-toggle',
     // Clicking anywhere on the box toggles confidential. Forward to the checkbox
@@ -572,6 +518,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
   // does not always re-invalidate the ancestor's `:has` style.)
   const syncConfToggleClass = () => {
     confidentialCheckInline.instance?.toggleClass('pace-conf-toggle--on', !!confidentialField.value);
+    confidentialCheckInline.instance?.attr('title', confidentialHelp);
   };
   confidentialField.subscribe(syncConfToggleClass);
   const teamRow = new Container([teamCombo, confidentialCheckInline], { class: 'pace-team-conf-row' });
@@ -635,15 +582,6 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     variant: 'primary',
     onClickHandler: () => resubmitFromWizard(resubmitBtn),
   }) : null;
-
-  // Wire submit button disabled state to changeCounter + timePeriod validity
-  // When user has not touched financials (no metrics), the button is always enabled
-  function refreshSubmitBtnState() {
-    submitBtn.disabled = userTouchedFinancials() && !isFinancialsValid();
-  }
-  refreshSubmitBtnState();
-  tabbedSection.changeCounter.subscribe(refreshSubmitBtnState);
-  sharedFinancial.schema.get('timePeriod').subscribe(refreshSubmitBtnState);
 
   // ===== FIVE STEP VIEWS =====
 

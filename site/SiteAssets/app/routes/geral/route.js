@@ -17,7 +17,7 @@ import { openInitiativeDetail } from '../../utils/side-panel-detail.js';
 import { createPageLayout } from '../../utils/navbar.js';
 import { buildKpi, mentorName, gestorName } from '../../utils/format-helpers.js';
 import { createSortableTable } from '../../utils/table-helpers.js';
-import { getUserDeptAncestorPath } from '../../utils/roles.js';
+import { getUserDeptAncestorPath, isMentorUser } from '../../utils/roles.js';
 import { getTeamOptions, getTeamScope } from '../../utils/org-hierarchy-api.js';
 import { INITIATIVE_TAGS } from '../../utils/constants.js';
 import { createExportButton } from '../../utils/initiatives-export.js';
@@ -162,7 +162,8 @@ export default defineRoute((config) => {
       const loading = Toast.loading('A carregar outras equipas...');
       try {
         const items = await getByStatuses(ONGOING_STATUSES);
-        allData = items.filter((i) => !i.IsConfidential);
+        // Mentors/mentor-managers can see confidential initiatives; others cannot.
+        allData = isMentorUser() ? items : items.filter((i) => !i.IsConfidential);
         loading.dismiss();
       } catch (error) {
         console.error('[geral/loadOthers] failed', error);
@@ -259,7 +260,8 @@ export default defineRoute((config) => {
       const scopedItems = scopeCodes.length
         ? await getByStatusesAndTeamScope(ONGOING_STATUSES, scopeCodes)
         : [];
-      myTeamData = scopedItems.filter((i) => !i.IsConfidential);
+      // Mentors/mentor-managers bypass the confidential filter.
+      myTeamData = isMentorUser() ? scopedItems : scopedItems.filter((i) => !i.IsConfidential);
 
       loading.dismiss();
       buildUI();
