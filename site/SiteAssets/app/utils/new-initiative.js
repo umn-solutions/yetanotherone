@@ -49,15 +49,23 @@ import { createEvent } from './initiative-events-api.js';
 import { finalizeSubmission, performResubmitTransition } from './workflow-actions.js';
 import { buildWorkflowButtons } from './workflow-buttons.js';
 import { getMentorForTeam } from './mentor-teams-api.js';
+import { acquireOverlayOpen } from './overlay-guard.js';
 
 /**
  * Opens a Modal form for creating a new initiative.
  * @param {() => void} onSuccess - Callback invoked after successful save/submit
- * @returns {Modal} The modal instance
+ * @returns {Modal | undefined} The modal instance, or undefined if a duplicate open was blocked
  */
 export async function openNewInitiativeModal(onSuccess) {
-  const teamOptions = await getTeamOptions();
-  return buildInitiativeModal(null, null, onSuccess, null, teamOptions);
+  const release = acquireOverlayOpen();
+  if (!release) { console.warn('[openNewInitiativeModal] duplicate open ignored'); return; }
+  try {
+    const teamOptions = await getTeamOptions();
+    const modal = buildInitiativeModal(null, null, onSuccess, null, teamOptions);
+    return modal;
+  } finally {
+    release();
+  }
 }
 
 /**
@@ -66,20 +74,31 @@ export async function openNewInitiativeModal(onSuccess) {
  * @param {Object} initiative - The initiative data to pre-fill
  * @param {() => void} onSuccess - Callback invoked after successful save/submit
  * @param {Object} [opts={}] - Options forwarded to buildInitiativeModal (e.g. { asApprover: true })
- * @returns {Promise<Modal>} The modal instance
+ * @returns {Promise<Modal | undefined>} The modal instance, or undefined if a duplicate open was blocked
  */
 export async function openEditInitiativeModal(initiative, onSuccess, opts = {}) {
-  let financials = null;
-  if (initiative.UUID) {
-    try {
-      financials = await getFinancials(initiative.UUID);
-    } catch (error) {
-      console.error('[openEditInitiativeModal] getFinancials failed', error);
-      // non-critical -- proceed without financials
+  const release = acquireOverlayOpen();
+  if (!release) { console.warn('[openEditInitiativeModal] duplicate open ignored'); return; }
+  const loading = Toast.loading('A abrir...');
+  try {
+    let financials = null;
+    if (initiative.UUID) {
+      try {
+        financials = await getFinancials(initiative.UUID);
+      } catch (error) {
+        console.error('[openEditInitiativeModal] getFinancials failed', error);
+        // non-critical -- proceed without financials
+      }
     }
+    const teamOptions = await getTeamOptions();
+    loading.dismiss();
+    return buildInitiativeModal(initiative, financials, onSuccess, null, teamOptions, opts);
+  } catch (err) {
+    console.error('[openEditInitiativeModal] failed to open', err);
+    loading.error('Erro ao abrir formulário.');
+  } finally {
+    release();
   }
-  const teamOptions = await getTeamOptions();
-  return buildInitiativeModal(initiative, financials, onSuccess, null, teamOptions, opts);
 }
 
 /**
@@ -87,20 +106,31 @@ export async function openEditInitiativeModal(initiative, onSuccess, opts = {}) 
  * Copies content fields only -- ownership/workflow metadata is not replicated.
  * @param {Object} sourceInitiative - The initiative to replicate from
  * @param {() => void} onSuccess - Callback invoked after successful save/submit
- * @returns {Promise<Modal>} The modal instance
+ * @returns {Promise<Modal | undefined>} The modal instance, or undefined if a duplicate open was blocked
  */
 export async function openReplicateInitiativeModal(sourceInitiative, onSuccess) {
-  let financials = null;
-  if (sourceInitiative.UUID) {
-    try {
-      financials = await getFinancials(sourceInitiative.UUID);
-    } catch (error) {
-      console.error('[openReplicateInitiativeModal] getFinancials failed', error);
-      // non-critical -- proceed without financials
+  const release = acquireOverlayOpen();
+  if (!release) { console.warn('[openReplicateInitiativeModal] duplicate open ignored'); return; }
+  const loading = Toast.loading('A abrir...');
+  try {
+    let financials = null;
+    if (sourceInitiative.UUID) {
+      try {
+        financials = await getFinancials(sourceInitiative.UUID);
+      } catch (error) {
+        console.error('[openReplicateInitiativeModal] getFinancials failed', error);
+        // non-critical -- proceed without financials
+      }
     }
+    const teamOptions = await getTeamOptions();
+    loading.dismiss();
+    return buildInitiativeModal(null, financials, onSuccess, sourceInitiative, teamOptions);
+  } catch (err) {
+    console.error('[openReplicateInitiativeModal] failed to open', err);
+    loading.error('Erro ao abrir formulário.');
+  } finally {
+    release();
   }
-  const teamOptions = await getTeamOptions();
-  return buildInitiativeModal(null, financials, onSuccess, sourceInitiative, teamOptions);
 }
 
 function buildInitiativeModal(initiative, financials, onSuccess, prefillData = null, teamOptions = [], opts = {}) {
@@ -343,6 +373,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
 
       let finalUUID;
       let finalMentorEmail;
+      let finalMentor;
       let finalTitle;
       if (isEdit) {
         try {
@@ -376,6 +407,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
         }
         finalUUID = initiative.UUID;
         finalMentorEmail = initiative.MentorEmail;
+        finalMentor = initiative.Mentor || null;
         finalTitle = fields.Title;
       } else {
         const uuid = await generateInitiativeUID();
@@ -407,11 +439,19 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
         }
         finalUUID = uuid;
         finalMentorEmail = fields.MentorEmail || '';
+        finalMentor = fields.Mentor || null;
         finalTitle = fields.Title;
       }
 
       await finalizeSubmission(
-        { UUID: finalUUID, MentorEmail: finalMentorEmail, Title: finalTitle },
+        {
+          UUID: finalUUID,
+          Title: finalTitle,
+          MentorEmail: finalMentorEmail,
+          Mentor: finalMentor,
+          SubmittedBy: identity,
+          SubmittedByEmail: identity.email,
+        },
         fromStatus,
       );
 

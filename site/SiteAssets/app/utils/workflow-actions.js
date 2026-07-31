@@ -37,7 +37,8 @@ import {
   getByInitiative as getFinancials,
   deleteItem as deleteFinancials,
 } from './financials-api.js';
-import { getAllEmployees, deriveRoles, getManagerAbove } from './org-hierarchy-api.js';
+import { getAllEmployees, deriveRoles } from './org-hierarchy-api.js';
+import { acquireOverlayOpen } from './overlay-guard.js';
 import {
   shareInitiative,
   getAllByInitiative as getAllSharedRecords,
@@ -309,7 +310,19 @@ function confirmWithEmployeeComboBox(title, message, options) {
  * @returns {Promise<{ person: UserIdentity, type: string, comment: string } | null>}
  */
 async function confirmWithUserComboBox(title, message) {
-  const allEmployees = await getAllEmployees();
+  const release = acquireOverlayOpen();
+  if (!release) { console.warn('[confirmWithUserComboBox] duplicate open ignored'); return null; }
+  const loading = Toast.loading('A abrir...');
+  let allEmployees;
+  try {
+    allEmployees = await getAllEmployees();
+  } catch (err) {
+    console.error('[confirmWithUserComboBox] getAllEmployees failed', err);
+    loading.error('Erro ao carregar utilizadores.');
+    release();
+    return null;
+  }
+  try {
   const currentEmail = ContextStore.get('currentUser').get('email');
   const personOptions = allEmployees
     .filter(emp => emp.Email && emp.Email !== currentEmail)
@@ -390,20 +403,22 @@ async function confirmWithUserComboBox(title, message) {
     dialog.render();
     dialog.open();
   });
+  } finally {
+    loading.dismiss();
+    release();
+  }
 }
 
 // -- Workflow actions --
 
 /**
  * Finalize a SUBMETIDO transition by writing the audit event and notifying the
- * Mentor (when assigned). Caller is responsible for the persistence step:
+ * owner (SUBMITTED_OWNER) and the auto-assigned Mentor (SUBMITTED_MENTOR, when
+ * initiative.MentorEmail is set). Caller is responsible for the persistence step:
  * `transitionStatus` from the side panel, or `update`/`create` with `Status`
  * baked in from the wizard. Does NOT mutate state itself.
  *
- * Future expansion (parked under notifications block CF-3 + CF-2): fan out to
- * Gestor + RE + Submitter. Centralising here means both callers benefit.
- *
- * @param {Object} initiative - Must have UUID; MentorEmail and Title used for notification.
+ * @param {Object} initiative - Must have UUID, SubmittedByEmail, MentorEmail, Title, SubmittedBy, Mentor.
  * @param {string} fromStatus - The status the record is leaving (SUBMISSION event source).
  */
 export async function finalizeSubmission(initiative, fromStatus) {
@@ -412,14 +427,8 @@ export async function finalizeSubmission(initiative, fromStatus) {
   const ownerName = initiative.SubmittedBy?.displayName || (currentUser && currentUser.get('displayName')) || '';
   const dataHora = __dayjs().format('DD/MM/YYYY HH:mm');
   await createEmail(EMAIL_EVENTS.SUBMITTED_OWNER, { initiative, ownerName, dataHora }).send();
-  let manager = null;
-  try {
-    manager = await getManagerAbove(currentUser && currentUser.get('employeeId'));
-  } catch (err) {
-    console.error('[finalizeSubmission] manager lookup failed', err);
-  }
-  if (manager) {
-    await createEmail(EMAIL_EVENTS.SUBMITTED_MANAGER, { initiative, ownerName, dataHora, manager }).send();
+  if (initiative.MentorEmail) {
+    await createEmail(EMAIL_EVENTS.SUBMITTED_MENTOR, { initiative, ownerName, dataHora }).send();
   }
 }
 
@@ -831,7 +840,7 @@ export async function declareSavings(initiative, button, onSuccess) {
 
     await transitionStatus(initiative.Id, STATUS.POR_VALIDAR, initiative['odata.etag'], extraFields);
     await createEvent(initiative.UUID, EVENT_TYPES.SAVINGS_SUBMISSION, STATUS.EM_EXECUCAO, STATUS.POR_VALIDAR);
-    await createEmail(EMAIL_EVENTS.SAVINGS_VALIDATION_REQUESTED, { initiative, gestorEmail: gestor?.email }).send();
+    await createEmail(EMAIL_EVENTS.SAVINGS_VALIDATION_REQUESTED, { initiative, gestor }).send();
     loading.success('Pedido de validação enviado.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -1013,7 +1022,10 @@ export async function transferGestor(initiative, button, onSuccess) {
     await createEvent(initiative.UUID, EVENT_TYPES.TRANSFER, STATUS.POR_VALIDAR, STATUS.POR_VALIDAR, transferComment);
 
     // Notify new gestor
-    await createEmail(EMAIL_EVENTS.GESTOR_TRANSFERRED, { initiative, recipients: newIdentity.email }).send();
+    await createEmail(EMAIL_EVENTS.GESTOR_TRANSFERRED, {
+      initiative,
+      recipients: { email: newIdentity.email, name: newIdentity.displayName },
+    }).send();
 
     // Notify initiative owner
     await createEmail(EMAIL_EVENTS.GESTOR_CHANGED, { initiative }).send();
@@ -1065,7 +1077,10 @@ export async function transferOwnership(initiative, button, onSuccess) {
     await createEvent(initiative.UUID, EVENT_TYPES.TRANSFER, initiative.Status, initiative.Status, transferComment);
 
     // Notify new owner
-    await createEmail(EMAIL_EVENTS.OWNERSHIP_TRANSFERRED, { initiative, recipients: newIdentity.email }).send();
+    await createEmail(EMAIL_EVENTS.OWNERSHIP_TRANSFERRED, {
+      initiative,
+      recipients: { email: newIdentity.email, name: newIdentity.displayName },
+    }).send();
 
     // Notify mentor if exists
     await createEmail(EMAIL_EVENTS.OWNER_CHANGED, { initiative }).send();
@@ -1187,11 +1202,19 @@ export async function reassignRole({ role, initiative, button, onSuccess }) {
     await update(initiative.Id, fields, initiative['odata.etag']);
     await createEvent(initiative.UUID, EVENT_TYPES.TRANSFER, initiative.Status, initiative.Status, comment);
 
-    // Reuse the gestor-change email event when reassigning gestor (notifies owner).
-    // For mentor, no dedicated email event exists -- skip to avoid inventing templates.
-    if (!isMentor) {
+    // Gestor reassignment notifies owner (GESTOR_CHANGED) + new gestor (GESTOR_TRANSFERRED).
+    // Mentor reassignment notifies the new mentor (MENTOR_ASSIGNED).
+    if (isMentor) {
+      await createEmail(EMAIL_EVENTS.MENTOR_ASSIGNED, {
+        initiative,
+        recipients: { email: newIdentity.email, name: newIdentity.displayName },
+      }).send();
+    } else {
       await createEmail(EMAIL_EVENTS.GESTOR_CHANGED, { initiative }).send();
-      await createEmail(EMAIL_EVENTS.GESTOR_TRANSFERRED, { initiative, recipients: newIdentity.email }).send();
+      await createEmail(EMAIL_EVENTS.GESTOR_TRANSFERRED, {
+        initiative,
+        recipients: { email: newIdentity.email, name: newIdentity.displayName },
+      }).send();
     }
 
     loading.success(`${roleLabel} alterado com sucesso.`);
@@ -1222,7 +1245,7 @@ async function addAccessFlow(initiative) {
     await shareInitiative(initiative.UUID, result.person, sharedBy, result.type);
     await createEmail(EMAIL_EVENTS.ACCESS_GRANTED, {
       initiative,
-      recipients: result.person.email,
+      recipients: { email: result.person.email, name: result.person.displayName },
       actorName: user.get('displayName'),
     }).send();
     loading.success('Acesso concedido.');
@@ -1250,7 +1273,7 @@ function buildAccessRow(record, onRemoved) {
         const user = ContextStore.get('currentUser');
         await createEmail(EMAIL_EVENTS.ACCESS_REVOKED, {
           initiativeUUID: record.InitiativeUUID,
-          recipients: record.SharedWithEmail,
+          recipients: { email: record.SharedWithEmail, name: identity?.displayName || '' },
           actorName: user.get('displayName'),
         }).send();
         loading.success('Acesso removido.');

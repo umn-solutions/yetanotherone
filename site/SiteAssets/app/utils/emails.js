@@ -24,7 +24,8 @@ const NOTIFICATION_TYPE = {
 
 export const EMAIL_EVENTS = {
   SUBMITTED_OWNER: 'SUBMITTED_OWNER',
-  SUBMITTED_MANAGER: 'SUBMITTED_MANAGER',
+  SUBMITTED_MENTOR: 'SUBMITTED_MENTOR',
+  MENTOR_ASSIGNED: 'MENTOR_ASSIGNED',
   RESUBMITTED: 'RESUBMITTED',
   SAVINGS_VALIDATION_REQUESTED: 'SAVINGS_VALIDATION_REQUESTED',
   CANCELLED: 'CANCELLED',
@@ -120,10 +121,11 @@ const EMAIL_TEMPLATES = {
       return `Informo que, em ${dataHora}, submeteu a iniciativa "<b>${T}</b>" na aplicação PLACE.`;
     },
   },
-  [EMAIL_EVENTS.SUBMITTED_MANAGER]: {
+  [EMAIL_EVENTS.SUBMITTED_MENTOR]: {
     type: NOTIFICATION_TYPE.STATE_CHANGE,
-    pendingMentor: true,
-    to: (ctx) => ctx.manager ? [{ email: ctx.manager.email, name: ctx.manager.name || '' }] : [],
+    to: (ctx) => ctx.initiative?.MentorEmail
+      ? [{ email: ctx.initiative.MentorEmail, name: ctx.initiative.Mentor?.displayName || '' }]
+      : [],
     subject: (ctx) => `Notificação de submissão da Iniciativa - ${ctx.initiative?.Title || ''}`,
     notificationTitle: (ctx) => {
       const ownerName = escapeHtml(ctx.ownerName || ctx.initiative?.SubmittedBy?.displayName || '');
@@ -133,7 +135,17 @@ const EMAIL_TEMPLATES = {
       const T = escapeHtml(ctx.initiative?.Title || '');
       const dataHora = escapeHtml(ctx.dataHora || '');
       const ownerName = escapeHtml(ctx.ownerName || ctx.initiative?.SubmittedBy?.displayName || '');
-      return `Informo que, em ${dataHora}, foi submetida a iniciativa "<b>${T}</b>" na aplicação PLACE pelo colaborador ${ownerName}.`;
+      return `Informo que, em ${dataHora}, foi submetida a iniciativa "<b>${T}</b>" na aplicação PLACE pelo colaborador ${ownerName}. Foi-lhe atribuída como mentor para validação.`;
+    },
+  },
+  [EMAIL_EVENTS.MENTOR_ASSIGNED]: {
+    type: NOTIFICATION_TYPE.STATE_CHANGE,
+    to: (ctx) => ctx.recipients,
+    subject: (ctx) => `Iniciativa atribuída para validação - ${ctx.initiative?.Title || ''}`,
+    notificationTitle: (ctx) => `Foi-lhe atribuída ${ctx.initiative?.Title || ''} como mentor.`,
+    intro: (ctx) => {
+      const T = escapeHtml(ctx.initiative?.Title || '');
+      return `Foi-lhe atribuída a iniciativa "<b>${T}</b>" como mentor responsável pela validação.`;
     },
   },
   [EMAIL_EVENTS.RESUBMITTED]: {
@@ -159,7 +171,7 @@ const EMAIL_TEMPLATES = {
   },
   [EMAIL_EVENTS.SAVINGS_VALIDATION_REQUESTED]: {
     type: NOTIFICATION_TYPE.STATE_CHANGE,
-    to: (ctx) => ctx.gestorEmail || ctx.initiative?.GestorValidatorEmail,
+    to: (ctx) => ctx.gestor ? [{ email: ctx.gestor.email, name: ctx.gestor.displayName || '' }] : [],
     notificationTitle: (ctx) => `${ctx.initiative?.Title || ''} requer validação de savings.`,
     subject: () => 'PLACE — Validação de savings pendente',
     intro: (ctx) => {
@@ -364,9 +376,16 @@ export function createEmail(event, ctx = {}) {
     event, recipients, subject, notificationTitle, type,
     async send() {
       const sent = [], failed = [];
+      console.group(`[email:${event}] ${recipients.length} recipient(s)`);
       for (const r of recipients) {
+        const body = renderBody(tpl.intro(ctx), pendingMentor, r.name);
+        console.group(`To: ${r.email}`);
+        console.log('To:', r.email);
+        console.log('Subject:', subject);
+        console.log('Body (HTML source):');
+        console.log(body);
+        console.groupEnd();
         try {
-          const body = renderBody(tpl.intro(ctx), pendingMentor, r.name);
           await sendEmail({ to: r.email, subject, body });
           await createNotificationRecord(initiativeUUID, r.email, notificationTitle, type);
           sent.push(r.email);
@@ -375,6 +394,7 @@ export function createEmail(event, ctx = {}) {
           failed.push(r.email);
         }
       }
+      console.groupEnd();
       return { sent, failed };
     },
   };

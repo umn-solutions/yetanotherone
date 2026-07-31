@@ -33,6 +33,7 @@ import { getShareAccessType } from './shared-api.js';
 import { getByInitiative as getComments, createComment } from './comments-api.js';
 import { createEvent, getByInitiative as getEvents } from './initiative-events-api.js';
 import { createEmail, EMAIL_EVENTS } from './emails.js';
+import { acquireOverlayOpen } from './overlay-guard.js';
 
 const TIME_PERIOD_DISPLAY = {
   Diario: 'Diário',
@@ -57,14 +58,20 @@ const SAVING_CAT_DISPLAY = {
  * @returns {Promise<SidePanel>} The panel instance (for cleanup in route teardown)
  */
 export async function openInitiativeDetail(initiative, context, onSuccess, { canAct = true } = {}) {
+  const release = acquireOverlayOpen();
+  if (!release) { console.warn('[openInitiativeDetail] duplicate open ignored'); return; }
+
   const overlayEl = document.createElement('div');
   overlayEl.className = 'pace-submission-overlay';
   overlayEl.id = 'pace-detail-loader';
-  document.body.appendChild(overlayEl);
-  const loader = new Loader([], { containerSelector: '#pace-detail-loader' });
-  loader.render();
+  let loader = null;
+  let loading = null;
 
   try {
+  document.body.appendChild(overlayEl);
+  loader = new Loader([], { containerSelector: '#pace-detail-loader' });
+  loader.render();
+  loading = Toast.loading('A abrir...');
 
   // Re-fetch to get a fresh etag -- the cached object from the route may be stale
   // if the initiative was updated (submitted, edited) since the route last loaded.
@@ -521,8 +528,10 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
   return panel;
 
   } finally {
-    loader.remove();
+    if (loader) loader.remove();
     overlayEl.remove();
+    if (loading) loading.dismiss();
+    release();
   }
 }
 

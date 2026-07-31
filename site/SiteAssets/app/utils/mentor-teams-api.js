@@ -1,4 +1,4 @@
-import { SiteApi, SystemError, ContextStore, fromFieldValue } from '../libs/nofbiz/nofbiz.base.js';
+import { SiteApi, SystemError, ContextStore } from '../libs/nofbiz/nofbiz.base.js';
 import { FULL_SCAN } from './sp-paging.js';
 
 const listApi = new SiteApi().list('MentorTeams');
@@ -33,15 +33,65 @@ export function invalidateMentorTeamsCache() {
 // ---------------------------------------------------------------------------
 
 /**
+ * Normalizes a Teams field value to string[].
+ * ListApi auto-parses stored JSON, so the value may already be an array or
+ * collapsed scalar (single-element numeric array collapses to a number).
+ * Calling fromFieldValue on an already-parsed value double-parses and corrupts
+ * single-element numeric arrays (["1001"] -> 1001 -> breaks Array.isArray checks).
+ * This function handles all possible shapes defensively.
+ * @param {*} value
+ * @returns {string[]}
+ */
+function normalizeTeams(value) {
+  if (value === null || value === undefined || value === '') return [];
+  // Still a raw JSON string (not yet auto-parsed by ListApi)
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return normalizeTeams(parsed);
+    } catch (err) {
+      console.warn('[mentor-teams-api/normalizeTeams] JSON.parse failed, wrapping raw value', { value, err });
+      return value ? [String(value)] : [];
+    }
+  }
+  // Already an array (normal case after auto-parse)
+  if (Array.isArray(value)) {
+    return value.map(String);
+  }
+  // Collapsed scalar (e.g. number 1001 from single-element numeric array bug)
+  return [String(value)];
+}
+
+/**
+ * Normalizes a Mentor field value to a plain object.
+ * @param {*} value
+ * @returns {object}
+ */
+function normalizeMentor(value) {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) || {};
+    } catch (err) {
+      console.warn('[mentor-teams-api/normalizeMentor] JSON.parse failed, using empty object', { value, err });
+      return {};
+    }
+  }
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  return {};
+}
+
+/**
  * Parses a raw SP item into a normalized MentorTeams record.
+ * Teams is always string[], Mentor is always a plain object.
  * @param {object} raw
  * @returns {object}
  */
 function parseItem(raw) {
   return {
     ...raw,
-    Mentor: fromFieldValue(raw.Mentor) || {},
-    Teams: fromFieldValue(raw.Teams) || [],
+    Mentor: normalizeMentor(raw.Mentor),
+    Teams: normalizeTeams(raw.Teams),
   };
 }
 

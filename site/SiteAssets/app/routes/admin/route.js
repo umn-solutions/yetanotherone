@@ -969,9 +969,16 @@ export default defineRoute((config) => {
     /**
      * Builds the options available for the add-team ComboBox:
      * all teams minus those already in assignedTeams.
+     * Returns FRESH clones -- allTeamOptions comes from getTeamOptions()'s
+     * module-level cache, and ComboBox mutates `.checked` on its dataset objects.
+     * Passing shared objects lets a stale `.checked` flag survive across dialog
+     * sessions and dataset reassignments, which (a) pre-selects a team on open and
+     * (b) resurrects a just-removed team via the `set dataset` preChecked re-select.
      */
     function getAvailableTeamOptions() {
-      return allTeamOptions.filter((o) => !assignedTeams.includes(o.value));
+      return allTeamOptions
+        .filter((o) => !assignedTeams.includes(o.value))
+        .map((o) => ({ label: o.label, value: o.value }));
     }
 
     // Single-select ComboBox for adding one team at a time.
@@ -1063,10 +1070,8 @@ export default defineRoute((config) => {
           return;
         }
 
-        if (assignedTeams.length === 0) {
-          Toast.error('Adicione pelo menos uma equipa.');
-          return;
-        }
+        // Empty team list is allowed -- a mentor with no teams simply routes nothing
+        // until teams are re-added. Full removal is done via the Eliminar button.
 
         // Uniqueness enforcement: check if any requested team is held by a different mentor.
         let conflicts = [];

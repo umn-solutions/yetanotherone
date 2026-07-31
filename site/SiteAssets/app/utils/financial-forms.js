@@ -52,7 +52,7 @@ export const FINANCIAL_TYPES = {
 /** Per-input unit suffix. Empty string = no unit (raw counts/volumes). */
 const INPUT_UNITS_BY_CATEGORY = {
   eficiencia:    { vp: '',  tu: 'min' },
-  producao:      { vp: '',  mu: '€', tt: '%' },
+  producao:      { vp: '',  mu: '€' },
   gastos:        { v:  '',  c:  '€' },
   reducao_risco: { exp: '€', taxa: '%' },
   reducao_custo: { co: '€' },
@@ -207,6 +207,34 @@ export function extractCategoryLabels(field) {
 }
 
 // ---------------------------------------------------------------------------
+// Simulador Financeiro helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Internal: resolves a raw simulador value to { active, value }.
+ * "Active" means the value is non-empty, non-null, and parses to a finite number.
+ * An explicit 0 is a valid override (active: true, value: 0).
+ * @param {*} rawVal
+ * @returns {{ active: boolean, value: number }}
+ */
+function resolveSimulador(rawVal) {
+  if (rawVal === null || rawVal === undefined || rawVal === '') return { active: false, value: 0 };
+  const n = parseFloat(rawVal);
+  if (!isFinite(n)) return { active: false, value: 0 };
+  return { active: true, value: n };
+}
+
+/**
+ * Reads the simulador override from a raw reducao_risco payload object.
+ * Use this for plain-JSON reads (e.g. from SP list data or export).
+ * @param {Object|null|undefined} payload
+ * @returns {{ active: boolean, value: number }}
+ */
+export function getSimuladorFromPayload(payload) {
+  return resolveSimulador(payload && payload.simulador);
+}
+
+// ---------------------------------------------------------------------------
 // Internal numeric helper
 // ---------------------------------------------------------------------------
 
@@ -227,7 +255,7 @@ function num(v) {
  */
 function computePhaseTotal(key, phase) {
   if (key === 'eficiencia')    return num(phase.vp.value) * num(phase.tu.value);
-  if (key === 'producao')      return num(phase.vp.value) * num(phase.mu.value) * (num(phase.tt.value) / 100);
+  if (key === 'producao')      return num(phase.vp.value) * num(phase.mu.value);
   if (key === 'gastos')        return num(phase.v.value) * num(phase.c.value);
   if (key === 'reducao_risco') return num(phase.exp.value) * num(phase.taxa.value) / 100;
   if (key === 'reducao_custo') return num(phase.co.value);
@@ -336,7 +364,7 @@ function computeRawPhaseTotal(key, phaseObj) {
   if (!phaseObj) return 0;
   const v = (x) => parseFloat(x) || 0;
   if (key === 'eficiencia')    return v(phaseObj.vp) * v(phaseObj.tu);
-  if (key === 'producao')      return v(phaseObj.vp) * v(phaseObj.mu) * (v(phaseObj.tt) / 100);
+  if (key === 'producao')      return v(phaseObj.vp) * v(phaseObj.mu);
   if (key === 'gastos')        return v(phaseObj.v)  * v(phaseObj.c);
   if (key === 'reducao_risco') return v(phaseObj.exp) * v(phaseObj.taxa) / 100;
   if (key === 'reducao_custo') return v(phaseObj.co);
@@ -361,6 +389,16 @@ export function computeAnnualizedToBeTotalEur(financials) {
     if (!CATEGORY_KEYS.includes(key)) continue;
     const fieldName = CATEGORY_FIELD_NAMES[key];
     const payload = financials[fieldName];
+
+    // reducao_risco: when simulador is active use its value directly (already annual, no factor)
+    if (key === 'reducao_risco') {
+      const sim = getSimuladorFromPayload(payload);
+      if (sim.active) {
+        totalEur += sim.value;
+        continue;
+      }
+    }
+
     const raw = computeRawPhaseTotal(key, getToBePhase(payload));
     if (key === 'eficiencia') {
       // Eficiencia raw is minutes per period -> annualized minutes -> FTE-years -> €
@@ -463,14 +501,25 @@ export function createCategoryState(key, storedPayload, editability) {
     mode = new FormField({ value: initialOption });
   }
 
+  // Simulador Financeiro override (reducao_risco only)
+  let simulador = null;
+  if (key === 'reducao_risco') {
+    simulador = new FormField({ value: parseInitial(payload.simulador) });
+  }
+
   function dispose() {
     [asIs, toBe].forEach(phase => {
       Object.values(phase).forEach(field => field.dispose());
     });
     if (mode) mode.dispose();
+    if (simulador) simulador.dispose();
   }
 
-  return { key, asIs, toBe, computed, dispose, editability, ...(mode ? { mode } : {}) };
+  return {
+    key, asIs, toBe, computed, dispose, editability,
+    ...(mode ? { mode } : {}),
+    ...(simulador ? { simulador } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -511,6 +560,10 @@ export function serializeCategory(state) {
   });
   if (state.mode) {
     payload.mode = extractComboBoxValue(state.mode.value);
+  }
+  if (state.simulador) {
+    const r = resolveSimulador(state.simulador.value);
+    if (r.active) payload.simulador = r.value;
   }
   return JSON.stringify(payload);
 }
@@ -735,12 +788,42 @@ export function buildCategoryDisplay(state, opts = {}) {
   }
 
   if (showToBe) {
-    const savingTxt = new Text(displayValue(state.computed.realizedSaving()), { type: 'span', class: 'pace-detail-value' });
-    const refreshSaving = () => { savingTxt.children = displayValue(state.computed.realizedSaving()); };
+    const savingTxt = new Text(displayValueWithUnit(state.computed.realizedSaving(), CATEGORY_TOTAL_UNIT[state.key]), { type: 'span', class: 'pace-detail-value' });
+    const refreshSaving = () => { savingTxt.children = displayValueWithUnit(state.computed.realizedSaving(), CATEGORY_TOTAL_UNIT[state.key]); };
     for (const field of [...Object.values(state.asIs), ...Object.values(state.toBe)]) {
       unsubs.push(field.subscribe(refreshSaving));
     }
     components.push(buildReadOnlyRow('Saving realizado', savingTxt));
+  }
+
+  // reducao_risco: simulador rows (annual platform saving, simulador value, effective annual)
+  if (state.key === 'reducao_risco' && state.simulador) {
+    const period = typeof timePeriod === 'string' ? timePeriod : '';
+    const factor = getAnnualizationFactor(period);
+
+    const annualPlatformTxt = new Text(
+      displayValueWithUnit(state.computed.realizedSaving() * factor, '€'),
+      { type: 'span', class: 'pace-detail-value' },
+    );
+    const refreshAnnualPlatform = () => {
+      annualPlatformTxt.children = displayValueWithUnit(state.computed.realizedSaving() * factor, '€');
+    };
+    for (const field of [...Object.values(state.asIs), ...Object.values(state.toBe)]) {
+      unsubs.push(field.subscribe(refreshAnnualPlatform));
+    }
+    components.push(buildReadOnlyRow('Saving realizado (anual)', annualPlatformTxt));
+
+    const sim = resolveSimulador(state.simulador.value);
+    const simuladorTxt = new Text(
+      sim.active ? displayValueWithUnit(sim.value, '€') : '-',
+      { type: 'span', class: 'pace-detail-value' },
+    );
+    const refreshSimulador = () => {
+      const simLive = resolveSimulador(state.simulador.value);
+      simuladorTxt.children = simLive.active ? displayValueWithUnit(simLive.value, '€') : '-';
+    };
+    unsubs.push(state.simulador.subscribe(refreshSimulador));
+    components.push(buildReadOnlyRow('Simulador Financeiro (anual)', simuladorTxt));
   }
 
   // Eficiencia: surface the FTE annual cost when set (mentor/gestor input)
@@ -849,7 +932,17 @@ export function buildTotalsPanel(categoryStates, opts = {}) {
     for (const [key, pTxt] of pEurCatTxts) {
       const raw = getStateValue(key);
       const pVal = raw;
-      const aVal = raw * factor;
+      let aVal = raw * factor;
+
+      // reducao_risco: when phase is 'realized' and simulador is active, override the annual value
+      if (key === 'reducao_risco' && phase === 'realized') {
+        const rrState = categoryStates.get('reducao_risco');
+        if (rrState && rrState.simulador) {
+          const sim = resolveSimulador(rrState.simulador.value);
+          if (sim.active) aVal = sim.value;
+        }
+      }
+
       pEurCatTotal += pVal;
       aEurCatTotal += aVal;
       pTxt.children = formatEur(pVal);
@@ -894,6 +987,14 @@ export function buildTotalsPanel(categoryStates, opts = {}) {
   // Subscribe to live fteAnnualCost field if provided
   if (isFteField) {
     unsubs.push(fteOpt.subscribe(refresh));
+  }
+
+  // Subscribe to reducao_risco simulador field (realized phase only) so annual totals update live
+  if (phase === 'realized') {
+    const rrState = categoryStates.get('reducao_risco');
+    if (rrState && rrState.simulador) {
+      unsubs.push(rrState.simulador.subscribe(refresh));
+    }
   }
 
   // -- Build block children --
@@ -1082,6 +1183,17 @@ export function buildImpactSummaryPanel(categoryStates, opts = {}) {
       if (CATEGORY_TOTAL_UNIT[key] !== '€') continue;
       if (!categoryStates.has(key)) continue;
       const dir = CATEGORY_DIRECTIONS[key];
+      if (key === 'reducao_risco') {
+        const rr = categoryStates.get('reducao_risco');
+        if (rr && rr.simulador) {
+          const sim = resolveSimulador(rr.simulador.value);
+          if (sim.active) {
+            // reducao_risco is a 'decrease' category: benefit = saving = sim.value
+            benefit += sim.value;
+            continue;
+          }
+        }
+      }
       benefit += dir === 'increase'
         ? catVal(key, 'toBe') - catVal(key, 'asIs')
         : catVal(key, 'asIs') - catVal(key, 'toBe');
@@ -1105,7 +1217,18 @@ export function buildImpactSummaryPanel(categoryStates, opts = {}) {
     const fteCost = getFteCost();
 
     const periodDiff = phaseEur('toBe', fteCost) - phaseEur('asIs', fteCost);
-    const annualDiff = periodDiff * factor;
+    let annualDiff = periodDiff * factor;
+
+    // reducao_risco simulador override: remove the platform annual contribution and add the override.
+    // reducao_risco is a 'decrease' category: its benefit is asIs - toBe (a saving reduces the net diff).
+    const rr = categoryStates.get('reducao_risco');
+    if (rr && rr.simulador) {
+      const sim = resolveSimulador(rr.simulador.value);
+      if (sim.active) {
+        const rrPeriodDiff = rr.computed.toBeTotal() - rr.computed.asIsTotal(); // platform per-period net change
+        annualDiff = annualDiff - (rrPeriodDiff * factor) + (-sim.value);
+      }
+    }
 
     // Colour by benefit, not by the raw diff sign (a cost reduction shows a
     // negative diff but is a positive outcome -> green). Annual shares the sign.
@@ -1152,6 +1275,12 @@ export function buildImpactSummaryPanel(categoryStates, opts = {}) {
   }
   if (isTimePeriodField) unsubs.push(timePeriodOpt.subscribe(refresh));
   if (isFteField) unsubs.push(fteOpt.subscribe(refresh));
+
+  // Subscribe to reducao_risco simulador so the annual pill updates live
+  const rrStateForImpact = categoryStates.get('reducao_risco');
+  if (rrStateForImpact && rrStateForImpact.simulador) {
+    unsubs.push(rrStateForImpact.simulador.subscribe(refresh));
+  }
 
   const component = new Container([
     new Text('Impacto Financeiro Projectado', { type: 'span', class: 'pace-impact-title' }),
@@ -1372,8 +1501,85 @@ export function buildCategoryTabbedSection(categoryStates, opts = {}) {
 
     const asIsResult = buildCategoryAsIsForm(state, { timePeriod, extraInputs });
     const toBeResult = buildCategoryToBeForm(state, { timePeriod });
+
+    // Simulador Financeiro block (reducao_risco only)
+    const simuladorUnsubs = [];
+    const simuladorBlockComponents = [];
+
+    if (key === 'reducao_risco' && state.simulador) {
+      // Resolve period: timePeriod can be a FormField or a plain string
+      const isTimePeriodField = timePeriod != null
+        && typeof timePeriod === 'object'
+        && typeof timePeriod.subscribe === 'function';
+      const getPeriodStr = isTimePeriodField
+        ? () => extractComboValue(timePeriod)
+        : () => (typeof timePeriod === 'string' ? timePeriod : '');
+
+      // Platform annual saving display (live)
+      const platformAnnualTxt = new Text(
+        displayValueWithUnit(state.computed.realizedSaving() * getAnnualizationFactor(getPeriodStr()), '€'),
+        { type: 'span', class: 'pace-detail-value' },
+      );
+      const refreshPlatformAnnual = () => {
+        platformAnnualTxt.children = displayValueWithUnit(
+          state.computed.realizedSaving() * getAnnualizationFactor(getPeriodStr()),
+          '€',
+        );
+      };
+      for (const field of [...Object.values(state.asIs), ...Object.values(state.toBe)]) {
+        simuladorUnsubs.push(field.subscribe(refreshPlatformAnnual));
+      }
+      if (isTimePeriodField) {
+        simuladorUnsubs.push(timePeriod.subscribe(refreshPlatformAnnual));
+      }
+
+      // Simulador value display (live)
+      const sim = resolveSimulador(state.simulador.value);
+      const simuladorValTxt = new Text(
+        sim.active ? displayValueWithUnit(sim.value, '€') : '-',
+        { type: 'span', class: 'pace-detail-value' },
+      );
+      const refreshSimuladorVal = () => {
+        const simLive = resolveSimulador(state.simulador.value);
+        simuladorValTxt.children = simLive.active ? displayValueWithUnit(simLive.value, '€') : '-';
+      };
+      simuladorUnsubs.push(state.simulador.subscribe(refreshSimuladorVal));
+
+      simuladorBlockComponents.push(
+        new Text('Simulador Financeiro', { type: 'h5', class: 'pace-form-section-title' }),
+        new Text(
+          'Leve o total calculado pela plataforma ao seu simulador externo e introduza aqui o valor anual final. Quando preenchido, este valor substitui o saving calculado pela plataforma para esta métrica.',
+          { type: 'p', class: 'pace-field-callout pace-field-callout--block' },
+        ),
+      );
+
+      if (canModify) {
+        simuladorBlockComponents.push(
+          new FieldLabel(
+            'Simulador Financeiro (€, anual)',
+            new NumberInput(state.simulador, { placeholder: '0', min: 0 }),
+          ),
+        );
+      } else {
+        simuladorBlockComponents.push(
+          buildReadOnlyRow('Simulador Financeiro (€, anual)', simuladorValTxt),
+        );
+      }
+
+      simuladorBlockComponents.push(
+        buildReadOnlyRow('Saving calculado pela plataforma (anual)', platformAnnualTxt),
+      );
+      if (canModify) {
+        simuladorBlockComponents.push(buildReadOnlyRow('Simulador Financeiro (anual)', simuladorValTxt));
+      }
+    }
+
     builderResults.set(key, {
-      dispose: () => { asIsResult.dispose(); toBeResult.dispose(); },
+      dispose: () => {
+        asIsResult.dispose();
+        toBeResult.dispose();
+        simuladorUnsubs.forEach(u => u && u());
+      },
     });
 
     // Mode toggle (for reducao_custo: Custo evitado / Risco evitado)
@@ -1392,6 +1598,7 @@ export function buildCategoryTabbedSection(categoryStates, opts = {}) {
         ...asIsResult.components,
         new Text('To-Be (situação futura)', { type: 'h5', class: 'pace-form-section-title' }),
         ...toBeResult.components,
+        ...simuladorBlockComponents,
       ], { class: 'pace-tab-form' }),
     ];
 

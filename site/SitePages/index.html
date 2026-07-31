@@ -14,6 +14,75 @@
     <h1>place</h1>
     <p>If you can read this, pageReset has not run yet or an error occurred.</p>
 
+    <!--
+      Boot loader shown until SPARC mounts, so users don't stare at a white page.
+      Constraints (see pageReset in nofbiz.base.js): it strips every <style>/<link>
+      tag and hides all body children via `.nofbiz-reset > * { display:none }`.
+      Therefore: only inline `style` attrs survive (used here, with !important to
+      beat the display:none rule), and the spinner animates via SMIL SVG instead of
+      CSS keyframes so it keeps spinning after the style tags are removed.
+      Removed once Router mounts content into #root; a timeout is the safety net.
+    -->
+    <div
+      id="app-loader"
+      style="position:fixed;inset:0;display:flex !important;flex-direction:column;align-items:center;justify-content:center;gap:18px;margin:0;background:#ffffff;z-index:2147483647;font-family:'Segoe UI',system-ui,sans-serif;color:#5a6b3b;transition:opacity .35s ease;"
+    >
+      <svg width="52" height="52" viewBox="0 0 50 50" aria-hidden="true">
+        <circle cx="25" cy="25" r="20" fill="none" stroke="#eceff1" stroke-width="5" />
+        <circle
+          cx="25"
+          cy="25"
+          r="20"
+          fill="none"
+          stroke="#9ac433"
+          stroke-width="5"
+          stroke-linecap="round"
+          stroke-dasharray="80 200"
+        >
+          <animateTransform
+            attributeName="transform"
+            type="rotate"
+            from="0 25 25"
+            to="360 25 25"
+            dur="0.9s"
+            repeatCount="indefinite"
+          />
+        </circle>
+      </svg>
+      <div style="font-size:14px;letter-spacing:.3px;">A carregar…</div>
+    </div>
+    <script>
+      (function () {
+        var loader = document.getElementById("app-loader");
+        if (!loader) return;
+        var timer;
+        function dismiss() {
+          if (!loader) return;
+          clearTimeout(timer);
+          loader.style.opacity = "0";
+          var el = loader;
+          loader = null;
+          setTimeout(function () {
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+          }, 400);
+        }
+        // Primary signal: Router mounted the first route into #root.
+        var obs = new MutationObserver(function () {
+          var root = document.getElementById("root");
+          if (root && root.children.length > 0) {
+            obs.disconnect();
+            dismiss();
+          }
+        });
+        obs.observe(document.body, { childList: true, subtree: true });
+        // Safety net: never trap the user on the spinner (e.g. a load-error dialog).
+        timer = setTimeout(function () {
+          obs.disconnect();
+          dismiss();
+        }, 20000);
+      })();
+    </script>
+
     <script src="../SiteAssets/app/index.js" type="module"></script>
   </body>
 </html>

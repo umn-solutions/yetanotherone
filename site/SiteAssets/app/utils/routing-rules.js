@@ -32,17 +32,17 @@ function findBase(responsible, ancestors) {
 }
 
 /**
- * Returns the ancestor exactly n levels above node in ancestors[], clamped at index 1 (never the root/CEO).
- * @param {object|null} node
- * @param {Array} ancestors
- * @param {number} n
+ * Scans ancestors from startIdx downward and returns the first Executive-category
+ * node, stopping BEFORE the root/CEO (index 0) which is never a valid target.
+ * @param {Array} ancestors - ordered CEO(root) -> self(last)
+ * @param {number} startIdx - index to begin scanning (inclusive)
+ * @returns {object|null} null -> caller falls back to comexFallback
  */
-function levelsAbove(node, ancestors, n) {
-  if (!node) return null;
-  const idx = ancestors.findIndex(a => a.Title === node.Title);
-  if (idx < 0) return node;
-  const target = Math.max(1, idx - n);      // index 1 = highest non-CEO; never 0 (root)
-  return ancestors[target] || null;         // null -> caller falls back to comexFallback
+function firstExecFrom(ancestors, startIdx) {
+  for (let i = startIdx; i >= 1; i--) {
+    if (ancestors[i].Category === EXEC) return ancestors[i];
+  }
+  return null;
 }
 
 /**
@@ -61,14 +61,13 @@ function excludeRoot(winner, ancestors) {
 /**
  * Determines which Gestor should validate based on routing rules.
  *
- * Normal initiatives: routes to the team's immediate accountability node (base),
- * unchanged from prior behaviour.
+ * Normal initiatives: routes to the team's immediate accountability node (base).
  *
- * High-tier initiatives (>= 10 000 annualised OR Hard Cost): routes two levels
- * above M1, where M1 is the impacted team's manager -- the first GESTOR_CATEGORIES
- * node scanning from responsible (self, inclusive) upward through ancestors.
- * The result is clamped to the highest non-CEO ancestor (index 1); the CEO/root is never targeted.
- * In all cases the root/CEO is never returned; if routing resolves to the root it is demoted to the highest non-root ancestor, and the comexFallback sink is itself a non-root exec.
+ * High-tier initiatives (>= 10 000 annualised OR Hard Cost): routes to the nearest
+ * Executive-category ancestor scanning upward from self (inclusive), excluding the
+ * root/CEO (index 0). If no Executive-category node exists above the impacted team
+ * (other than root), falls back to comexFallback -- itself a non-root exec-level
+ * direct report of root.
  *
  * @param {string} savingType
  * @param {string|number} savingEstimate
@@ -93,7 +92,7 @@ export async function getAssignedGestor(savingType, savingEstimate, impactedTeam
 
   const base = findBase(responsible, ancestors);
   const rawWinner = isHighTier
-    ? levelsAbove(firstGestorFrom(ancestors, ancestors.length - 1), ancestors, 2)
+    ? firstExecFrom(ancestors, ancestors.length - 1)
     : base;
   const winner = excludeRoot(rawWinner, ancestors);
   if (!winner) return comexFallback;

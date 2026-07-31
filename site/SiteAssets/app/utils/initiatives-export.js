@@ -18,6 +18,7 @@ import {
   deriveSavingType,
   annualizeSavings,
 } from './constants.js';
+import { getSimuladorFromPayload } from './financial-forms.js';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -39,7 +40,7 @@ function num(v) {
 function computePhaseTotalFromJson(key, phase) {
   if (!phase) return 0;
   if (key === 'eficiencia')    return num(phase.vp) * num(phase.tu);
-  if (key === 'producao')      return num(phase.vp) * num(phase.mu) * (num(phase.tt) / 100);
+  if (key === 'producao')      return num(phase.vp) * num(phase.mu);
   if (key === 'gastos')        return num(phase.v)  * num(phase.c);
   if (key === 'reducao_risco') return num(phase.exp) * num(phase.taxa) / 100;
   if (key === 'reducao_custo') return num(phase.co);
@@ -60,9 +61,15 @@ function flattenCategory(payloadJson, categoryKey, timePeriod) {
   let payload = payloadJson;
   if (!payload) return 0;
   if (typeof payload === 'string') {
-    try { payload = JSON.parse(payload); } catch (_) { return 0; }
+    try { payload = JSON.parse(payload); } catch (err) { console.warn('[initiatives-export.flattenCategory] JSON parse failed', { categoryKey, err }); return 0; }
   }
   if (typeof payload !== 'object') return 0;
+
+  // reducao_risco: when simulador is active it is already annual -- return directly (no factor)
+  if (categoryKey === 'reducao_risco') {
+    const sim = getSimuladorFromPayload(payload);
+    if (sim.active) return sim.value;
+  }
 
   const asIsTotal  = computePhaseTotalFromJson(categoryKey, payload.asIs);
   // Legacy compatibility: early records used `estimated` for the projected phase.
@@ -248,6 +255,22 @@ function buildRow(item, ctx) {
             ? computePhaseTotalFromJson(key, phaseObj)
             : '';
         }
+      }
+
+      // reducao_risco: extra simulador column
+      if (key === 'reducao_risco') {
+        let simuladorVal = '';
+        if (fin && payloadJson) {
+          let simPayload = payloadJson;
+          if (typeof simPayload === 'string') {
+            try { simPayload = JSON.parse(simPayload); } catch (err) { console.warn('[initiatives-export] ReducaoRiscoData simulador parse failed', { err }); simPayload = null; }
+          }
+          if (simPayload && typeof simPayload === 'object') {
+            const sim = getSimuladorFromPayload(simPayload);
+            if (sim.active) simuladorVal = sim.value;
+          }
+        }
+        row['Redução de Custo de Risco Simulador (Anual)'] = simuladorVal;
       }
     }
 

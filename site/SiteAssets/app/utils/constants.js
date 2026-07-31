@@ -197,14 +197,14 @@ export const CATEGORY_FIELD_NAMES = {
 /**
  * Per-category input field keys (order matters for column output).
  * Eficiencia:    vp (Volume processado), tu (Tempo tratamento unitario)
- * Producao:      vp (Volume), mu (Montante medio unitario), tt (Taxa de transformacao %)
+ * Producao:      vp (Volume), mu (Montante medio unitario)
  * Gastos:        v  (Volume), c  (Custo unitario)
  * ReducaoRisco:  exp (Exposição ao risco), taxa (Taxa de provisionamento %)
  * ReducaoCusto:  co (Custos operacionais)
  */
 export const INPUT_KEYS_BY_CATEGORY = {
   eficiencia:    ['vp', 'tu'],
-  producao:      ['vp', 'mu', 'tt'],
+  producao:      ['vp', 'mu'],
   gastos:        ['v', 'c'],
   reducao_risco: ['exp', 'taxa'],
   reducao_custo: ['co'],
@@ -219,7 +219,6 @@ export const INPUT_LABELS_BY_CATEGORY = {
   producao: {
     vp: 'Volume de Unidades',
     mu: 'Valor Médio por Unidade (€)',
-    tt: 'Taxa de Transformação (%)',
   },
   gastos: {
     v: 'Volume de Unidades',
