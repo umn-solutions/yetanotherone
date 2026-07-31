@@ -1,5 +1,5 @@
 import { getGestorMap, pickTeamHead } from './org-hierarchy-api.js';
-import { annualizeSavings, GESTOR_CATEGORIES } from './constants.js';
+import { GESTOR_CATEGORIES } from './constants.js';
 
 const EXEC = 'Executive';
 const TOP_MGMT = 'Top Management';
@@ -70,14 +70,13 @@ function excludeRoot(winner, ancestors) {
  * direct report of root.
  *
  * @param {string} savingType
- * @param {string|number} savingEstimate
+ * @param {string|number} savingEstimate - Already-annualized EUR total
  * @param {string} impactedTeamOUID
- * @param {string} [timePeriod='Anual'] - Time period for annualization
  * @returns {Promise<{ email: string, displayName: string } | null>}
  */
-export async function getAssignedGestor(savingType, savingEstimate, impactedTeamOUID, timePeriod) {
+export async function getAssignedGestor(savingType, savingEstimate, impactedTeamOUID) {
   if (!impactedTeamOUID) return null;
-  const value = annualizeSavings(savingEstimate, timePeriod || 'Anual');
+  const value = parseFloat(String(savingEstimate).replace(/[^\d.]/g, '')) || 0;
   const isHighTier = savingType === 'Hard Cost' || value >= 10000;
 
   const { byId, byOUID, comexFallback } = await getGestorMap();
@@ -95,6 +94,23 @@ export async function getAssignedGestor(savingType, savingEstimate, impactedTeam
     ? firstExecFrom(ancestors, ancestors.length - 1)
     : base;
   const winner = excludeRoot(rawWinner, ancestors);
-  if (!winner) return comexFallback;
+  // TEMP diagnostic -- remove after routing verified
+  console.debug('[getAssignedGestor]', {
+    savingType, savingEstimate, value, isHighTier, impactedTeamOUID,
+    responsible: responsible && { Title: responsible.Title, Category: responsible.Category },
+    ancestors: ancestors.map(a => `${a.Title}:${a.Category}`),
+    base: base && { Title: base.Title, Category: base.Category },
+    winner: winner && { Title: winner.Title, Category: winner.Category },
+  });
+  if (!winner) {
+    // TEMP diagnostic -- remove after routing verified
+    console.debug('[getAssignedGestor] fallback', {
+      savingType, savingEstimate, value, isHighTier, impactedTeamOUID,
+      responsible: responsible && { Title: responsible.Title, Category: responsible.Category },
+      ancestors: ancestors.map(a => `${a.Title}:${a.Category}`),
+      comexFallback: comexFallback && { email: comexFallback.email, displayName: comexFallback.displayName },
+    });
+    return comexFallback;
+  }
   return { email: winner.Email, displayName: winner.ShortName };
 }
