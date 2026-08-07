@@ -16,6 +16,7 @@ import {
 } from '../../utils/mentor-teams-api.js';
 import { createExportButton } from '../../utils/initiatives-export.js';
 import * as initiativesApi from '../../utils/initiatives-api.js';
+import { emailEquals } from '../../utils/email-helpers.js';
 
 export default defineRoute((config) => {
   config.setRouteTitle('Admin');
@@ -464,7 +465,7 @@ export default defineRoute((config) => {
           roleDialog.remove();
 
           const currentUser = ContextStore.get('currentUser');
-          const isSelf = currentUser && emp.Email === currentUser.get('email');
+          const isSelf = currentUser && emailEquals(emp.Email, currentUser.get('email'));
           if (isSelf) {
             loading.success('Perfil actualizado. A recarregar...');
             setTimeout(() => location.reload(), 1500);
@@ -641,7 +642,7 @@ export default defineRoute((config) => {
     emptyListMessage: 'Nenhum mentor configurado. Clique em "Adicionar Mentor" para começar.',
     onItemSelectHandler: (rowData) => {
       const mentorEmail = rowData[0];
-      const record = mentorTeamsData.find((r) => r.MentorEmail === mentorEmail);
+      const record = mentorTeamsData.find((r) => emailEquals(r.MentorEmail, mentorEmail));
       if (record) showMentorTeamsDialog(record);
     },
   });

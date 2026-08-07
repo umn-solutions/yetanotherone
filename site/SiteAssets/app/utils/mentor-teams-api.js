@@ -1,4 +1,5 @@
 import { SiteApi, SystemError, ContextStore } from '../libs/nofbiz/nofbiz.base.js';
+import { emailEquals } from './email-helpers.js';
 import { FULL_SCAN } from './sp-paging.js';
 
 const listApi = new SiteApi().list('MentorTeams');
@@ -222,7 +223,7 @@ export async function findTeamConflicts(teams, excludeEmail) {
   const conflicts = [];
   for (const ouid of teams) {
     const record = all.find(r =>
-      r.MentorEmail !== excludeEmail &&
+      !emailEquals(r.MentorEmail, excludeEmail) &&
       Array.isArray(r.Teams) &&
       r.Teams.includes(ouid)
     );

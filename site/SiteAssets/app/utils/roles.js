@@ -1,5 +1,6 @@
 import { ContextStore } from '../libs/nofbiz/nofbiz.base.js';
 import { getCachedTeamOptions } from './org-hierarchy-api.js';
+import { emailEquals } from './email-helpers.js';
 
 export const ROLES = {
   COLABORADOR: 'colaborador',
@@ -138,7 +139,7 @@ export function isMentorUser() {
  * @returns {boolean}
  */
 export function canManageAccess(currentEmail, initiative, shareType) {
-  if (initiative.SubmittedByEmail === currentEmail) return true;
+  if (emailEquals(initiative.SubmittedByEmail, currentEmail)) return true;
   if (shareType === 'collaborate') return true;
   if (hasAnyProfile([ROLES.MENTOR, ROLES.MENTOR_MANAGER, ROLES.GESTOR])) return true;
   return false;

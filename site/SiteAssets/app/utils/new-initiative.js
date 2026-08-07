@@ -50,6 +50,7 @@ import { finalizeSubmission, performResubmitTransition } from './workflow-action
 import { buildWorkflowButtons } from './workflow-buttons.js';
 import { getMentorForTeam } from './mentor-teams-api.js';
 import { acquireOverlayOpen } from './overlay-guard.js';
+import { emailEquals } from './email-helpers.js';
 
 /**
  * Opens a Modal form for creating a new initiative.
@@ -611,7 +612,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
   // ===== WORKFLOW BUTTONS =====
 
   const resolvedEmail = currentEmail || ContextStore.get('currentUser')?.get('email') || '';
-  const resolvedIsOwner = initiative ? initiative.SubmittedByEmail === resolvedEmail : false;
+  const resolvedIsOwner = initiative ? emailEquals(initiative.SubmittedByEmail, resolvedEmail) : false;
   const workflowButtonsStep2b = (isEdit && context) ? buildWorkflowButtons({
     initiative,
     context,

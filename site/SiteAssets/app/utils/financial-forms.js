@@ -372,11 +372,16 @@ function computeRawPhaseTotal(key, phaseObj) {
 }
 
 /**
- * Computes the annualized toBe total in € across all enabled categories.
- * Used by routing rules to decide gestor assignment based on financial impact.
+ * Computes the annualized REALIZED SAVING in € across all enabled categories.
+ * Direction-aware: for 'decrease' categories the saving is asIs - toBe; for
+ * 'increase' categories it is toBe - asIs. Name kept for compatibility (imported
+ * by workflow-actions.js and emails.js).
+ *
+ * Used by routing tiers (isHighTier decision) and resolveFinalValidationLabel
+ * (soft && <10k => PLACE label). Both should be saving-based, so this is correct.
  *
  * @param {Object|null} financials - Financials row from SP (auto-parsed)
- * @returns {number} Annualized € total (0 if no data)
+ * @returns {number} Annualized realized saving in € (0 if no data)
  */
 export function computeAnnualizedToBeTotalEur(financials) {
   if (!financials) return 0;
@@ -399,12 +404,17 @@ export function computeAnnualizedToBeTotalEur(financials) {
       }
     }
 
-    const raw = computeRawPhaseTotal(key, getToBePhase(payload));
+    // Direction-aware realized saving: decrease => asIs - toBe; increase => toBe - asIs
+    const asIsRaw = computeRawPhaseTotal(key, payload && payload.asIs);
+    const toBeRaw = computeRawPhaseTotal(key, getToBePhase(payload));
+    const dir = CATEGORY_DIRECTIONS[key];
+    const savingPeriod = dir === 'decrease' ? (asIsRaw - toBeRaw) : (toBeRaw - asIsRaw);
+
     if (key === 'eficiencia') {
-      // Eficiencia raw is minutes per period -> annualized minutes -> FTE-years -> €
-      totalEur += ((raw * factor) / FTE_MINUTES_PER_YEAR) * fteCost;
+      // Eficiencia saving is minutes per period -> annualized minutes -> FTE-years -> €
+      totalEur += ((savingPeriod * factor) / FTE_MINUTES_PER_YEAR) * fteCost;
     } else {
-      totalEur += raw * factor;
+      totalEur += savingPeriod * factor;
     }
   }
   return totalEur;

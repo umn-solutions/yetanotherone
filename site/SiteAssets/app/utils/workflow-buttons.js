@@ -19,6 +19,7 @@ import {
   declareSavings,
 } from './workflow-actions.js';
 import { openEditInitiativeModal, openReplicateInitiativeModal } from './new-initiative.js';
+import { emailEquals } from './email-helpers.js';
 
 /**
  * Builds context-sensitive workflow action buttons for an initiative.
@@ -349,7 +350,7 @@ export function buildWorkflowButtons({
     });
     buttons.push(replicateBtn);
 
-    const isAssignedMentor = currentEmail && currentEmail === initiative.MentorEmail;
+    const isAssignedMentor = currentEmail && emailEquals(currentEmail, initiative.MentorEmail);
     if ((isOwner || isAssignedMentor) && canAccess('eliminar_proprio')) {
       const deleteBtn = new Button('Eliminar', {
         variant: 'danger',

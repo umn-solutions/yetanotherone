@@ -1,4 +1,5 @@
 import { SiteApi, SystemError } from '../libs/nofbiz/nofbiz.base.js';
+import { emailEquals } from './email-helpers.js';
 import { GESTOR_CATEGORIES, MENTOR_OUIDS } from './constants.js';
 import { validateOrgCSV } from './org-hierarchy-csv.js';
 import { FULL_SCAN } from './sp-paging.js';
@@ -218,7 +219,7 @@ export async function getAllEmployees() {
  */
 export async function getByEmail(email) {
   const results = await listApi.getItems({ Email: email });
-  return results.filter(item => item.Email === email);
+  return results.filter(item => emailEquals(item.Email, email));
 }
 
 /**

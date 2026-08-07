@@ -17,6 +17,7 @@ import { sendEmail, escapeHtml, SystemError } from '../libs/nofbiz/nofbiz.base.j
 import { createNotificationRecord } from './notifications-api.js';
 import { buildFinancialFields } from './initiatives-export.js';
 import { computeAnnualizedToBeTotalEur, formatEur } from './financial-forms.js';
+import { emailEquals } from './email-helpers.js';
 
 /**
  * Coerces any value to a safe display string that can never produce "[object Object]".
@@ -142,7 +143,7 @@ function normalizeRecipients(to, excludeEmail) {
     if (!entry) continue;
     const r = (typeof entry === 'string') ? { email: entry, name: '' } : entry;
     if (!r.email) continue;
-    if (excludeEmail && r.email === excludeEmail) continue;
+    if (excludeEmail && emailEquals(r.email, excludeEmail)) continue;
     if (seen.has(r.email)) continue;
     seen.add(r.email);
     out.push({ email: r.email, name: safeText(r.name) });

@@ -50,6 +50,7 @@ import {
   getByInitiative as getComments,
   deleteItem as deleteComment,
 } from './comments-api.js';
+import { emailEquals } from './email-helpers.js';
 
 // On HTTP 412 ETag mismatch SPARC throws SystemError('ConcurrencyConflict').
 // Replace the generic action-failure copy with a reload instruction so the
@@ -325,7 +326,7 @@ async function confirmWithUserComboBox(title, message) {
   try {
   const currentEmail = ContextStore.get('currentUser').get('email');
   const personOptions = allEmployees
-    .filter(emp => emp.Email && emp.Email !== currentEmail)
+    .filter(emp => emp.Email && !emailEquals(emp.Email, currentEmail))
     .map(emp => ({
       label: emp.ShortName,
       value: new UserIdentity(emp.Email, emp.ShortName),
@@ -667,6 +668,17 @@ export async function approveProject(initiative, button, onSuccess) {
   button.isLoading = true;
   const loading = Toast.loading('A aprovar projecto...');
   try {
+    // Gate: if eficiencia is enabled, FTEAnnualCost must be set before approving.
+    // Eficiencia saving = (asIs - toBe minutes) * factor / FTE_MINUTES_PER_YEAR * FTEAnnualCost.
+    // Without FTEAnnualCost the saving computes to 0 and routing always drops to base manager.
+    const financials = await getFinancials(initiative.UUID);
+    const enabledCats = Array.isArray(financials?.EnabledCategories) ? financials.EnabledCategories : [];
+    if (enabledCats.includes('eficiencia') && !(parseFloat(financials?.FTEAnnualCost) > 0)) {
+      console.warn('[approveProject] blocked: eficiencia enabled but FTEAnnualCost unset', { uuid: initiative.UUID });
+      loading.error('Defina o Custo Anual por FTE (necessário para calcular o saving de Eficiência Operacional) antes de aprovar o projecto.');
+      return;
+    }
+
     const user = ContextStore.get('currentUser');
     const mentorIdentity = { email: user.get('email'), displayName: user.get('displayName') };
     await transitionStatus(initiative.Id, STATUS.VALIDADO_MENTOR, initiative['odata.etag'], {
@@ -1005,7 +1017,7 @@ export async function mentorManagerValidation(initiative, button, onSuccess) {
 export async function transferGestor(initiative, button, onSuccess) {
   const allEmployees = await getAllEmployees();
   const options = allEmployees
-    .filter(emp => deriveRoles(emp).includes('gestor') && emp.Email !== initiative.GestorValidatorEmail)
+    .filter(emp => deriveRoles(emp).includes('gestor') && !emailEquals(emp.Email, initiative.GestorValidatorEmail))
     .map(emp => ({
       label: emp.ShortName,
       value: new UserIdentity(emp.Email, emp.ShortName),
@@ -1060,7 +1072,7 @@ export async function transferOwnership(initiative, button, onSuccess) {
   const allEmployees = await getAllEmployees();
   const currentEmail = ContextStore.get('currentUser').get('email');
   const options = allEmployees
-    .filter(emp => deriveRoles(emp).includes('colaborador') && emp.Email !== currentEmail)
+    .filter(emp => deriveRoles(emp).includes('colaborador') && !emailEquals(emp.Email, currentEmail))
     .map(emp => ({
       label: emp.ShortName,
       value: new UserIdentity(emp.Email, emp.ShortName),

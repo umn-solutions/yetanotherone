@@ -26,6 +26,7 @@ import { INITIATIVE_TAGS, EVENT_TYPES } from '../../utils/constants.js';
 import { canAccess } from '../../utils/roles.js';
 import { createExportButton } from '../../utils/initiatives-export.js';
 import { getByEventType } from '../../utils/initiative-events-api.js';
+import { emailEquals } from '../../utils/email-helpers.js';
 
 export default defineRoute((config) => {
   config.setRouteTitle('Pessoal');
@@ -209,7 +210,7 @@ export default defineRoute((config) => {
     const filtered = applyFilters(allMyItems);
 
     const terminalStatuses = [STATUS.IMPLEMENTADO, STATUS.CANCELADO, STATUS.REJEITADO];
-    const myFiltered = filtered.filter((item) => item.SubmittedByEmail === currentEmail);
+    const myFiltered = filtered.filter((item) => emailEquals(item.SubmittedByEmail, currentEmail));
     const activeItems = myFiltered.filter(
       (item) => item.Status !== STATUS.RASCUNHO && !terminalStatuses.includes(item.Status)
     );
@@ -234,7 +235,7 @@ export default defineRoute((config) => {
     getRows: () => {
       const filtered = applyFilters(allMyItems);
       const terminalStatuses = [STATUS.IMPLEMENTADO, STATUS.CANCELADO, STATUS.REJEITADO];
-      const myFiltered = filtered.filter((i) => i.SubmittedByEmail === currentEmail);
+      const myFiltered = filtered.filter((i) => emailEquals(i.SubmittedByEmail, currentEmail));
       switch (activeTab) {
         case 'em-curso':
           return myFiltered.filter((i) => i.Status !== STATUS.RASCUNHO && !terminalStatuses.includes(i.Status));
@@ -283,7 +284,7 @@ export default defineRoute((config) => {
     const sharedItemsList = [];
     const sharedUUIDSet = new Set(sharedUUIDs);
     for (const item of allResults) {
-      if (item.SubmittedByEmail === currentEmail) {
+      if (emailEquals(item.SubmittedByEmail, currentEmail)) {
         personalItems.push(item);
       }
       if (sharedUUIDSet.has(item.UUID)) {

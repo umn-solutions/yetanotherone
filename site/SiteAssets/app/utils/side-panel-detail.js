@@ -34,6 +34,7 @@ import { getByInitiative as getComments, createComment } from './comments-api.js
 import { createEvent, getByInitiative as getEvents } from './initiative-events-api.js';
 import { createEmail, EMAIL_EVENTS } from './emails.js';
 import { acquireOverlayOpen } from './overlay-guard.js';
+import { emailEquals } from './email-helpers.js';
 
 const TIME_PERIOD_DISPLAY = {
   Diario: 'Diário',
@@ -82,7 +83,7 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
 
   const user = ContextStore.get('currentUser');
   const currentEmail = user.get('email');
-  const isOwner = initiative.SubmittedByEmail === currentEmail;
+  const isOwner = emailEquals(initiative.SubmittedByEmail, currentEmail);
   const shareType = await getShareAccessType(initiative.UUID, currentEmail).catch(err => { console.error('[openInitiativeDetail] getShareAccessType failed', err); return null; });
   const isSharedUser = shareType !== null;
   const isCollaborator = shareType === 'collaborate';
@@ -408,8 +409,8 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
 
     comments.sort((a, b) => (b.CommentDate || '').localeCompare(a.CommentDate || ''));
 
-    const isMentor = currentEmail === initiative.MentorEmail;
-    const isGestor = currentEmail === initiative.GestorValidatorEmail;
+    const isMentor = emailEquals(currentEmail, initiative.MentorEmail);
+    const isGestor = emailEquals(currentEmail, initiative.GestorValidatorEmail);
     const canComment = isOwner || isMentor || isGestor || isSharedUser;
 
     const commentListContainer = new Container(
