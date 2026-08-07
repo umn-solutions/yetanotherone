@@ -386,25 +386,44 @@ export async function getManagerAbove(employeeId) {
 }
 
 /**
- * Returns all users whose derived roles include 'mentor' (covers both 'mentor' and 'mentor-manager').
+ * Returns all employees whose derived roles include the given role.
  * Sorted by displayName, deduped by email.
+ * @param {string} role - Derived role to filter by (e.g. 'mentor', 'mentor-manager').
  * @returns {Promise<Array<{ email: string, displayName: string, employeeId: string }>>}
  */
-export async function getMentorUsers() {
+async function getUsersByDerivedRole(role) {
   const all = await getAllEmployees();
   const seen = new Set();
-  const mentors = [];
+  const result = [];
   for (const emp of all) {
     if (!emp.Email) continue;
     const roles = deriveRoles(emp, all);
-    if (!roles.includes('mentor')) continue;
+    if (!roles.includes(role)) continue;
     if (seen.has(emp.Email)) continue;
     seen.add(emp.Email);
-    mentors.push({
+    result.push({
       email: emp.Email,
       displayName: emp.ShortName || emp.Title || emp.Email,
       employeeId: emp.Title,
     });
   }
-  return mentors.sort((a, b) => a.displayName.localeCompare(b.displayName));
+  return result.sort((a, b) => a.displayName.localeCompare(b.displayName));
+}
+
+/**
+ * Returns all users whose derived roles include 'mentor' (covers both 'mentor' and 'mentor-manager').
+ * Sorted by displayName, deduped by email.
+ * @returns {Promise<Array<{ email: string, displayName: string, employeeId: string }>>}
+ */
+export async function getMentorUsers() {
+  return getUsersByDerivedRole('mentor');
+}
+
+/**
+ * Returns all users whose derived roles include 'mentor-manager'.
+ * Sorted by displayName, deduped by email.
+ * @returns {Promise<Array<{ email: string, displayName: string, employeeId: string }>>}
+ */
+export async function getMentorManagers() {
+  return getUsersByDerivedRole('mentor-manager');
 }

@@ -260,79 +260,138 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     modal?.instance?.find('input, textarea').trigger('blur');
   };
 
-  // -- Save functions --
-  const saveAsDraft = async (btn) => {
+  // -- Shared persist helper (edit-mode only) --
+  // Flushes inputs, validates, saves base fields + financials in-place (preserving
+  // the current Status), refetches to get a fresh ETag, and mutates `initiative`
+  // in-place via Object.assign so any subsequent code using `initiative` sees the
+  // fresh ETag without needing to pass it around.
+  // Returns true on success, false on any failure (errors are logged + Toasted here).
+  // Does NOT manage button.isLoading or the overlay -- the caller owns those.
+  const persistFormEdits = async () => {
     flushPendingInputs();
     if (!schema.isValid) {
       schema.focusOnFirstInvalid();
       Toast.error('Preencha o título e seleccione a equipa.');
-      return;
+      return false;
     }
-
-    btn.isLoading = true;
-    showOverlay();
-    const loading = Toast.loading('A guardar...');
+    const saving = Toast.loading('A guardar...');
     try {
       const baseFields = collectBaseFields();
-      // When editing, preserve the current status (do NOT demote a SUBMETIDO back to RASCUNHO)
-      const fields = isEdit
-        ? { ...baseFields, Status: initiative.Status }
-        : { ...baseFields, Status: STATUS.RASCUNHO };
+      try {
+        await update(initiative.Id, { ...baseFields, Status: initiative.Status }, initiative['odata.etag']);
+      } catch (err) {
+        console.error('[persistFormEdits] update failed', err);
+        if (err && err.name === 'ConcurrencyConflict') {
+          saving.error('Outra pessoa editou esta iniciativa. Feche e reabra para recarregar.');
+        } else {
+          saving.error('Erro ao guardar alterações.');
+        }
+        return false;
+      }
 
-      if (isEdit) {
-        try {
-          await update(initiative.Id, fields, initiative['odata.etag']);
-        } catch (err) {
-          console.error('[saveAsDraft] update failed', err);
-          if (err && err.name === 'ConcurrencyConflict') {
-            loading.error('Outra pessoa editou esta iniciativa. Feche e reabra para recarregar.');
-            return;
-          }
-          throw err;
-        }
-        if (userTouchedFinancials()) {
-          const finFields = collectFinancialFields();
-          if (financials) {
-            try {
-              await updateFinancials(financials.Id, finFields, financials['odata.etag']);
-            } catch (err) {
-              console.error('[saveAsDraft] updateFinancials failed', err);
-              if (err && err.name === 'ConcurrencyConflict') {
-                loading.error('Outra pessoa editou estes dados. A recarregar...');
-                const fresh = await getFinancials(initiative.UUID);
-                if (fresh) financials = fresh;
-                return;
-              }
-              throw err;
+      if (userTouchedFinancials()) {
+        const finFields = collectFinancialFields();
+        if (financials) {
+          try {
+            await updateFinancials(financials.Id, finFields, financials['odata.etag']);
+          } catch (err) {
+            console.error('[persistFormEdits] updateFinancials failed', err);
+            if (err && err.name === 'ConcurrencyConflict') {
+              saving.error('Outra pessoa editou estes dados. Feche e reabra para recarregar.');
+            } else {
+              saving.error('Erro ao guardar dados financeiros.');
             }
-          } else {
+            return false;
+          }
+        } else {
+          try {
             await createFinancials(initiative.UUID, finFields);
+          } catch (err) {
+            console.error('[persistFormEdits] createFinancials failed', err);
+            saving.error('Erro ao guardar dados financeiros.');
+            return false;
           }
         }
+      }
+
+      // Refetch to get the fresh ETag after writes
+      const results = await getInitiativeByUUID(initiative.UUID);
+      const fresh = results?.[0];
+      if (!fresh) {
+        saving.error('Erro ao recarregar iniciativa após guardar.');
+        return false;
+      }
+      // Mutate the shared `initiative` reference in-place: workflow-action functions
+      // that close over this reference will pick up the fresh ETag on their next read.
+      Object.assign(initiative, fresh);
+
+      // Refresh financials reference so label recomputation sees saved values.
+      try {
+        const freshFin = await getFinancials(initiative.UUID);
+        if (freshFin) financials = freshFin;
+      } catch (err) {
+        console.warn('[persistFormEdits] financials refresh failed (non-critical)', err);
+      }
+
+      saving.dismiss();
+      return true;
+    } catch (err) {
+      console.error('[persistFormEdits] unexpected error', err);
+      saving.error('Erro ao guardar alterações.');
+      return false;
+    }
+  };
+
+  // -- Save functions --
+  const saveAsDraft = async (btn) => {
+    btn.isLoading = true;
+    showOverlay();
+    try {
+      if (isEdit) {
+        const saved = await persistFormEdits();
+        if (!saved) return;
+        if (asApprover) {
+          await createEvent(initiative.UUID, EVENT_TYPES.EDIT_APPROVER, initiative.Status, initiative.Status);
+        }
+        Toast.success('Alterações guardadas');
+        modal.close();
+        if (onSuccess) onSuccess();
       } else {
-        const currentUser = ContextStore.get('currentUser');
-        const identity = { email: currentUser.get('email'), displayName: currentUser.get('displayName') };
-        const uuid = await generateInitiativeUID();
-        await create({
-          ...fields,
-          UUID: uuid,
-          SubmittedBy: identity,
-          SubmittedByEmail: currentUser.get('email'),
-        });
-        await createEvent(uuid, EVENT_TYPES.CREATION, '', STATUS.RASCUNHO);
-        if (userTouchedFinancials()) {
-          await createFinancials(uuid, collectFinancialFields());
+        // New initiative: validate first
+        flushPendingInputs();
+        if (!schema.isValid) {
+          schema.focusOnFirstInvalid();
+          Toast.error('Preencha o título e seleccione a equipa.');
+          return;
+        }
+        const loading = Toast.loading('A guardar...');
+        try {
+          const baseFields = collectBaseFields();
+          const fields = { ...baseFields, Status: STATUS.RASCUNHO };
+          const currentUser = ContextStore.get('currentUser');
+          const identity = { email: currentUser.get('email'), displayName: currentUser.get('displayName') };
+          const uuid = await generateInitiativeUID();
+          await create({
+            ...fields,
+            UUID: uuid,
+            SubmittedBy: identity,
+            SubmittedByEmail: currentUser.get('email'),
+          });
+          await createEvent(uuid, EVENT_TYPES.CREATION, '', STATUS.RASCUNHO);
+          if (userTouchedFinancials()) {
+            await createFinancials(uuid, collectFinancialFields());
+          }
+          loading.success('Rascunho guardado com sucesso');
+          modal.close();
+          if (onSuccess) onSuccess();
+        } catch (error) {
+          console.error('[saveAsDraft] failed', error);
+          loading.error('Erro ao guardar rascunho');
         }
       }
-      if (isEdit && asApprover) {
-        await createEvent(initiative.UUID, EVENT_TYPES.EDIT_APPROVER, initiative.Status, initiative.Status);
-      }
-      loading.success(isEdit ? 'Alterações guardadas' : 'Rascunho guardado com sucesso');
-      modal.close();
-      if (onSuccess) onSuccess();
     } catch (error) {
       console.error('[saveAsDraft] failed', error);
-      loading.error(isEdit ? 'Erro ao guardar alterações' : 'Erro ao guardar rascunho');
+      Toast.error(isEdit ? 'Erro ao guardar alterações' : 'Erro ao guardar rascunho');
     } finally {
       btn.isLoading = false;
       hideOverlay();
@@ -469,38 +528,18 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
 
   // -- Re-submit from wizard (EM_REVISAO -> previous status, with toBe gate + gestor re-attribution) --
   const resubmitFromWizard = async (btn) => {
-    flushPendingInputs();
-    if (!schema.isValid) {
-      schema.focusOnFirstInvalid();
-      Toast.error('Preencha o título e seleccione a equipa.');
-      return;
-    }
     btn.isLoading = true;
     showOverlay();
     const loading = Toast.loading('A re-submeter...');
     try {
-      // Save current edits in-place (preserve EM_REVISAO status until transition)
-      const baseFields = collectBaseFields();
-      await update(initiative.Id, { ...baseFields, Status: initiative.Status }, initiative['odata.etag']);
+      // Save edits and refresh ETag via shared helper; abort if save fails.
+      // persistFormEdits manages its own Toast for the save step; dismiss the
+      // resubmit loading toast here to avoid stacking if save fails/aborts.
+      const saved = await persistFormEdits();
+      if (!saved) { loading.dismiss(); return; }
 
-      if (userTouchedFinancials()) {
-        const finFields = collectFinancialFields();
-        if (financials) {
-          await updateFinancials(financials.Id, finFields, financials['odata.etag']);
-        } else {
-          await createFinancials(initiative.UUID, finFields);
-        }
-      }
-
-      // Refresh initiative to pick up new etag for the transition
-      const results = await getInitiativeByUUID(initiative.UUID);
-      const fresh = results?.[0];
-      if (!fresh) {
-        loading.error('Erro ao recarregar iniciativa após guardar.');
-        return;
-      }
-
-      await performResubmitTransition(fresh);
+      // `initiative` is now fresh (Object.assign'd inside persistFormEdits)
+      await performResubmitTransition(initiative);
 
       loading.success('Iniciativa re-submetida com sucesso.');
       modal.close();
@@ -586,6 +625,11 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     excludeEdit: true,
     excludeShare: true,
     approvalsOnly: true,
+    // Gate all forwarded workflow actions through a save: flush inputs, persist
+    // base and financial edits, refresh the ETag, THEN run the status transition.
+    // This ensures approvers who edit data before clicking Aprovar/Validar do not
+    // silently discard their changes. Only injected in the approver edit modal.
+    beforeAction: asApprover ? persistFormEdits : null,
   }) : [];
 
   // ===== ACTION BUTTONS (built once, reused across steps) =====

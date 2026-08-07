@@ -24,6 +24,7 @@ import { getSimuladorFromPayload } from './financial-forms.js';
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+
 /** Coerces any value to a float, returning 0 for invalid input. */
 function num(v) {
   return parseFloat(v) || 0;
@@ -65,8 +66,8 @@ function flattenCategory(payloadJson, categoryKey, timePeriod) {
   }
   if (typeof payload !== 'object') return 0;
 
-  // reducao_risco: when simulador is active it is already annual -- return directly (no factor)
-  if (categoryKey === 'reducao_risco') {
+  // producao: when simulador is active it is already annual -- return directly (no factor)
+  if (categoryKey === 'producao') {
     const sim = getSimuladorFromPayload(payload);
     if (sim.active) return sim.value;
   }
@@ -113,7 +114,12 @@ function getModeFromPayload(payloadJson) {
     try { payload = JSON.parse(payload); } catch (err) { console.warn('[initiatives-export.getModeFromPayload] JSON parse failed', { payload, err }); return ''; }
   }
   if (typeof payload !== 'object') return '';
-  return payload.mode || '';
+  const mode = payload.mode;
+  if (mode == null) return '';
+  if (typeof mode === 'string') return mode;
+  // Legacy: mode stored as ComboBox option object ({label, value}); extract scalar.
+  if (typeof mode === 'object') return String(mode.value ?? mode.label ?? mode.Name ?? '');
+  return String(mode);
 }
 
 /**
@@ -169,15 +175,20 @@ function serializeEvents(arr) {
 }
 
 /**
- * Builds a single flat row for the CSV.
- * @param {Object} item - Initiative record
- * @param {{ finMap: Map, commentsMap: Map, eventsMap: Map, isPrivileged: boolean, includeSection: boolean, detailed: boolean }} ctx
- * @returns {Object}
+ * Flattens all financial fields from a financials record into an ordered flat
+ * object keyed by human-readable column label.
+ *
+ * This is the canonical financial-data flattening used by both the CSV export
+ * (buildRow) and the IMPLEMENTED email template. Extracting it here avoids
+ * duplicating the category-loop logic.
+ *
+ * @param {Object|null} fin - Financials record (may be null)
+ * @param {{ detailed?: boolean, isPrivileged?: boolean }} [opts]
+ *   detailed    - When true, includes per-phase raw inputs and simulador columns (default true)
+ *   isPrivileged - When true, includes FTEAnnualCost (default false)
+ * @returns {Object} Ordered flat object { columnLabel: value, ... }
  */
-function buildRow(item, ctx) {
-  const { finMap, commentsMap, eventsMap, isPrivileged, includeSection, detailed } = ctx;
-  const fin = finMap.get(item.UUID) || null;
-
+export function buildFinancialFields(fin, { detailed = true, isPrivileged = false } = {}) {
   const savingCat = fin
     ? (Array.isArray(fin.SavingCategory) ? fin.SavingCategory : (fin.SavingCategory ? [fin.SavingCategory] : []))
     : [];
@@ -186,30 +197,20 @@ function buildRow(item, ctx) {
 
   const row = {};
 
-  if (includeSection) {
-    row.Section = item.__section || '';
-  }
-
-  row.Title                 = item.Title || '';
-  row.Description           = item.Description || '';
-  row.UUID                  = item.UUID || '';
-  row.Status                = statusLabel(item.Status || '');
-  row.ImpactedTeamOUID      = item.ImpactedTeamOUID || '';
-  row.SubmittedByEmail      = item.SubmittedByEmail || '';
-  row.OwnerName             = ownerName(item);
-  row.MentorName            = mentorName(item);
-  row.MentorEmail           = item.MentorEmail || '';
-  row.GestorName            = gestorName(item);
-  row.GestorValidatorEmail  = item.GestorValidatorEmail || '';
-  row.IsConfidential        = item.IsConfidential ? 'Sim' : 'Não';
-  row.Created               = item.Created ? String(item.Created).slice(0, 10) : '';
-  row.Modified              = item.Modified ? String(item.Modified).slice(0, 10) : '';
-  row.ImplementedDate       = item.ImplementedDate ? String(item.ImplementedDate).slice(0, 10) : '';
-
-  row.TimePeriod            = timePeriod;
+  row.TimePeriod     = timePeriod;
   // Prefer stored SavingType; fall back to derivation from categories for legacy rows
-  row.SavingType            = fin ? (fin.SavingType || deriveSavingType(savingCat)) : '';
-  row.SavingCategory        = savingCat.join('; ');
+  row.SavingType     = fin ? (fin.SavingType || deriveSavingType(savingCat)) : '';
+  // Legacy records may store option objects ({label,value}) instead of plain strings.
+  // Coerce each entry to its scalar label/value before joining.
+  row.SavingCategory = savingCat
+    .map((entry) => {
+      if (entry == null) return '';
+      if (typeof entry === 'string') return entry;
+      if (typeof entry === 'object') return String(entry.value ?? entry.label ?? entry.Name ?? '');
+      return String(entry);
+    })
+    .filter((s) => s !== '')
+    .join('; ');
 
   for (const key of CATEGORY_KEYS) {
     const label = CATEGORY_LABELS[key];
@@ -220,7 +221,7 @@ function buildRow(item, ctx) {
       if (detailed) {
         let qualText = '';
         if (fin && payloadJson) {
-          const parsed = typeof payloadJson === 'object' ? payloadJson : (() => { try { return JSON.parse(payloadJson); } catch (err) { console.warn('[initiatives-export] QualidadeData parse failed', { payloadJson, err }); return {}; } })();
+          const parsed = typeof payloadJson === 'object' ? payloadJson : (() => { try { return JSON.parse(payloadJson); } catch (err) { console.warn('[initiatives-export.buildFinancialFields] QualidadeData parse failed', { payloadJson, err }); return {}; } })();
           qualText = parsed.text || '';
         }
         row['Qualidade Descrição'] = qualText;
@@ -257,20 +258,20 @@ function buildRow(item, ctx) {
         }
       }
 
-      // reducao_risco: extra simulador column
-      if (key === 'reducao_risco') {
+      // producao: extra simulador column
+      if (key === 'producao') {
         let simuladorVal = '';
         if (fin && payloadJson) {
           let simPayload = payloadJson;
           if (typeof simPayload === 'string') {
-            try { simPayload = JSON.parse(simPayload); } catch (err) { console.warn('[initiatives-export] ReducaoRiscoData simulador parse failed', { err }); simPayload = null; }
+            try { simPayload = JSON.parse(simPayload); } catch (err) { console.warn('[initiatives-export.buildFinancialFields] ProducaoData simulador parse failed', { err }); simPayload = null; }
           }
           if (simPayload && typeof simPayload === 'object') {
             const sim = getSimuladorFromPayload(simPayload);
             if (sim.active) simuladorVal = sim.value;
           }
         }
-        row['Redução de Custo de Risco Simulador (Anual)'] = simuladorVal;
+        row['Aumento de Produção Simulador (Anual)'] = simuladorVal;
       }
     }
 
@@ -283,6 +284,45 @@ function buildRow(item, ctx) {
   if (isPrivileged) {
     row.FTEAnnualCost = fin ? (fin.FTEAnnualCost || '') : '';
   }
+
+  return row;
+}
+
+/**
+ * Builds a single flat row for the CSV.
+ * @param {Object} item - Initiative record
+ * @param {{ finMap: Map, commentsMap: Map, eventsMap: Map, isPrivileged: boolean, includeSection: boolean, detailed: boolean }} ctx
+ * @returns {Object}
+ */
+function buildRow(item, ctx) {
+  const { finMap, commentsMap, eventsMap, isPrivileged, includeSection, detailed } = ctx;
+  const fin = finMap.get(item.UUID) || null;
+
+  const row = {};
+
+  if (includeSection) {
+    row.Section = item.__section || '';
+  }
+
+  row.Title                 = item.Title || '';
+  row.Description           = item.Description || '';
+  row.UUID                  = item.UUID || '';
+  row.Status                = statusLabel(item.Status || '');
+  row.ImpactedTeamOUID      = item.ImpactedTeamOUID || '';
+  row.SubmittedByEmail      = item.SubmittedByEmail || '';
+  row.OwnerName             = ownerName(item);
+  row.MentorName            = mentorName(item);
+  row.MentorEmail           = item.MentorEmail || '';
+  row.GestorName            = gestorName(item);
+  row.GestorValidatorEmail  = item.GestorValidatorEmail || '';
+  row.IsConfidential        = item.IsConfidential ? 'Sim' : 'Não';
+  row.Created               = item.Created ? String(item.Created).slice(0, 10) : '';
+  row.Modified              = item.Modified ? String(item.Modified).slice(0, 10) : '';
+  row.ImplementedDate       = item.ImplementedDate ? String(item.ImplementedDate).slice(0, 10) : '';
+
+  // Financial fields -- delegated to the shared flattener (same output as before)
+  const finFields = buildFinancialFields(fin, { detailed, isPrivileged });
+  Object.assign(row, finFields);
 
   row.Comments = serializeComments(commentsMap.get(item.UUID));
   row.Events   = serializeEvents(eventsMap.get(item.UUID));

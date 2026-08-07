@@ -52,8 +52,6 @@
 	--header-footer-height: 6.625rem;
 	margin-top: var(--header-footer-height);
 	padding: 2rem 0;
-	padding-bottom: calc(var(--header-footer-height) * 2
-  );
 	/* height: 100svh;
   overflow-y: auto; */
 }

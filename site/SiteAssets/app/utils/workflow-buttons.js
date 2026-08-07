@@ -37,6 +37,10 @@ import { openEditInitiativeModal, openReplicateInitiativeModal } from './new-ini
  * @param {boolean} [params.excludeShare=false] - omit Partilhar
  * @param {boolean} [params.approvalsOnly=false] - only forward workflow actions (Aprovar/Validar/Submeter/etc); drop Cancelar/Rejeitar/Solicitar Revisão/Transferir/Eliminar/Replicar
  * @param {'collaborate'|'read'|null} [params.shareType=null] - the current user's delegated share type for this initiative
+ * @param {(() => Promise<boolean>) | null} [params.beforeAction=null] - optional async gate that runs before
+ *   every transition/action click handler. If it resolves to false the action is aborted. When null (default)
+ *   the click handlers run directly with no pre-step. Used by the approver edit modal to flush and persist
+ *   form edits before advancing the workflow status.
  * @returns {Button[]}
  */
 export function buildWorkflowButtons({
@@ -53,6 +57,7 @@ export function buildWorkflowButtons({
   excludeShare = false,
   approvalsOnly = false,
   shareType = null,
+  beforeAction = null,
 }) {
   const buttons = [];
   const writeAccess = hasWriteAccess ?? isOwner;
@@ -63,12 +68,19 @@ export function buildWorkflowButtons({
     if (onSuccess) onSuccess();
   };
 
+  // Wraps a workflow-action function with the optional beforeAction gate.
+  // When beforeAction is null this is a transparent pass-through.
+  // When beforeAction is provided, it is awaited first; a false return value aborts the action.
+  const runAction = (fn) => beforeAction
+    ? async (...args) => { if (!(await beforeAction())) return; return fn(...args); }
+    : fn;
+
   if (context === 'pessoal' && writeAccess) {
     if (status === STATUS.RASCUNHO) {
       if (!excludeEdit && canAccess('submeter')) {
         const submitBtn = new Button('Submeter', {
           variant: 'primary',
-          onClickHandler: () => submitInitiative(initiative, submitBtn, handleSuccess),
+          onClickHandler: runAction(() => submitInitiative(initiative, submitBtn, handleSuccess)),
         });
         buttons.push(submitBtn);
       }
@@ -86,7 +98,7 @@ export function buildWorkflowButtons({
         const deleteBtn = new Button('Eliminar', {
           variant: 'danger',
           isOutlined: true,
-          onClickHandler: () => deleteInitiative(initiative, deleteBtn, handleSuccess),
+          onClickHandler: runAction(() => deleteInitiative(initiative, deleteBtn, handleSuccess)),
         });
         buttons.push(deleteBtn);
       }
@@ -105,28 +117,28 @@ export function buildWorkflowButtons({
         const cancelBtn = new Button('Cancelar', {
           variant: 'danger',
           isOutlined: true,
-          onClickHandler: () => cancelInitiative(initiative, cancelBtn, handleSuccess),
+          onClickHandler: runAction(() => cancelInitiative(initiative, cancelBtn, handleSuccess)),
         });
         buttons.push(cancelBtn);
       }
     } else if (status === STATUS.VALIDADO_MENTOR) {
       const startBtn = new Button('Declarar Início Execução', {
         variant: 'primary',
-        onClickHandler: () => startExecution(initiative, startBtn, handleSuccess),
+        onClickHandler: runAction(() => startExecution(initiative, startBtn, handleSuccess)),
       });
       buttons.push(startBtn);
       if (!approvalsOnly && canAccess('cancelar_proprio')) {
         const cancelBtn = new Button('Cancelar', {
           variant: 'danger',
           isOutlined: true,
-          onClickHandler: () => cancelInitiative(initiative, cancelBtn, handleSuccess),
+          onClickHandler: runAction(() => cancelInitiative(initiative, cancelBtn, handleSuccess)),
         });
         buttons.push(cancelBtn);
       }
     } else if (status === STATUS.EM_EXECUCAO) {
       const savingsBtn = new Button('Solicitar Validação', {
         variant: 'primary',
-        onClickHandler: () => declareSavings(initiative, savingsBtn, handleSuccess),
+        onClickHandler: runAction(() => declareSavings(initiative, savingsBtn, handleSuccess)),
       });
       buttons.push(savingsBtn);
       if (!excludeEdit && canAccess('editar')) {
@@ -143,7 +155,7 @@ export function buildWorkflowButtons({
         const cancelBtn = new Button('Cancelar', {
           variant: 'danger',
           isOutlined: true,
-          onClickHandler: () => cancelInitiative(initiative, cancelBtn, handleSuccess),
+          onClickHandler: runAction(() => cancelInitiative(initiative, cancelBtn, handleSuccess)),
         });
         buttons.push(cancelBtn);
       }
@@ -157,12 +169,12 @@ export function buildWorkflowButtons({
       }) : null;
       const resubmitBtn = (!excludeEdit && canAccess('editar')) ? new Button('Re-submeter', {
         variant: 'primary',
-        onClickHandler: () => resubmitInitiative(initiative, resubmitBtn, handleSuccess),
+        onClickHandler: runAction(() => resubmitInitiative(initiative, resubmitBtn, handleSuccess)),
       }) : null;
       const cancelBtn = (!approvalsOnly && canAccess('cancelar_proprio')) ? new Button('Cancelar', {
         variant: 'danger',
         isOutlined: true,
-        onClickHandler: () => cancelInitiative(initiative, cancelBtn, handleSuccess),
+        onClickHandler: runAction(() => cancelInitiative(initiative, cancelBtn, handleSuccess)),
       }) : null;
       if (reviewBtn) buttons.push(reviewBtn);
       if (resubmitBtn) buttons.push(resubmitBtn);
@@ -172,7 +184,7 @@ export function buildWorkflowButtons({
         const cancelBtn = new Button('Cancelar', {
           variant: 'danger',
           isOutlined: true,
-          onClickHandler: () => cancelInitiative(initiative, cancelBtn, handleSuccess),
+          onClickHandler: runAction(() => cancelInitiative(initiative, cancelBtn, handleSuccess)),
         });
         buttons.push(cancelBtn);
       }
@@ -181,7 +193,7 @@ export function buildWorkflowButtons({
         const cancelBtn = new Button('Cancelar', {
           variant: 'danger',
           isOutlined: true,
-          onClickHandler: () => cancelInitiative(initiative, cancelBtn, handleSuccess),
+          onClickHandler: runAction(() => cancelInitiative(initiative, cancelBtn, handleSuccess)),
         });
         buttons.push(cancelBtn);
       }
@@ -191,7 +203,7 @@ export function buildWorkflowButtons({
     if (!approvalsOnly && !TERMINAL_STATUSES.includes(status)) {
       const transferBtn = new Button('Transferir', {
         variant: 'secondary',
-        onClickHandler: () => transferOwnership(initiative, transferBtn, handleSuccess),
+        onClickHandler: runAction(() => transferOwnership(initiative, transferBtn, handleSuccess)),
       });
       buttons.push(transferBtn);
     }
@@ -202,7 +214,7 @@ export function buildWorkflowButtons({
       if (canAccess('aprovar_projecto')) {
         const approveBtn = new Button('Aprovar', {
           variant: 'primary',
-          onClickHandler: () => approveProject(initiative, approveBtn, handleSuccess),
+          onClickHandler: runAction(() => approveProject(initiative, approveBtn, handleSuccess)),
         });
         buttons.push(approveBtn);
       }
@@ -220,14 +232,14 @@ export function buildWorkflowButtons({
         const rejectBtn = new Button('Rejeitar', {
           variant: 'danger',
           isOutlined: true,
-          onClickHandler: () => rejectInitiative(initiative, rejectBtn, handleSuccess),
+          onClickHandler: runAction(() => rejectInitiative(initiative, rejectBtn, handleSuccess)),
         });
         buttons.push(rejectBtn);
       }
       if (!approvalsOnly && canAccess('solicitar_revisao')) {
         const revisionBtn = new Button('Solicitar Revisão', {
           variant: 'secondary',
-          onClickHandler: () => requestRevision(initiative, revisionBtn, handleSuccess),
+          onClickHandler: runAction(() => requestRevision(initiative, revisionBtn, handleSuccess)),
         });
         buttons.push(revisionBtn);
       }
@@ -235,7 +247,7 @@ export function buildWorkflowButtons({
       if (canAccess('validar_savings_final')) {
         const confirmBtn = new Button('Confirmar Savings', {
           variant: 'primary',
-          onClickHandler: () => mentorFinalValidation(initiative, confirmBtn, handleSuccess),
+          onClickHandler: runAction(() => mentorFinalValidation(initiative, confirmBtn, handleSuccess)),
         });
         buttons.push(confirmBtn);
       }
@@ -253,14 +265,14 @@ export function buildWorkflowButtons({
         const rejectBtn = new Button('Rejeitar', {
           variant: 'danger',
           isOutlined: true,
-          onClickHandler: () => rejectInitiative(initiative, rejectBtn, handleSuccess),
+          onClickHandler: runAction(() => rejectInitiative(initiative, rejectBtn, handleSuccess)),
         });
         buttons.push(rejectBtn);
       }
       if (!approvalsOnly && canAccess('solicitar_revisao')) {
         const revisionBtn = new Button('Solicitar Revisão', {
           variant: 'secondary',
-          onClickHandler: () => requestRevision(initiative, revisionBtn, handleSuccess),
+          onClickHandler: runAction(() => requestRevision(initiative, revisionBtn, handleSuccess)),
         });
         buttons.push(revisionBtn);
       }
@@ -268,7 +280,7 @@ export function buildWorkflowButtons({
       if (canAccess('validar_implementacao_final')) {
         const implConfirmBtn = new Button('Validar Implementação', {
           variant: 'primary',
-          onClickHandler: () => mentorManagerValidation(initiative, implConfirmBtn, handleSuccess),
+          onClickHandler: runAction(() => mentorManagerValidation(initiative, implConfirmBtn, handleSuccess)),
         });
         buttons.push(implConfirmBtn);
       }
@@ -276,14 +288,14 @@ export function buildWorkflowButtons({
         const rejectBtn = new Button('Rejeitar', {
           variant: 'danger',
           isOutlined: true,
-          onClickHandler: () => rejectInitiative(initiative, rejectBtn, handleSuccess),
+          onClickHandler: runAction(() => rejectInitiative(initiative, rejectBtn, handleSuccess)),
         });
         buttons.push(rejectBtn);
       }
       if (!approvalsOnly && canAccess('solicitar_revisao')) {
         const revisionBtn = new Button('Solicitar Revisão', {
           variant: 'secondary',
-          onClickHandler: () => requestRevision(initiative, revisionBtn, handleSuccess),
+          onClickHandler: runAction(() => requestRevision(initiative, revisionBtn, handleSuccess)),
         });
         buttons.push(revisionBtn);
       }
@@ -295,7 +307,7 @@ export function buildWorkflowButtons({
       if (canAccess('validar_savings_auto')) {
         const approveBtn = new Button('Aprovar Savings', {
           variant: 'primary',
-          onClickHandler: () => approveSavings(initiative, approveBtn, handleSuccess),
+          onClickHandler: runAction(() => approveSavings(initiative, approveBtn, handleSuccess)),
         });
         buttons.push(approveBtn);
       }
@@ -313,14 +325,14 @@ export function buildWorkflowButtons({
         const rejectBtn = new Button('Rejeitar', {
           variant: 'danger',
           isOutlined: true,
-          onClickHandler: () => rejectInitiative(initiative, rejectBtn, handleSuccess),
+          onClickHandler: runAction(() => rejectInitiative(initiative, rejectBtn, handleSuccess)),
         });
         buttons.push(rejectBtn);
       }
       if (!approvalsOnly && canAccess('solicitar_revisao')) {
         const revisionBtn = new Button('Solicitar Revisão', {
           variant: 'secondary',
-          onClickHandler: () => requestRevision(initiative, revisionBtn, handleSuccess),
+          onClickHandler: runAction(() => requestRevision(initiative, revisionBtn, handleSuccess)),
         });
         buttons.push(revisionBtn);
       }
@@ -342,7 +354,7 @@ export function buildWorkflowButtons({
       const deleteBtn = new Button('Eliminar', {
         variant: 'danger',
         isOutlined: true,
-        onClickHandler: () => deleteInitiative(initiative, deleteBtn, handleSuccess),
+        onClickHandler: runAction(() => deleteInitiative(initiative, deleteBtn, handleSuccess)),
       });
       buttons.push(deleteBtn);
     }

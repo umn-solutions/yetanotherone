@@ -1,4 +1,4 @@
-import { Container, Text, Button, LinkButton, Image, ContextStore, Toast, getIcon, registerIcons } from '../libs/nofbiz/nofbiz.base.js';
+import { Container, Text, Button, LinkButton, Image, ContextStore, Toast, getIcon, registerIcons, resolvePath } from '../libs/nofbiz/nofbiz.base.js';
 import { openNewInitiativeModal } from './new-initiative.js';
 import { canAccess } from './roles.js';
 
@@ -63,8 +63,8 @@ function createHeader() {
 
   return new Container([
     new Container([
-      new Image('@/media/cetelem-logo.png', { class: 'pace-header__logo' }),
-      new Image('@/media/logo-2.png', { class: 'pace-header__logo' }),
+      new Image(resolvePath('@/media/cetelem-logo.png'), { class: 'pace-header__logo' }),
+      new Image(resolvePath('@/media/logo-2.png'), { class: 'pace-header__logo' }),
       new Container([], { as: 'span', class: 'pace-header__divider' }),
       new Container([
         new Text('Plataforma de melhoria contínua', { type: 'span', class: 'pace-header__platform-sub' }),

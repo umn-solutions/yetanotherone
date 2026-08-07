@@ -81,35 +81,33 @@ export async function getAssignedGestor(savingType, savingEstimate, impactedTeam
 
   const { byId, byOUID, comexFallback } = await getGestorMap();
   const responsible = pickTeamHead(byOUID.get(impactedTeamOUID));
-  if (!responsible) return comexFallback;
+  if (!responsible) {
+    // Impacted team is not present in OrgHierarchy (missing/dropped OU). Do NOT
+    // silently route to a cross-line executive -- leave unassigned so it surfaces.
+    console.warn('[getAssignedGestor] impacted team not found in OrgHierarchy -- gestor left unassigned', { impactedTeamOUID });
+    return null;
+  }
 
   const ancestors = (responsible.AncestorPath || responsible.Title)
     .split('|')
     .map(id => byId.get(id))
     .filter(Boolean);
-  if (ancestors.length === 0) return comexFallback;
+  if (ancestors.length === 0) {
+    console.warn('[getAssignedGestor] impacted team head has no resolvable ancestor chain -- gestor left unassigned', { impactedTeamOUID, responsible: responsible.Title });
+    return null;
+  }
 
   const base = findBase(responsible, ancestors);
   const rawWinner = isHighTier
     ? firstExecFrom(ancestors, ancestors.length - 1)
     : base;
   const winner = excludeRoot(rawWinner, ancestors);
-  // TEMP diagnostic -- remove after routing verified
-  console.debug('[getAssignedGestor]', {
-    savingType, savingEstimate, value, isHighTier, impactedTeamOUID,
-    responsible: responsible && { Title: responsible.Title, Category: responsible.Category },
-    ancestors: ancestors.map(a => `${a.Title}:${a.Category}`),
-    base: base && { Title: base.Title, Category: base.Category },
-    winner: winner && { Title: winner.Title, Category: winner.Category },
-  });
   if (!winner) {
-    // TEMP diagnostic -- remove after routing verified
-    console.debug('[getAssignedGestor] fallback', {
-      savingType, savingEstimate, value, isHighTier, impactedTeamOUID,
-      responsible: responsible && { Title: responsible.Title, Category: responsible.Category },
-      ancestors: ancestors.map(a => `${a.Title}:${a.Category}`),
-      comexFallback: comexFallback && { email: comexFallback.email, displayName: comexFallback.displayName },
-    });
+    // No valid in-line validator above the impacted team (e.g. CEO-office
+    // initiative with no manager above root, or high-tier branch with no
+    // in-line Executive). Escalate to the top-level exec fallback -- logged,
+    // never silent.
+    console.warn('[getAssignedGestor] no in-line validator resolved -- escalating to comexFallback', { impactedTeamOUID, isHighTier, responsible: responsible.Title });
     return comexFallback;
   }
   return { email: winner.Email, displayName: winner.ShortName };

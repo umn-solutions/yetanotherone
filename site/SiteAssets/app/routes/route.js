@@ -9,6 +9,7 @@ import {
   defineRoute,
   getIcon,
   __dayjs,
+  resolvePath,
 } from '../libs/nofbiz/nofbiz.base.js';
 
 import { getRecentForUser } from '../utils/notifications-api.js';
@@ -72,7 +73,7 @@ export default defineRoute(async (config) => {
   const hero = new Container([
     new Container([], { class: 'pace-hero__pattern' }),
     new Container(heroContent, { class: 'pace-hero__content' }),
-    new Image('@/media/mascot.png', { class: 'pace-hero__visual' }),
+    new Image(resolvePath('@/media/mascot.png'), { class: 'pace-hero__visual' }),
   ], { class: 'pace-hero' });
 
   // -- Notifications (already date-filtered by CAML) --

@@ -225,7 +225,7 @@ function resolveSimulador(rawVal) {
 }
 
 /**
- * Reads the simulador override from a raw reducao_risco payload object.
+ * Reads the simulador override from a raw producao payload object.
  * Use this for plain-JSON reads (e.g. from SP list data or export).
  * @param {Object|null|undefined} payload
  * @returns {{ active: boolean, value: number }}
@@ -390,8 +390,8 @@ export function computeAnnualizedToBeTotalEur(financials) {
     const fieldName = CATEGORY_FIELD_NAMES[key];
     const payload = financials[fieldName];
 
-    // reducao_risco: when simulador is active use its value directly (already annual, no factor)
-    if (key === 'reducao_risco') {
+    // producao: when simulador is active use its value directly (already annual, no factor)
+    if (key === 'producao') {
       const sim = getSimuladorFromPayload(payload);
       if (sim.active) {
         totalEur += sim.value;
@@ -501,9 +501,9 @@ export function createCategoryState(key, storedPayload, editability) {
     mode = new FormField({ value: initialOption });
   }
 
-  // Simulador Financeiro override (reducao_risco only)
+  // Simulador Financeiro override (producao only)
   let simulador = null;
-  if (key === 'reducao_risco') {
+  if (key === 'producao') {
     simulador = new FormField({ value: parseInitial(payload.simulador) });
   }
 
@@ -796,8 +796,8 @@ export function buildCategoryDisplay(state, opts = {}) {
     components.push(buildReadOnlyRow('Saving realizado', savingTxt));
   }
 
-  // reducao_risco: simulador rows (annual platform saving, simulador value, effective annual)
-  if (state.key === 'reducao_risco' && state.simulador) {
+  // producao: simulador rows (annual platform gain, simulador value, effective annual)
+  if (state.key === 'producao' && state.simulador) {
     const period = typeof timePeriod === 'string' ? timePeriod : '';
     const factor = getAnnualizationFactor(period);
 
@@ -934,11 +934,11 @@ export function buildTotalsPanel(categoryStates, opts = {}) {
       const pVal = raw;
       let aVal = raw * factor;
 
-      // reducao_risco: when phase is 'realized' and simulador is active, override the annual value
-      if (key === 'reducao_risco' && phase === 'realized') {
-        const rrState = categoryStates.get('reducao_risco');
-        if (rrState && rrState.simulador) {
-          const sim = resolveSimulador(rrState.simulador.value);
+      // producao: when phase is 'realized' and simulador is active, override the annual value
+      if (key === 'producao' && phase === 'realized') {
+        const prodState = categoryStates.get('producao');
+        if (prodState && prodState.simulador) {
+          const sim = resolveSimulador(prodState.simulador.value);
           if (sim.active) aVal = sim.value;
         }
       }
@@ -989,11 +989,11 @@ export function buildTotalsPanel(categoryStates, opts = {}) {
     unsubs.push(fteOpt.subscribe(refresh));
   }
 
-  // Subscribe to reducao_risco simulador field (realized phase only) so annual totals update live
+  // Subscribe to producao simulador field (realized phase only) so annual totals update live
   if (phase === 'realized') {
-    const rrState = categoryStates.get('reducao_risco');
-    if (rrState && rrState.simulador) {
-      unsubs.push(rrState.simulador.subscribe(refresh));
+    const prodState = categoryStates.get('producao');
+    if (prodState && prodState.simulador) {
+      unsubs.push(prodState.simulador.subscribe(refresh));
     }
   }
 
@@ -1183,12 +1183,12 @@ export function buildImpactSummaryPanel(categoryStates, opts = {}) {
       if (CATEGORY_TOTAL_UNIT[key] !== '€') continue;
       if (!categoryStates.has(key)) continue;
       const dir = CATEGORY_DIRECTIONS[key];
-      if (key === 'reducao_risco') {
-        const rr = categoryStates.get('reducao_risco');
-        if (rr && rr.simulador) {
-          const sim = resolveSimulador(rr.simulador.value);
+      if (key === 'producao') {
+        const prod = categoryStates.get('producao');
+        if (prod && prod.simulador) {
+          const sim = resolveSimulador(prod.simulador.value);
           if (sim.active) {
-            // reducao_risco is a 'decrease' category: benefit = saving = sim.value
+            // producao is an 'increase' category: benefit = gain = sim.value
             benefit += sim.value;
             continue;
           }
@@ -1219,14 +1219,14 @@ export function buildImpactSummaryPanel(categoryStates, opts = {}) {
     const periodDiff = phaseEur('toBe', fteCost) - phaseEur('asIs', fteCost);
     let annualDiff = periodDiff * factor;
 
-    // reducao_risco simulador override: remove the platform annual contribution and add the override.
-    // reducao_risco is a 'decrease' category: its benefit is asIs - toBe (a saving reduces the net diff).
-    const rr = categoryStates.get('reducao_risco');
-    if (rr && rr.simulador) {
-      const sim = resolveSimulador(rr.simulador.value);
+    // producao simulador override: remove the platform annual contribution and add the override.
+    // producao is an 'increase' category: a gain shows a positive raw diff (toBe - asIs).
+    const prod = categoryStates.get('producao');
+    if (prod && prod.simulador) {
+      const sim = resolveSimulador(prod.simulador.value);
       if (sim.active) {
-        const rrPeriodDiff = rr.computed.toBeTotal() - rr.computed.asIsTotal(); // platform per-period net change
-        annualDiff = annualDiff - (rrPeriodDiff * factor) + (-sim.value);
+        const prodPeriodDiff = prod.computed.toBeTotal() - prod.computed.asIsTotal(); // platform per-period net change
+        annualDiff = annualDiff - (prodPeriodDiff * factor) + sim.value;
       }
     }
 
@@ -1276,10 +1276,10 @@ export function buildImpactSummaryPanel(categoryStates, opts = {}) {
   if (isTimePeriodField) unsubs.push(timePeriodOpt.subscribe(refresh));
   if (isFteField) unsubs.push(fteOpt.subscribe(refresh));
 
-  // Subscribe to reducao_risco simulador so the annual pill updates live
-  const rrStateForImpact = categoryStates.get('reducao_risco');
-  if (rrStateForImpact && rrStateForImpact.simulador) {
-    unsubs.push(rrStateForImpact.simulador.subscribe(refresh));
+  // Subscribe to producao simulador so the annual pill updates live
+  const prodStateForImpact = categoryStates.get('producao');
+  if (prodStateForImpact && prodStateForImpact.simulador) {
+    unsubs.push(prodStateForImpact.simulador.subscribe(refresh));
   }
 
   const component = new Container([
@@ -1502,11 +1502,11 @@ export function buildCategoryTabbedSection(categoryStates, opts = {}) {
     const asIsResult = buildCategoryAsIsForm(state, { timePeriod, extraInputs });
     const toBeResult = buildCategoryToBeForm(state, { timePeriod });
 
-    // Simulador Financeiro block (reducao_risco only)
+    // Simulador Financeiro block (producao only)
     const simuladorUnsubs = [];
     const simuladorBlockComponents = [];
 
-    if (key === 'reducao_risco' && state.simulador) {
+    if (key === 'producao' && state.simulador) {
       // Resolve period: timePeriod can be a FormField or a plain string
       const isTimePeriodField = timePeriod != null
         && typeof timePeriod === 'object'

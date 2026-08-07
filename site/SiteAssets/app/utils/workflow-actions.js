@@ -37,7 +37,7 @@ import {
   getByInitiative as getFinancials,
   deleteItem as deleteFinancials,
 } from './financials-api.js';
-import { getAllEmployees, deriveRoles } from './org-hierarchy-api.js';
+import { getAllEmployees, deriveRoles, getMentorManagers } from './org-hierarchy-api.js';
 import { acquireOverlayOpen } from './overlay-guard.js';
 import {
   shareInitiative,
@@ -492,7 +492,7 @@ export async function performResubmitTransition(initiative) {
 
     const savingType = financials?.SavingType || deriveSavingType(financials?.SavingCategory);
     const annualVal = computeAnnualizedToBeTotalEur(financials);
-    assignedGestor = await getAssignedGestor(savingType, String(annualVal), initiative.ImpactedTeamOUID, 'Anual');
+    assignedGestor = await getAssignedGestor(savingType, String(annualVal), initiative.ImpactedTeamOUID);
     if (assignedGestor) {
       extraFields.GestorValidator = { email: assignedGestor.email, displayName: assignedGestor.displayName };
       extraFields.GestorValidatorEmail = assignedGestor.email;
@@ -830,7 +830,7 @@ export async function declareSavings(initiative, button, onSuccess) {
 
     const savingType = financials?.SavingType || deriveSavingType(financials?.SavingCategory);
     const annualVal = computeAnnualizedToBeTotalEur(financials);
-    const gestor = await getAssignedGestor(savingType, String(annualVal), initiative.ImpactedTeamOUID, 'Anual');
+    const gestor = await getAssignedGestor(savingType, String(annualVal), initiative.ImpactedTeamOUID);
 
     const extraFields = {};
     if (gestor) {
@@ -875,7 +875,19 @@ export async function approveSavings(initiative, button, onSuccess) {
   try {
     await transitionStatus(initiative.Id, STATUS.VALIDADO_GESTOR, initiative['odata.etag']);
     await createEvent(initiative.UUID, EVENT_TYPES.BUSINESS_VALIDATION, STATUS.POR_VALIDAR, STATUS.VALIDADO_GESTOR);
-    await createEmail(EMAIL_EVENTS.SAVINGS_APPROVED, { initiative }).send();
+
+    const actorEmail = ContextStore.get('currentUser').get('email');
+    let recipients = [];
+    try {
+      const mentorManagers = await getMentorManagers();
+      if (mentorManagers.length === 0) {
+        console.warn('[approveSavings] no mentor-manager recipients resolved for SAVINGS_APPROVED', { uuid: initiative.UUID });
+      }
+      recipients = mentorManagers.map((m) => ({ email: m.email, name: m.displayName }));
+    } catch (err) {
+      console.error('[approveSavings] getMentorManagers failed', err);
+    }
+    await createEmail(EMAIL_EVENTS.SAVINGS_APPROVED, { initiative, recipients, excludeEmail: actorEmail }).send();
     loading.success('Savings aprovados.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -974,7 +986,7 @@ export async function mentorManagerValidation(initiative, button, onSuccess) {
     await createEvent(initiative.UUID, EVENT_TYPES.OWNER_IMPLEMENTATION, STATUS.VALIDADO_FINAL, STATUS.IMPLEMENTADO);
 
     const actorEmail = ContextStore.get('currentUser').get('email');
-    await createEmail(EMAIL_EVENTS.IMPLEMENTED, { initiative, excludeEmail: actorEmail }).send();
+    await createEmail(EMAIL_EVENTS.IMPLEMENTED, { initiative, financials, excludeEmail: actorEmail }).send();
 
     loading.success('Iniciativa implementada.');
     if (onSuccess) onSuccess();
@@ -1257,7 +1269,7 @@ async function addAccessFlow(initiative) {
   }
 }
 
-function buildAccessRow(record, onRemoved) {
+function buildAccessRow(initiative, record, onRemoved) {
   const identity = UserIdentity.fromField(record.SharedWith);
   const displayName = identity?.displayName || record.SharedWithEmail || '(sem nome)';
   const typeLabel = record.Type === 'collaborate' ? 'Colaboração' : 'Leitura';
@@ -1272,7 +1284,7 @@ function buildAccessRow(record, onRemoved) {
         await revokeAccess(record.Id, record['odata.etag'] || '*');
         const user = ContextStore.get('currentUser');
         await createEmail(EMAIL_EVENTS.ACCESS_REVOKED, {
-          initiativeUUID: record.InitiativeUUID,
+          initiative,
           recipients: { email: record.SharedWithEmail, name: identity?.displayName || '' },
           actorName: user.get('displayName'),
         }).send();
@@ -1344,7 +1356,7 @@ export async function manageAccessAction(initiative, button, onSuccess) {
       return;
     }
     listContainer.children = activeShares.map(record =>
-      buildAccessRow(record, (removed) => {
+      buildAccessRow(initiative, record, (removed) => {
         const idx = activeShares.indexOf(removed);
         if (idx >= 0) activeShares.splice(idx, 1);
         rebuildList();

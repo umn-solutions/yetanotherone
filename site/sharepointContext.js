@@ -1497,6 +1497,20 @@ var _spMockData = {
         // COM branch
         { Id: 14, Title: 'BRG001', ShortName: 'Tiago', Direcao: 'COMMERCIAL', Departamento: 'COMMERCIAL', OUID: 'COM-GOV', OUDesc: 'COMMERCIAL', Category: 'Executive', ManagerId: '154895', AncestorPath: '154895|BRG001', DeptAncestorPath: 'COMMERCIAL|COMMERCIAL|COM-GOV', Depth: '1', Email: 'tiago.mendonca@domain.pt', AppRole: '', AuthorId: 1, __metadata: { etag: '"1"' } },
         { Id: 15, Title: '999001', ShortName: 'Mario', Direcao: 'COMMERCIAL', Departamento: 'BANKING PARTNERSHIPS', OUID: 'COM-BKP', OUDesc: 'BANKING PARTNERSHIPS', Category: 'Expert - Technical Lead', ManagerId: 'BRG001', AncestorPath: '154895|BRG001|999001', DeptAncestorPath: 'COMMERCIAL|BANKING PARTNERSHIPS|COM-BKP', Depth: '2', Email: 'mario.silva@domain.pt', AppRole: 'mentor-manager', AuthorId: 1, __metadata: { etag: '"1"' } },
+        { Id: 16, Title: '999002', ShortName: 'Carla', Direcao: 'COMMERCIAL', Departamento: 'BANKING RETAIL PARTNERSHIPS', OUID: 'COM-BRP', OUDesc: 'BANKING RETAIL PARTNERSHIPS', Category: 'Management', ManagerId: 'BRG001', AncestorPath: '154895|BRG001|999002', DeptAncestorPath: 'COMMERCIAL|BANKING RETAIL PARTNERSHIPS|COM-BRP', Depth: '2', Email: 'carla.martins@domain.pt', AppRole: '', AuthorId: 1, __metadata: { etag: '"1"' } },
+
+        // OPS -- COLLECTIONS
+        { Id: 17, Title: '875800', ShortName: 'Rui', Direcao: 'OPERATIONS', Departamento: 'COLLECTIONS', OUID: 'OPS-COL', OUDesc: 'COLLECTIONS', Category: 'Management', ManagerId: 'BRG002', AncestorPath: '154895|BRG002|875800', DeptAncestorPath: 'OPERATIONS|COLLECTIONS|OPS-COL', Depth: '2', Email: 'rui.ferreira@domain.pt', AppRole: '', AuthorId: 1, __metadata: { etag: '"1"' } },
+
+        // FINANCE branch
+        { Id: 18, Title: '600001', ShortName: 'Sofia', Direcao: 'FINANCE', Departamento: 'FINANCE', OUID: 'FIN-GOV', OUDesc: 'FINANCE', Category: 'Executive', ManagerId: '154895', AncestorPath: '154895|600001', DeptAncestorPath: 'FINANCE|FINANCE|FIN-GOV', Depth: '1', Email: 'sofia.marques@domain.pt', AppRole: '', AuthorId: 1, __metadata: { etag: '"1"' } },
+        { Id: 19, Title: '600002', ShortName: 'Ricardo', Direcao: 'FINANCE', Departamento: 'CONTABILIDADE', OUID: 'FIN-CTB', OUDesc: 'CONTABILIDADE', Category: 'Management', ManagerId: '600001', AncestorPath: '154895|600001|600002', DeptAncestorPath: 'FINANCE|CONTABILIDADE|FIN-CTB', Depth: '2', Email: 'ricardo.pinto@domain.pt', AppRole: '', AuthorId: 1, __metadata: { etag: '"1"' } },
+        { Id: 20, Title: '600003', ShortName: 'Marta', Direcao: 'FINANCE', Departamento: 'GESTAO DE RISCO FINANCEIRO', OUID: 'FIN-GRF', OUDesc: 'GESTAO DE RISCO FINANCEIRO', Category: 'Management', ManagerId: '600001', AncestorPath: '154895|600001|600003', DeptAncestorPath: 'FINANCE|GESTAO DE RISCO FINANCEIRO|FIN-GRF', Depth: '2', Email: 'marta.lopes@domain.pt', AppRole: '', AuthorId: 1, __metadata: { etag: '"1"' } },
+
+        // IT & DIGITAL branch
+        { Id: 21, Title: '700001', ShortName: 'Vasco', Direcao: 'IT & DIGITAL', Departamento: 'IT & DIGITAL', OUID: 'ITD-GOV', OUDesc: 'IT & DIGITAL', Category: 'Executive', ManagerId: '154895', AncestorPath: '154895|700001', DeptAncestorPath: 'IT & DIGITAL|IT & DIGITAL|ITD-GOV', Depth: '1', Email: 'vasco.almeida@domain.pt', AppRole: '', AuthorId: 1, __metadata: { etag: '"1"' } },
+        { Id: 22, Title: '700002', ShortName: 'Ines', Direcao: 'IT & DIGITAL', Departamento: 'DATA & ANALYTICS', OUID: 'ITD-DAT', OUDesc: 'DATA & ANALYTICS', Category: 'Management', ManagerId: '700001', AncestorPath: '154895|700001|700002', DeptAncestorPath: 'IT & DIGITAL|DATA & ANALYTICS|ITD-DAT', Depth: '2', Email: 'ines.rocha@domain.pt', AppRole: '', AuthorId: 1, __metadata: { etag: '"1"' } },
+        { Id: 23, Title: '700003', ShortName: 'Bruno', Direcao: 'IT & DIGITAL', Departamento: 'IT SERVICES', OUID: 'ITD-SRV', OUDesc: 'IT SERVICES', Category: 'Management', ManagerId: '700001', AncestorPath: '154895|700001|700003', DeptAncestorPath: 'IT & DIGITAL|IT SERVICES|ITD-SRV', Depth: '2', Email: 'bruno.tavares@domain.pt', AppRole: '', AuthorId: 1, __metadata: { etag: '"1"' } },
       ],
       fields: [
         { InternalName: 'Title', Title: 'Title', TypeAsString: 'Text' },
@@ -1513,7 +1527,7 @@ var _spMockData = {
         { InternalName: 'Depth', Title: 'Depth', TypeAsString: 'Text' },
         { InternalName: 'AppRole', Title: 'AppRole', TypeAsString: 'Text' },
       ],
-      nextId: 16,
+      nextId: 24,
     },
 
     'SavingsTargets': {
