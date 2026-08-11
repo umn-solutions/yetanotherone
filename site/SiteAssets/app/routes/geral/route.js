@@ -76,7 +76,7 @@ export default defineRoute((config) => {
         variant: 'secondary',
         class: 'pace-table-link-btn',
       }),
-      new Text(item.Description || '---', { type: 'span', class: 'pace-table-description' }),
+      new Text(item.Description || '---', { type: 'span', class: 'pace-table-description', title: item.Description || '---' }),
     ], { class: 'pace-table-cell-stack' });
     return new Container([
       mergedCell,

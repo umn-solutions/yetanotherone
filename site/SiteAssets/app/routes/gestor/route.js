@@ -86,7 +86,7 @@ export default defineRoute((config) => {
         variant: 'secondary',
         class: 'pace-table-link-btn',
       }),
-      new Text(item.Description || '---', { type: 'span', class: 'pace-table-description' }),
+      new Text(item.Description || '---', { type: 'span', class: 'pace-table-description', title: item.Description || '---' }),
     ], { class: 'pace-table-cell-stack' });
     return new Container([
       mergedCell,
@@ -216,6 +216,7 @@ export default defineRoute((config) => {
       new Text(item.Title, {
         type: 'span',
         class: 'pace-pending-item-title',
+        title: item.Title,
       }),
       new Text(metaText, {
         type: 'span',
@@ -234,7 +235,7 @@ export default defineRoute((config) => {
 
     const card = new Container(
       [
-        new Container(metaChildren, { as: 'div' }),
+        new Container(metaChildren, { as: 'div', class: 'pace-trunc-cell' }),
         new Container(
           [
             new Text(rightInfo, { type: 'span', class: 'pace-pending-item-meta' }),

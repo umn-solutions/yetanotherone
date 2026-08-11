@@ -90,9 +90,9 @@ export default defineRoute(async (config) => {
     return new Container([
       new Container([], { class: 'pace-notif-icon' }),
       new Container([
-        new Text(n.Title, { type: 'span' }),
+        new Text(n.Title, { type: 'span', class: 'pace-notif-title', title: n.Title }),
         new Text(formatRelativeTime(n.CreatedDate), { type: 'span', class: 'pace-notif-date' }),
-      ]),
+      ], { class: 'pace-notif-body' }),
     ], { class: 'pace-notif-item' });
   });
 

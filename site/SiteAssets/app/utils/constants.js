@@ -195,6 +195,17 @@ export const CATEGORY_FIELD_NAMES = {
 };
 
 /**
+ * Derives the flat annualized-saving column name for a category key.
+ * e.g. 'reducao_custo' -> 'ReducaoCustoAnnualSaving'. Single source shared by
+ * the CSV export (initiatives-export) and the IMPLEMENTED email table (emails).
+ * @param {string} key - one of CATEGORY_KEYS
+ * @returns {string}
+ */
+export function annualSavingColName(key) {
+  return key.charAt(0).toUpperCase() + key.slice(1).replace(/_([a-z])/g, (_, c) => c.toUpperCase()) + 'AnnualSaving';
+}
+
+/**
  * Per-category input field keys (order matters for column output).
  * Eficiencia:    vp (Volume processado), tu (Tempo tratamento unitario)
  * Producao:      vp (Volume), mu (Montante medio unitario)

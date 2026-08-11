@@ -76,7 +76,10 @@ function excludeRoot(winner, ancestors) {
  */
 export async function getAssignedGestor(savingType, savingEstimate, impactedTeamOUID) {
   if (!impactedTeamOUID) return null;
-  const value = parseFloat(String(savingEstimate).replace(/[^\d.]/g, '')) || 0;
+  // Tier is decided on the magnitude of the saving: a large loss is as material
+  // as a large gain, so route on the absolute value. Math.abs is explicit here
+  // (the strip regex already drops the sign, but do not rely on that side effect).
+  const value = Math.abs(parseFloat(String(savingEstimate).replace(/[^\d.]/g, '')) || 0);
   const isHighTier = savingType === 'Hard Cost' || value >= 10000;
 
   const { byId, byOUID, comexFallback } = await getGestorMap();

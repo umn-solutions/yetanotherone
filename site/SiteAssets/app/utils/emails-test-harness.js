@@ -120,6 +120,8 @@ function buildCtx(email) {
     actorName: name,
     reason: 'Motivo de teste para validacao do template de email.',
     financials: DUMMY_FINANCIALS,
+    implementedDate: '10/08/2026',
+    mentorManagerName: 'Ana Mentor-Manager (Teste)',
     // no excludeEmail -- we want the target to receive everything
   };
 }

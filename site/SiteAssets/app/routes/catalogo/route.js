@@ -73,7 +73,7 @@ export default defineRoute((config) => {
         variant: 'secondary',
         class: 'pace-table-link-btn',
       }),
-      new Text(item.Description || '---', { type: 'span', class: 'pace-table-description' }),
+      new Text(item.Description || '---', { type: 'span', class: 'pace-table-description', title: item.Description || '---' }),
       new Text(ownerName(item), { type: 'span' }),
       new Text(item.Team || '', { type: 'span' }),
       new Text(gestorName(item), { type: 'span' }),

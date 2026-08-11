@@ -37,7 +37,7 @@ import {
   getByInitiative as getFinancials,
   deleteItem as deleteFinancials,
 } from './financials-api.js';
-import { getAllEmployees, deriveRoles, getMentorManagers } from './org-hierarchy-api.js';
+import { getAllEmployees, deriveRoles, getMentorManagers, getManagerAbove } from './org-hierarchy-api.js';
 import { acquireOverlayOpen } from './overlay-guard.js';
 import {
   shareInitiative,
@@ -431,6 +431,25 @@ export async function finalizeSubmission(initiative, fromStatus) {
   if (initiative.MentorEmail) {
     await createEmail(EMAIL_EVENTS.SUBMITTED_MENTOR, { initiative, ownerName, dataHora }).send();
   }
+
+  // Notify the submitter's direct manager / team leader (one level up the org hierarchy).
+  // Guarded: a hierarchy lookup failure must not break the submission flow.
+  try {
+    const submitterId = currentUser && currentUser.get('employeeId');
+    const manager = submitterId ? await getManagerAbove(submitterId) : null;
+    if (manager && manager.email) {
+      await createEmail(EMAIL_EVENTS.SUBMITTED_MANAGER, {
+        initiative,
+        ownerName,
+        dataHora,
+        recipients: [{ email: manager.email, name: manager.name }],
+      }).send();
+    } else {
+      console.warn('[finalizeSubmission] no direct manager found for submitter', { submitterId });
+    }
+  } catch (err) {
+    console.error('[finalizeSubmission] manager notification failed', err);
+  }
 }
 
 /**
@@ -686,7 +705,11 @@ export async function approveProject(initiative, button, onSuccess) {
       MentorEmail: user.get('email'),
     });
     await createEvent(initiative.UUID, EVENT_TYPES.MENTOR_APPROVAL, STATUS.SUBMETIDO, STATUS.VALIDADO_MENTOR);
-    await createEmail(EMAIL_EVENTS.MENTOR_APPROVED, { initiative }).send();
+    await createEmail(EMAIL_EVENTS.MENTOR_APPROVED, {
+      initiative,
+      mentorName: user.get('displayName'),
+      dataHora: __dayjs().format('DD/MM/YYYY HH:mm'),
+    }).send();
     loading.success('Projecto aprovado.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -725,7 +748,11 @@ export async function rejectInitiative(initiative, button, onSuccess) {
   try {
     await transitionStatus(initiative.Id, STATUS.REJEITADO, initiative['odata.etag']);
     await createEvent(initiative.UUID, eventType, currentStatus, STATUS.REJEITADO, comment);
-    await createEmail(EMAIL_EVENTS.REJECTED, { initiative, reason: comment }).send();
+    await createEmail(EMAIL_EVENTS.REJECTED, {
+      initiative,
+      reason: comment,
+      actorName: ContextStore.get('currentUser').get('displayName'),
+    }).send();
     loading.success('Iniciativa rejeitada.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -770,7 +797,11 @@ export async function requestRevision(initiative, button, onSuccess) {
       PreviousStatus: previousStatus,
     });
     await createEvent(initiative.UUID, EVENT_TYPES.REVIEW_REQUEST, currentStatus, STATUS.EM_REVISAO, comment);
-    await createEmail(EMAIL_EVENTS.REVISION_REQUESTED, { initiative, reason: comment }).send();
+    await createEmail(EMAIL_EVENTS.REVISION_REQUESTED, {
+      initiative,
+      reason: comment,
+      actorName: ContextStore.get('currentUser').get('displayName'),
+    }).send();
     loading.success('Pedido de revisão enviado.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -997,8 +1028,17 @@ export async function mentorManagerValidation(initiative, button, onSuccess) {
     );
     await createEvent(initiative.UUID, EVENT_TYPES.OWNER_IMPLEMENTATION, STATUS.VALIDADO_FINAL, STATUS.IMPLEMENTADO);
 
-    const actorEmail = ContextStore.get('currentUser').get('email');
-    await createEmail(EMAIL_EVENTS.IMPLEMENTED, { initiative, financials, excludeEmail: actorEmail }).send();
+    const currentUser = ContextStore.get('currentUser');
+    const actorEmail = currentUser.get('email');
+    // The mentor-manager who validated the implementation is the acting user
+    // (validar_implementacao_final is mentor-manager only).
+    await createEmail(EMAIL_EVENTS.IMPLEMENTED, {
+      initiative,
+      financials,
+      implementedDate: __dayjs(pickedDate).format('DD/MM/YYYY'),
+      mentorManagerName: currentUser.get('displayName'),
+      excludeEmail: actorEmail,
+    }).send();
 
     loading.success('Iniciativa implementada.');
     if (onSuccess) onSuccess();
@@ -1049,6 +1089,7 @@ export async function transferGestor(initiative, button, onSuccess) {
     await createEmail(EMAIL_EVENTS.GESTOR_TRANSFERRED, {
       initiative,
       recipients: { email: newIdentity.email, name: newIdentity.displayName },
+      actorName: ContextStore.get('currentUser').get('displayName'),
     }).send();
 
     // Notify initiative owner
@@ -1104,6 +1145,7 @@ export async function transferOwnership(initiative, button, onSuccess) {
     await createEmail(EMAIL_EVENTS.OWNERSHIP_TRANSFERRED, {
       initiative,
       recipients: { email: newIdentity.email, name: newIdentity.displayName },
+      actorName: ContextStore.get('currentUser').get('displayName'),
     }).send();
 
     // Notify mentor if exists
@@ -1232,12 +1274,14 @@ export async function reassignRole({ role, initiative, button, onSuccess }) {
       await createEmail(EMAIL_EVENTS.MENTOR_ASSIGNED, {
         initiative,
         recipients: { email: newIdentity.email, name: newIdentity.displayName },
+        actorName: ContextStore.get('currentUser').get('displayName'),
       }).send();
     } else {
       await createEmail(EMAIL_EVENTS.GESTOR_CHANGED, { initiative }).send();
       await createEmail(EMAIL_EVENTS.GESTOR_TRANSFERRED, {
         initiative,
         recipients: { email: newIdentity.email, name: newIdentity.displayName },
+        actorName: ContextStore.get('currentUser').get('displayName'),
       }).send();
     }
 

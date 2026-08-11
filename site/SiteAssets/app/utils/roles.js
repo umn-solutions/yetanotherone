@@ -115,7 +115,8 @@ export function getTeamLabel(ouid) {
 
 export function getTeamName(ouid) {
   const label = getTeamLabel(ouid);
-  return label?.split(' - ')[1] ?? label;
+  // getTeamOptions builds labels as `${ouid} — ${ouDesc}` (em-dash separator).
+  return label?.split(' — ')[1] ?? label;
 }
 
 /**

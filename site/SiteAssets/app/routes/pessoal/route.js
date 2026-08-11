@@ -77,7 +77,7 @@ export default defineRoute((config) => {
         variant: 'secondary',
         class: 'pace-table-link-btn',
       }),
-      new Text(item.Description || '---', { type: 'span', class: 'pace-table-description' }),
+      new Text(item.Description || '---', { type: 'span', class: 'pace-table-description', title: item.Description || '---' }),
       new Text(item.Team || '', { type: 'span' }),
       new Text(mentorName(item), { type: 'span' }),
       new Text(gestorName(item), { type: 'span' }),
@@ -346,12 +346,12 @@ export default defineRoute((config) => {
 
         const cardChildren = [
           new Container([
-            new Text(item.Title || 'Sem título', { type: 'span', class: 'pace-pending-item-title' }),
-          ]),
+            new Text(item.Title || 'Sem título', { type: 'span', class: 'pace-pending-item-title', title: item.Title || 'Sem título' }),
+          ], { class: 'pace-trunc-cell' }),
           new Text('Revisão solicitada pelo mentor/gestor.', { type: 'p', class: 'pace-pending-item-meta' }),
         ];
         if (reviewComment) {
-          cardChildren.push(new Text(reviewComment, { type: 'p', class: 'pace-pending-item-comment' }));
+          cardChildren.push(new Text(reviewComment, { type: 'p', class: 'pace-pending-item-comment', title: reviewComment }));
         }
         cardChildren.push(new Container([
           new Text(`${daysSince} dia${daysSince !== 1 ? 's' : ''}`, { type: 'span', class: 'pace-pending-item-meta' }),

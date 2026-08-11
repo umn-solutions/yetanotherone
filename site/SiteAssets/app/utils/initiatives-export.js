@@ -17,6 +17,7 @@ import {
   INPUT_LABELS_BY_CATEGORY,
   deriveSavingType,
   annualizeSavings,
+  annualSavingColName,
 } from './constants.js';
 import { getSimuladorFromPayload } from './financial-forms.js';
 
@@ -229,7 +230,7 @@ export function buildFinancialFields(fin, { detailed = true, isPrivileged = fals
       continue;
     }
 
-    const colName = key.charAt(0).toUpperCase() + key.slice(1).replace(/_([a-z])/g, (_, c) => c.toUpperCase()) + 'AnnualSaving';
+    const colName = annualSavingColName(key);
     const inputKeys = INPUT_KEYS_BY_CATEGORY[key] || [];
     const inputLabels = INPUT_LABELS_BY_CATEGORY[key] || {};
 

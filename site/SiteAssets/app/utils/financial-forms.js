@@ -378,7 +378,8 @@ function computeRawPhaseTotal(key, phaseObj) {
  * by workflow-actions.js and emails.js).
  *
  * Used by routing tiers (isHighTier decision) and resolveFinalValidationLabel
- * (soft && <10k => PLACE label). Both should be saving-based, so this is correct.
+ * (soft && |total| < 10k => PLACE label). Returns a signed value; both consumers
+ * apply Math.abs so the magnitude threshold treats a loss the same as a gain.
  *
  * @param {Object|null} financials - Financials row from SP (auto-parsed)
  * @returns {number} Annualized realized saving in € (0 if no data)
@@ -427,7 +428,7 @@ export function computeAnnualizedToBeTotalEur(financials) {
  * Logic:
  *  - isSoft = SavingCategory is a string in SOFT_CATEGORIES, or an array
  *    whose EVERY entry is in SOFT_CATEGORIES (any hard category present = not soft).
- *  - If isSoft AND annualized total < SOFT_SAVINGS_THRESHOLD_EUR => PLACE label.
+ *  - If isSoft AND |annualized total| < SOFT_SAVINGS_THRESHOLD_EUR => PLACE label.
  *  - All other cases => AREA_FINANCEIRA label.
  *
  * @param {Object} initiative - Initiative row (only SavingCategory is read from here,
@@ -444,7 +445,9 @@ export function resolveFinalValidationLabel(initiative, financials) {
   const isSoft = cats.length > 0 && cats.every(c => SOFT_CATEGORIES.includes(c));
   const annualEur = computeAnnualizedToBeTotalEur(financials);
 
-  if (isSoft && annualEur < SOFT_SAVINGS_THRESHOLD_EUR) {
+  // Threshold is on saving magnitude, matching the routing tier (getAssignedGestor),
+  // so a large loss is treated as material rather than falling under the soft PLACE label.
+  if (isSoft && Math.abs(annualEur) < SOFT_SAVINGS_THRESHOLD_EUR) {
     return MENTOR_MANAGER_LABELS.PLACE;
   }
   return MENTOR_MANAGER_LABELS.AREA_FINANCEIRA;

@@ -3543,3 +3543,188 @@
 .pt-v2 .pace-qualidade-tab-form .nofbiz__textarea {
   min-height: 100px;
 }
+
+/* ============================================================================
+ * F06 — Text truncation + overflow guard (app-wide)
+ *
+ * Problem: user-entered and dynamic strings can be arbitrarily long. Without
+ * capping, they overflow cards, break grids, and push adjacent content out.
+ *
+ * Rules:
+ *   A) Single-line ellipsis — short labels and titles that must stay on one line.
+ *   B) Multi-line clamp    — prose snippets that may wrap but need a hard stop.
+ *
+ * Flex/grid parents: text-overflow and line-clamp only work if the element
+ * (and every flex ancestor between it and the width constraint) has min-width: 0
+ * so it can actually shrink. Added here alongside the truncation rules.
+ *
+ * NOT touched: .pt-init-card__title, .pace-table-description, .pace-access-name
+ * (already truncated above). Hero copy, FAQ answers, guide bodies (prose that
+ * is meant to wrap or authored copy with known length).
+ * ========================================================================== */
+
+/* ----------------------------------------------------------------------------
+ * F06-A — Single-line ellipsis
+ * -------------------------------------------------------------------------- */
+
+.pt-v2 .pace-pending-item-title,
+.pt-v2 .pace-cta-title,
+.pt-v2 .pace-profile-name,
+.pt-v2 .pace-profile-role,
+.pt-v2 .pace-kpi-value,
+.pt-v2 .pace-kpi-label,
+.pt-v2 .pace-notif-title,
+.pt-v2 .pace-sec-title,
+.pt-v2 .pt-section-header__title,
+.pt-v2 .admin-tree-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ----------------------------------------------------------------------------
+ * F06-B — Multi-line clamp
+ * -------------------------------------------------------------------------- */
+
+/* 3-line clamp for review-reason comment blocks */
+.pt-v2 .pace-pending-item-comment {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* override the pre-wrap so the clamp takes effect */
+  white-space: normal;
+}
+
+/* 2-line clamp for CTA text paragraph */
+.pt-v2 .pace-cta-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 3-line clamp for mentor contacts text */
+.pt-v2 .pace-mentor-contacts__text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 2-line clamp for numbered step text in guides */
+.pt-v2 .pace-step-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 2-line clamp for profile responsibility lines */
+.pt-v2 .pace-profile-resp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ----------------------------------------------------------------------------
+ * F06-C — min-width: 0 fixes for flex/grid parents
+ *
+ * Without min-width: 0, flex items refuse to shrink below their content size,
+ * so text-overflow and line-clamp have no effect.
+ * -------------------------------------------------------------------------- */
+
+/* Notification item body (flex row: icon | body | date).
+   .pace-notif-body is added to the inner Container in home route.js.
+   It sits between the icon (flex-shrink: 0) and the date (flex-shrink: 0),
+   so it must be allowed to shrink. */
+.pt-v2 .pace-notif-body {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* CTA banner left block (flex row: left | right button).
+   The title + text live in .pace-cta-left or directly in the flex parent. */
+.pt-v2 .pace-cta-left {
+  min-width: 0;
+}
+
+/* pace-step-item is flex-row; the text child must shrink */
+.pt-v2 .pace-step-item {
+  min-width: 0;
+}
+.pt-v2 .pace-step-text {
+  min-width: 0;
+}
+
+/* KPI cards are in a grid — cells already get natural containment, but
+   explicitly set min-width: 0 in case of auto-fit overflow edge cases */
+.pt-v2 .pace-kpi {
+  min-width: 0;
+}
+
+/* Admin tree leaf is flex-row; the name span must shrink */
+.pt-v2 .admin-tree-leaf {
+  min-width: 0;
+}
+.pt-v2 .admin-tree-name {
+  min-width: 0;
+}
+
+/* Home grid cards are grid items — they must shrink so their titles truncate.
+   pace-home-notifications and pace-mentor-contacts are the two 1fr cells. */
+.pt-v2 .pace-home-notifications,
+.pt-v2 .pace-mentor-contacts {
+  min-width: 0;
+}
+
+/* Notification title is a flex item inside pace-notif-body (flex-col).
+   Needs min-width: 0 to shrink and let text-overflow: ellipsis fire. */
+.pt-v2 .pace-notif-title {
+  min-width: 0;
+}
+
+/* Section title (pace-sec-title) is a flex item inside pace-pending-section
+   (flex-col). Without min-width: 0 it expands the column to fit nowrap text. */
+.pt-v2 .pace-sec-title {
+  min-width: 0;
+}
+
+/* pt-section-header__title is either a direct block child of a card or a flex
+   item inside .pt-section-header (flex-row). Cover both cases. */
+.pt-v2 .pt-section-header__title {
+  min-width: 0;
+}
+
+/* pace-cta-title is a flex item inside .pace-cta (flex-row). */
+.pt-v2 .pace-cta-title {
+  min-width: 0;
+}
+
+/* pending-item cards are flex items inside pace-revision-section /
+   pace-pending-section (both flex-col). Card must shrink so the title inside
+   can truncate via the block-layout chain. */
+.pt-v2 .pace-pending-item {
+  min-width: 0;
+}
+
+/* pace-profile-card is a grid item inside pace-profile-grid (3-col grid).
+   Grid items need min-width: 0 to respect the 1fr cell boundary when the
+   title text is long and white-space: nowrap is in effect. */
+.pt-v2 .pace-profile-card {
+  min-width: 0;
+}
+
+/* Shared wrapper class for unclassed Containers that sit between a flex/grid
+   card and an F06-A truncating title. Applied in route JS wherever a bare
+   Container() would otherwise block the min-width shrink path.
+   flex: 1 1 auto allows the cell to grow and fill available space in a
+   flex-row parent while still being allowed to shrink below content width. */
+.pt-v2 .pace-trunc-cell {
+  min-width: 0;
+  flex: 1 1 auto;
+}

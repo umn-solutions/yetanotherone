@@ -542,7 +542,7 @@ export default defineRoute((config) => {
 
     if (reports.length === 0) {
       return new Container([
-        new Text(`${name} -- ${role} -- ${ou}`, { type: 'span', class: 'admin-tree-name' }),
+        new Text(`${name} -- ${role} -- ${ou}`, { type: 'span', class: 'admin-tree-name', title: `${name} -- ${role} -- ${ou}` }),
       ], { class: 'admin-tree-leaf' });
     }
 

@@ -18,6 +18,30 @@ import { createNotificationRecord } from './notifications-api.js';
 import { buildFinancialFields } from './initiatives-export.js';
 import { computeAnnualizedToBeTotalEur, formatEur } from './financial-forms.js';
 import { emailEquals } from './email-helpers.js';
+import { CATEGORY_KEYS, CATEGORY_LABELS, annualSavingColName } from './constants.js';
+
+/**
+ * Maps raw buildFinancialFields keys to the labels used on the financial form,
+ * so the IMPLEMENTED email table reads like the form the user filled in.
+ * Only the top-level keys are remapped; per-category input columns already
+ * carry Portuguese labels from the builder. Keys absent here pass through
+ * unchanged (via finFieldLabel). This is email-only -- the CSV export keeps
+ * the raw keys as its column headers.
+ */
+const FIN_FIELD_LABELS = {
+  TimePeriod: 'Período de Medição',
+  SavingType: 'Classificação do Saving',
+  SavingCategory: 'Categorias',
+  FTEAnnualCost: 'Custo Anual por FTE (€)',
+};
+for (const key of CATEGORY_KEYS) {
+  FIN_FIELD_LABELS[annualSavingColName(key)] = `${CATEGORY_LABELS[key]}: Saving Realizado (Anual)`;
+}
+
+/** Resolves a financial field key to its form label, or the key itself. */
+function finFieldLabel(key) {
+  return FIN_FIELD_LABELS[key] || key;
+}
 
 /**
  * Coerces any value to a safe display string that can never produce "[object Object]".
@@ -71,6 +95,7 @@ const NOTIFICATION_TYPE = {
 export const EMAIL_EVENTS = {
   SUBMITTED_OWNER: 'SUBMITTED_OWNER',
   SUBMITTED_MENTOR: 'SUBMITTED_MENTOR',
+  SUBMITTED_MANAGER: 'SUBMITTED_MANAGER',
   MENTOR_ASSIGNED: 'MENTOR_ASSIGNED',
   RESUBMITTED: 'RESUBMITTED',
   SAVINGS_VALIDATION_REQUESTED: 'SAVINGS_VALIDATION_REQUESTED',
@@ -105,23 +130,23 @@ function getAppUrl() {
 /**
  * Renders the email body HTML for a single recipient.
  * @param {string} intro - HTML intro paragraph (already escaped by template)
- * @param {boolean} pendingMentor - When true adds "enquanto aguarda pela validação de um mentor"
  * @param {string} recipientName - Display name of the recipient (may be empty)
+ * @param {{ pendingMentor?: boolean }} [opts]
+ *   pendingMentor - adds "enquanto aguarda pela validação de um mentor" to the follow-up.
  * @returns {string}
  */
-function renderBody(intro, pendingMentor, recipientName) {
+function renderBody(intro, recipientName, { pendingMentor = false } = {}) {
   const url = getAppUrl();
   const greeting = 'Olá' + (recipientName ? ' ' + esc(recipientName) : '') + ',';
-  const followUp = 'Pode acompanhar o estado da iniciativa'
+  const placeLink = url ? `<a href="${url}">Place</a>` : 'Place';
+  const followUp = `Pode acompanhar o estado da iniciativa no ${placeLink}`
     + (pendingMentor ? ' enquanto aguarda pela validação de um mentor' : '')
     + '.';
-  const linkLine = url ? `<p><a href="${url}">${url}</a></p>` : '';
 
   return `<div style="font-family:Segoe UI,Arial,sans-serif;color:#1f2933;line-height:1.5;">`
     + `<p>${greeting}</p>`
     + `<p>${intro}</p>`
     + `<p>${followUp}</p>`
-    + linkLine
     + `<hr style="border:none;border-top:1px solid #e4e7eb;margin:16px 0;">`
     + `<p style="margin:16px 0 0;"><i><b><span style="color:#2e7d32;">#leantogether</span></b></i></p>`
     + `<p style="margin:0;color:#2e7d32;">ACE &amp; Change Management</p>`
@@ -151,6 +176,49 @@ function normalizeRecipients(to, excludeEmail) {
   return out;
 }
 
+/**
+ * Shared intro for transfer-to-recipient events (ownership / gestor / mentor).
+ * `ctx.actorName` is the person who performed the transfer (original owner or
+ * responsible party). Falls back to a passive phrasing when the actor is unknown.
+ * The name is used without a leading article to avoid gender mismatch.
+ * @param {Object} ctx
+ * @returns {string}
+ */
+function transferIntro(ctx) {
+  const T = esc(ctx.initiative?.Title);
+  const actor = esc(ctx.actorName);
+  const lead = actor
+    ? `Informo que <b>${actor}</b> transferiu para ti a iniciativa <b>${T}</b>`
+    : `Informo que a iniciativa <b>${T}</b> foi transferida para ti`;
+  return `${lead} na aplicação de gestão de iniciativas <b>PLACE</b>.`;
+}
+
+/** Shared subject for the three submission-notification emails (owner / mentor / manager). */
+const submissionSubject = (ctx) => `Notificação de submissão da Iniciativa - ${safeText(ctx.initiative?.Title)}`;
+
+/** Shared closing line for validation/rejection/revision emails. */
+const SUPPORT_CLOSING = 'Qualquer dúvida, estamos à disposição.';
+
+/** Shared subject for approval-request emails (auto-assigned mentor + re-submission). */
+const approvalSubject = (ctx) => `Solicitação de Aprovação - ID ${safeText(ctx.initiative?.UUID)}`;
+
+/**
+ * Shared intro for approval-request emails sent to the mentor/gestor:
+ * the auto-assigned mentor on submission, and the mentor/gestor on re-submission.
+ * @param {Object} ctx
+ * @returns {string}
+ */
+function approvalRequestIntro(ctx) {
+  const UUID = esc(ctx.initiative?.UUID);
+  const T = esc(ctx.initiative?.Title);
+  const ownerName = esc(ctx.ownerName || ctx.initiative?.SubmittedBy?.displayName);
+  return `Solicito a aprovação para o pedido abaixo, registado na aplicação <b>PLACE</b>:`
+    + `<br><br>- <b>Pedido nº</b> ${UUID}`
+    + `<br>- <b>Iniciativa:</b> ${T}`
+    + `<br>- <b>Responsável:</b> ${ownerName}`
+    + `<br><br>A aprovação é necessária para prosseguir com a iniciativa.`;
+}
+
 const EMAIL_TEMPLATES = {
   [EMAIL_EVENTS.SUBMITTED_OWNER]: {
     type: NOTIFICATION_TYPE.STATE_CHANGE,
@@ -159,12 +227,13 @@ const EMAIL_TEMPLATES = {
       const ownerName = ctx.ownerName || ctx.initiative?.SubmittedBy?.displayName || '';
       return [{ email: ctx.initiative?.SubmittedByEmail, name: ownerName }];
     },
-    subject: (ctx) => `Notificação de submissão da Iniciativa - ${safeText(ctx.initiative?.Title)}`,
+    subject: submissionSubject,
     notificationTitle: (ctx) => `${safeText(ctx.initiative?.Title)} submetido. Aguarda validação de um mentor.`,
     intro: (ctx) => {
       const T = esc(ctx.initiative?.Title);
       const dataHora = esc(ctx.dataHora);
-      return `Informo que, em ${dataHora}, submeteu a iniciativa "<b>${T}</b>" na aplicação PLACE.`;
+      return `Informo que, em <b>${dataHora}</b>, submeteste a iniciativa <b>${T}</b> na aplicação <b>Place</b>.`
+        + `<br><br>- <b>Próximos Passos:</b> Validação pelo Mentor`;
     },
   },
   [EMAIL_EVENTS.SUBMITTED_MENTOR]: {
@@ -172,7 +241,17 @@ const EMAIL_TEMPLATES = {
     to: (ctx) => ctx.initiative?.MentorEmail
       ? [{ email: ctx.initiative.MentorEmail, name: ctx.initiative.Mentor?.displayName || '' }]
       : [],
-    subject: (ctx) => `Notificação de submissão da Iniciativa - ${safeText(ctx.initiative?.Title)}`,
+    subject: approvalSubject,
+    notificationTitle: (ctx) => {
+      const ownerName = safeText(ctx.ownerName || ctx.initiative?.SubmittedBy?.displayName);
+      return `${ownerName} submeteu ${safeText(ctx.initiative?.Title)}. Aprovação pendente.`;
+    },
+    intro: approvalRequestIntro,
+  },
+  [EMAIL_EVENTS.SUBMITTED_MANAGER]: {
+    type: NOTIFICATION_TYPE.STATE_CHANGE,
+    to: (ctx) => ctx.recipients || [],
+    subject: submissionSubject,
     notificationTitle: (ctx) => {
       const ownerName = safeText(ctx.ownerName || ctx.initiative?.SubmittedBy?.displayName);
       return `${ownerName} submeteu ${safeText(ctx.initiative?.Title)}.`;
@@ -181,7 +260,8 @@ const EMAIL_TEMPLATES = {
       const T = esc(ctx.initiative?.Title);
       const dataHora = esc(ctx.dataHora);
       const ownerName = esc(ctx.ownerName || ctx.initiative?.SubmittedBy?.displayName);
-      return `Informo que, em ${dataHora}, foi submetida a iniciativa "<b>${T}</b>" na aplicação PLACE pelo colaborador ${ownerName}. Foi-lhe atribuída como mentor para validação.`;
+      return `Informo que, em <b>${dataHora}</b>, foi registada a submissão da iniciativa <b>${T}</b> na aplicação <b>Place</b>.`
+        + `<br><br>- <b>Responsável pela ação:</b> ${ownerName}`;
     },
   },
   [EMAIL_EVENTS.MENTOR_ASSIGNED]: {
@@ -189,10 +269,7 @@ const EMAIL_TEMPLATES = {
     to: (ctx) => ctx.recipients,
     subject: (ctx) => `Iniciativa atribuída para validação - ${safeText(ctx.initiative?.Title)}`,
     notificationTitle: (ctx) => `Foi-lhe atribuída ${safeText(ctx.initiative?.Title)} como mentor.`,
-    intro: (ctx) => {
-      const T = esc(ctx.initiative?.Title);
-      return `Foi-lhe atribuída a iniciativa "<b>${T}</b>" como mentor responsável pela validação.`;
-    },
+    intro: transferIntro,
   },
   [EMAIL_EVENTS.RESUBMITTED]: {
     type: NOTIFICATION_TYPE.STATE_CHANGE,
@@ -206,14 +283,9 @@ const EMAIL_TEMPLATES = {
       }
       return recipients;
     },
-    subject: (ctx) => `Re-submissão da iniciativa - ${safeText(ctx.initiative?.UUID)}`,
+    subject: approvalSubject,
     notificationTitle: (ctx) => `${safeText(ctx.initiative?.Title)} re-submetida. Aprovação pendente.`,
-    intro: (ctx) => {
-      const UUID = esc(ctx.initiative?.UUID);
-      const T = esc(ctx.initiative?.Title);
-      const ownerName = esc(ctx.initiative?.SubmittedBy?.displayName);
-      return `Solicito aprovação para o pedido abaixo, registado na aplicação PLACE.<br>Iniciativa: <b>${UUID}</b> - ${T}<br>Colaborador: ${ownerName}<br><br>A aprovação é necessária para prosseguir com a iniciativa.`;
-    },
+    intro: approvalRequestIntro,
   },
   [EMAIL_EVENTS.SAVINGS_VALIDATION_REQUESTED]: {
     type: NOTIFICATION_TYPE.STATE_CHANGE,
@@ -254,22 +326,30 @@ const EMAIL_TEMPLATES = {
   [EMAIL_EVENTS.MENTOR_APPROVED]: {
     type: NOTIFICATION_TYPE.STATE_CHANGE,
     to: (ctx) => [{ email: ctx.initiative?.SubmittedByEmail, name: ctx.initiative?.SubmittedBy?.displayName || '' }],
-    notificationTitle: () => 'Sua iniciativa foi aprovada pelo mentor.',
-    subject: () => 'PLACE — Iniciativa aprovada pelo mentor',
+    notificationTitle: () => 'Sua iniciativa foi validada pelo mentor.',
+    subject: (ctx) => `Iniciativa Validada pelo Mentor - ${safeText(ctx.initiative?.Title)}`,
     intro: (ctx) => {
       const T = esc(ctx.initiative?.Title);
-      return `A sua iniciativa "<b>${T}</b>" foi aprovada pelo mentor.`;
+      const dataHora = esc(ctx.dataHora);
+      const mentorName = esc(ctx.mentorName || ctx.initiative?.Mentor?.displayName);
+      return `Informo que a iniciativa <b>${T}</b> foi validada pelo mentor em <b>${dataHora}</b>.`
+        + `<br><br>- <b>Mentor:</b> ${mentorName}`
+        + `<br>- <b>Próximo Passo:</b> Desenvolvimento da ação`
+        + `<br><br>${SUPPORT_CLOSING}`;
     },
   },
   [EMAIL_EVENTS.REJECTED]: {
     type: NOTIFICATION_TYPE.STATE_CHANGE,
     to: (ctx) => [{ email: ctx.initiative?.SubmittedByEmail, name: ctx.initiative?.SubmittedBy?.displayName || '' }],
     notificationTitle: (ctx) => `${safeText(ctx.initiative?.Title)} foi rejeitado.`,
-    subject: () => 'PLACE — Iniciativa rejeitada',
+    subject: (ctx) => `Rejeição da iniciativa - ${safeText(ctx.initiative?.Title)}`,
     intro: (ctx) => {
       const T = esc(ctx.initiative?.Title);
-      let body = `A iniciativa "<b>${T}</b>" foi rejeitada.`;
-      if (ctx.reason) body += `<br>Motivo: ${esc(ctx.reason)}`;
+      const actor = esc(ctx.actorName);
+      let body = `Informo que a iniciativa <b>${T}</b> foi rejeitada.`;
+      if (actor) body += `<br><br>- <b>Mentor/gestor:</b> ${actor}`;
+      if (ctx.reason) body += `<br>- <b>Motivo:</b> ${esc(ctx.reason)}`;
+      body += `<br><br>${SUPPORT_CLOSING}`;
       return body;
     },
   },
@@ -277,11 +357,14 @@ const EMAIL_TEMPLATES = {
     type: NOTIFICATION_TYPE.STATE_CHANGE,
     to: (ctx) => [{ email: ctx.initiative?.SubmittedByEmail, name: ctx.initiative?.SubmittedBy?.displayName || '' }],
     notificationTitle: (ctx) => `${safeText(ctx.initiative?.Title)} requer revisão.`,
-    subject: () => 'PLACE — Pedido de revisão',
+    subject: (ctx) => `Pedido de Revisão - ${safeText(ctx.initiative?.Title)}`,
     intro: (ctx) => {
       const T = esc(ctx.initiative?.Title);
-      let body = `A iniciativa "<b>${T}</b>" requer revisão.`;
-      if (ctx.reason) body += `<br>Motivo: ${esc(ctx.reason)}`;
+      const actor = esc(ctx.actorName);
+      let body = `Informo que foram pedidas mais informações sobre a iniciativa <b>${T}</b>.`;
+      if (actor) body += `<br><br>- <b>Mentor/gestor:</b> ${actor}`;
+      if (ctx.reason) body += `<br>- <b>Detalhes:</b> ${esc(ctx.reason)}`;
+      body += `<br><br>${SUPPORT_CLOSING}`;
       return body;
     },
   },
@@ -326,14 +409,27 @@ const EMAIL_TEMPLATES = {
       { email: ctx.initiative?.GestorValidatorEmail, name: ctx.initiative?.GestorValidator?.displayName || '' },
     ],
     notificationTitle: () => 'Iniciativa marcada como implementada.',
-    subject: () => 'PLACE — Iniciativa implementada',
+    subject: (ctx) => `Fecho da iniciativa ${safeText(ctx.initiative?.Title)} - Validação dos Ganhos Obtidos`,
     intro: (ctx) => {
       const T = esc(ctx.initiative?.Title);
-      const base = `A iniciativa "<b>${T}</b>" foi marcada como implementada.`;
+      const dateStr = esc(ctx.implementedDate);
+      const mgr = esc(ctx.mentorManagerName);
+
+      const opening = `Informo que a iniciativa "<b>${T}</b>" foi encerrada`
+        + (dateStr ? ` em <b>${dateStr}</b>` : '')
+        + `, com validação dos ganhos obtidos.`;
+
+      const closing = (mgr
+        ? `Os resultados foram revistos e aprovados por <b>${mgr}</b>.`
+        : `Os resultados foram revistos e aprovados.`)
+        + `<br><br>`
+        + `Agradecemos a todos os envolvidos pelo empenho e colaboração.`;
+
       const fin = ctx.financials || null;
       if (!fin) {
-        return base + '<br><br><i>Sem dados financeiros registados.</i>';
+        return opening + `<br><br><i>Sem dados financeiros registados.</i><br><br>` + closing;
       }
+
       let tableHtml = '';
       try {
         // isPrivileged = true: the IMPLEMENTED email goes to owner/mentor/gestor, all privileged
@@ -343,7 +439,7 @@ const EMAIL_TEMPLATES = {
           .filter(([, v]) => v !== '' && v !== null && v !== undefined && v !== 0)
           .map(([label, value]) => {
             return `<tr>`
-              + `<td style="padding:4px 8px;border-bottom:1px solid #e4e7eb;color:#1f2933;">${esc(label)}</td>`
+              + `<td style="padding:4px 8px;border-bottom:1px solid #e4e7eb;color:#1f2933;">${esc(finFieldLabel(label))}</td>`
               + `<td style="padding:4px 8px;border-bottom:1px solid #e4e7eb;color:#1f2933;text-align:right;">${esc(value)}</td>`
               + `</tr>`;
           })
@@ -356,7 +452,7 @@ const EMAIL_TEMPLATES = {
           + `<table style="border-collapse:collapse;width:100%;max-width:560px;font-family:Segoe UI,Arial,sans-serif;font-size:13px;">`
           + `<thead>`
           + `<tr style="background:#2e7d32;">`
-          + `<th colspan="2" style="padding:8px;color:#fff;text-align:left;font-weight:bold;">Dados Financeiros</th>`
+          + `<th colspan="2" style="padding:8px;color:#fff;text-align:left;font-weight:bold;">Validação dos Ganhos</th>`
           + `</tr>`
           + `</thead>`
           + `<tbody>`
@@ -368,7 +464,7 @@ const EMAIL_TEMPLATES = {
         console.error('[emails:IMPLEMENTED] failed to build financial table', err);
         tableHtml = '<br><br><i>Erro ao gerar dados financeiros.</i>';
       }
-      return base + tableHtml;
+      return opening + tableHtml + `<br><br>` + closing;
     },
   },
   [EMAIL_EVENTS.GESTOR_TRANSFERRED]: {
@@ -376,10 +472,7 @@ const EMAIL_TEMPLATES = {
     to: (ctx) => ctx.recipients,
     notificationTitle: (ctx) => `${safeText(ctx.initiative?.Title)} transferido para si para validação.`,
     subject: () => 'PLACE — Iniciativa transferida para validação',
-    intro: (ctx) => {
-      const T = esc(ctx.initiative?.Title);
-      return `A iniciativa "<b>${T}</b>" foi transferida para si para validação.`;
-    },
+    intro: transferIntro,
   },
   [EMAIL_EVENTS.GESTOR_CHANGED]: {
     type: NOTIFICATION_TYPE.STATE_CHANGE,
@@ -396,10 +489,7 @@ const EMAIL_TEMPLATES = {
     to: (ctx) => ctx.recipients,
     notificationTitle: (ctx) => `${safeText(ctx.initiative?.Title)} transferido para si.`,
     subject: () => 'PLACE — Iniciativa transferida',
-    intro: (ctx) => {
-      const T = esc(ctx.initiative?.Title);
-      return `A iniciativa "<b>${T}</b>" foi transferida para si.`;
-    },
+    intro: transferIntro,
   },
   [EMAIL_EVENTS.OWNER_CHANGED]: {
     type: NOTIFICATION_TYPE.STATE_CHANGE,
@@ -477,7 +567,7 @@ export function createEmail(event, ctx = {}) {
       const sent = [], failed = [];
       console.group(`[email:${event}] ${recipients.length} recipient(s)`);
       for (const r of recipients) {
-        const body = renderBody(tpl.intro(ctx), pendingMentor, r.name);
+        const body = renderBody(tpl.intro(ctx), r.name, { pendingMentor });
         console.group(`To: ${r.email}`);
         console.log('To:', r.email);
         console.log('Subject:', subject);
