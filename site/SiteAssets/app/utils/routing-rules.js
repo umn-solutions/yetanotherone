@@ -1,8 +1,7 @@
 import { getGestorMap, pickTeamHead } from './org-hierarchy-api.js';
 import { GESTOR_CATEGORIES } from './constants.js';
 
-const EXEC = 'Executive';
-const TOP_MGMT = 'Top Management';
+const EXEC = 'EXECUTIVE';
 const MGMT = 'Management';
 
 /**
@@ -25,7 +24,7 @@ function directManager(ancestors) {
 
 function findBase(responsible, ancestors) {
   const role = responsible.Category;
-  if (role === EXEC || role === TOP_MGMT) return responsible;
+  if (role === EXEC) return responsible;
   if (role === MGMT) return directManager(ancestors);
   // skip self (last element) when climbing to first management node
   return firstGestorFrom(ancestors, ancestors.length - 2);
@@ -36,7 +35,7 @@ function findBase(responsible, ancestors) {
  * node, stopping BEFORE the root/CEO (index 0) which is never a valid target.
  * @param {Array} ancestors - ordered CEO(root) -> self(last)
  * @param {number} startIdx - index to begin scanning (inclusive)
- * @returns {object|null} null -> caller falls back to comexFallback
+ * @returns {object|null} null -> high-tier gestor left unassigned (no in-line Executive)
  */
 function firstExecFrom(ancestors, startIdx) {
   for (let i = startIdx; i >= 1; i--) {
@@ -49,11 +48,11 @@ function firstExecFrom(ancestors, startIdx) {
  * Never returns the root/CEO (ancestors[0]); demotes to the highest non-root ancestor.
  * @param {object|null} winner
  * @param {Array} ancestors - ordered CEO(root) -> self(last)
- * @returns {object|null} null -> caller falls back to comexFallback
+ * @returns {object|null} null -> caller leaves the gestor unassigned
  */
 function excludeRoot(winner, ancestors) {
   if (winner && ancestors[0] && winner.Title === ancestors[0].Title) {
-    return ancestors[1] || null; // null -> caller falls back to comexFallback
+    return ancestors[1] || null; // null -> caller leaves the gestor unassigned
   }
   return winner;
 }
@@ -64,10 +63,10 @@ function excludeRoot(winner, ancestors) {
  * Normal initiatives: routes to the team's immediate accountability node (base).
  *
  * High-tier initiatives (>= 10 000 annualised OR Hard Cost): routes to the nearest
- * Executive-category ancestor scanning upward from self (inclusive), excluding the
- * root/CEO (index 0). If no Executive-category node exists above the impacted team
- * (other than root), falls back to comexFallback -- itself a non-root exec-level
- * direct report of root.
+ * Executive-category ancestor in the impacted team's OWN line, scanning upward from
+ * self (inclusive) and excluding the root/CEO (index 0). If the line has no Executive
+ * between the impacted team and the CEO, the gestor is left UNASSIGNED (returns null)
+ * -- it is never routed cross-branch.
  *
  * @param {string} savingType
  * @param {string|number} savingEstimate - Already-annualized EUR total
@@ -82,7 +81,7 @@ export async function getAssignedGestor(savingType, savingEstimate, impactedTeam
   const value = Math.abs(parseFloat(String(savingEstimate).replace(/[^\d.]/g, '')) || 0);
   const isHighTier = savingType === 'Hard Cost' || value >= 10000;
 
-  const { byId, byOUID, comexFallback } = await getGestorMap();
+  const { byId, byOUID } = await getGestorMap();
   const responsible = pickTeamHead(byOUID.get(impactedTeamOUID));
   if (!responsible) {
     // Impacted team is not present in OrgHierarchy (missing/dropped OU). Do NOT
@@ -100,18 +99,26 @@ export async function getAssignedGestor(savingType, savingEstimate, impactedTeam
     return null;
   }
 
-  const base = findBase(responsible, ancestors);
-  const rawWinner = isHighTier
-    ? firstExecFrom(ancestors, ancestors.length - 1)
-    : base;
-  const winner = excludeRoot(rawWinner, ancestors);
+  // High-tier: the validator MUST be an Executive. Find the closest Executive in the
+  // impacted team's OWN line, above the management tier, excluding the root/CEO. If
+  // there is no Executive between the impacted team and the CEO, leave the gestor
+  // UNASSIGNED (null) -- never fall back cross-branch.
+  if (isHighTier) {
+    const exec = firstExecFrom(ancestors, ancestors.length - 1);
+    if (!exec) {
+      console.warn('[getAssignedGestor] high-tier initiative has no in-line Executive between the impacted team and the CEO -- gestor left unassigned', { impactedTeamOUID, responsible: responsible.Title });
+      return null;
+    }
+    return { email: exec.Email, displayName: exec.ShortName };
+  }
+
+  // Normal tier: route to the team's accountability node (base), never the root/CEO.
+  // If nothing in-line resolves (e.g. CEO-office single-node chain), leave the gestor
+  // UNASSIGNED (null) -- never route cross-branch.
+  const winner = excludeRoot(findBase(responsible, ancestors), ancestors);
   if (!winner) {
-    // No valid in-line validator above the impacted team (e.g. CEO-office
-    // initiative with no manager above root, or high-tier branch with no
-    // in-line Executive). Escalate to the top-level exec fallback -- logged,
-    // never silent.
-    console.warn('[getAssignedGestor] no in-line validator resolved -- escalating to comexFallback', { impactedTeamOUID, isHighTier, responsible: responsible.Title });
-    return comexFallback;
+    console.warn('[getAssignedGestor] no in-line validator resolved for normal-tier initiative -- gestor left unassigned', { impactedTeamOUID, responsible: responsible.Title });
+    return null;
   }
   return { email: winner.Email, displayName: winner.ShortName };
 }

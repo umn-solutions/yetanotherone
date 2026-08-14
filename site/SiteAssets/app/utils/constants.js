@@ -31,7 +31,8 @@ export const MENTOR_MANAGER_LABELS = {
 };
 
 // OrgHierarchy Category values that grant gestor role
-export const GESTOR_CATEGORIES = ['Executive', 'Top Management', 'Management'];
+// ('Top Management' was removed from the org schema; former Top Management is now 'Management')
+export const GESTOR_CATEGORIES = ['EXECUTIVE', 'Management'];
 
 // OrgHierarchy OUID values whose members are flagged as mentors on CSV import
 export const MENTOR_OUIDS = ['COM-BKP'];

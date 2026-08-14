@@ -11,12 +11,11 @@ const listApi = new SiteApi().list('OrgHierarchy');
  * Lower number = higher rank.
  */
 const CATEGORY_RANK = {
-  'Executive': 0,
-  'Top Management': 1,
-  'Management': 2,
-  'Team Leader': 3,
-  'Expert - Technical Lead': 4,
-  'Technician': 5,
+  'EXECUTIVE': 0,
+  'Management': 1,
+  'Team Leader': 2,
+  'Expert - Technical Lead': 3,
+  'Technician': 4,
 };
 
 /**
@@ -315,8 +314,7 @@ let _gestorMapCache = null;
 /**
  * Fetches and caches the gestor map derived from OrgHierarchy.
  * For each OU, the highest-Category-ranked employee is the gestor.
- * comexFallback is the highest-ranked direct report of the root (COMEX level); never the root/CEO; null if none.
- * @returns {Promise<{ gestorMap: Object, comexFallback: Object|null, byId: Map<string, Object>, byOUID: Map<string, Object[]> }>}
+ * @returns {Promise<{ gestorMap: Object, byId: Map<string, Object>, byOUID: Map<string, Object[]> }>}
  */
 export async function getGestorMap() {
   if (_gestorMapCache) return _gestorMapCache;
@@ -324,11 +322,9 @@ export async function getGestorMap() {
 
   const byId = new Map();
   const byOUIDRaw = new Map();
-  let rootEmployee = null;
 
   for (const emp of all) {
     if (emp.Title) byId.set(emp.Title, emp);
-    if (!emp.ManagerId) rootEmployee = emp;
     if (!emp.OUID) continue;
     if (!byOUIDRaw.has(emp.OUID)) byOUIDRaw.set(emp.OUID, []);
     byOUIDRaw.get(emp.OUID).push(emp);
@@ -345,22 +341,7 @@ export async function getGestorMap() {
     if (best) gestorMap[code] = { email: best.Email, displayName: best.ShortName };
   }
 
-  // comexFallback: highest-ranked direct report of the root, never the root/CEO itself.
-  let comexFallback = null;
-  if (rootEmployee) {
-    const directReports = all.filter(e => e.ManagerId === rootEmployee.Title);
-    if (directReports.length > 0) {
-      directReports.sort(
-        (a, b) =>
-          ((CATEGORY_RANK[a.Category] ?? Infinity) - (CATEGORY_RANK[b.Category] ?? Infinity)) ||
-          (a.Title < b.Title ? -1 : a.Title > b.Title ? 1 : 0)
-      );
-      const best = directReports[0];
-      comexFallback = { email: best.Email, displayName: best.ShortName };
-    }
-  }
-
-  _gestorMapCache = { gestorMap, comexFallback, byId, byOUID };
+  _gestorMapCache = { gestorMap, byId, byOUID };
   return _gestorMapCache;
 }
 
