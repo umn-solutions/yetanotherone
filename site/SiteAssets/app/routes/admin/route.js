@@ -17,6 +17,7 @@ import {
 import { createExportButton } from '../../utils/initiatives-export.js';
 import * as initiativesApi from '../../utils/initiatives-api.js';
 import { emailEquals } from '../../utils/email-helpers.js';
+import { acquireOverlayOpen } from '../../utils/overlay-guard.js';
 
 export default defineRoute((config) => {
   config.setRouteTitle('Admin');
@@ -781,6 +782,14 @@ export default defineRoute((config) => {
    * @param {object|null} target - Existing target for edit, or null for create.
    */
   function showTargetDialog(target) {
+    // Single-flight guard, mirroring showMentorTeamsDialog. This open path is
+    // synchronous today (no async pre-load window), so the guard is defensive --
+    // it future-proofs against an async pre-load being added and keeps both admin
+    // dialogs consistent. Released right after open so the nested delete-confirm
+    // is not blocked.
+    const release = acquireOverlayOpen();
+    if (!release) { console.warn('[admin/showTargetDialog] duplicate open ignored'); return; }
+
     const isEdit = target !== null;
 
     // -- Year field --
@@ -922,6 +931,7 @@ export default defineRoute((config) => {
 
     dialog.render();
     dialog.open();
+    release();
   }
 
   /**
@@ -931,6 +941,11 @@ export default defineRoute((config) => {
    * @param {object|null} record - Existing MentorTeams record for edit, or null for create.
    */
   async function showMentorTeamsDialog(record) {
+    // Single-flight guard: blocks a second dialog from opening during the async
+    // pre-load window below (rapid double-clicks on the list row or "Adicionar Mentor").
+    const release = acquireOverlayOpen();
+    if (!release) { console.warn('[admin/showMentorTeamsDialog] duplicate open ignored'); return; }
+
     const isEdit = record !== null;
 
     // Pre-load mentor users and team options before building the dialog
@@ -943,6 +958,7 @@ export default defineRoute((config) => {
     } catch (err) {
       console.error('[admin/showMentorTeamsDialog] failed to load options', err);
       Toast.error('Erro ao carregar dados. Tente novamente.');
+      release();
       return;
     }
 
@@ -1149,6 +1165,9 @@ export default defineRoute((config) => {
 
     dialog.render();
     dialog.open();
+    // Release immediately after open -- the nested delete-confirm dialog (Eliminar)
+    // must not be blocked by this lock.
+    release();
   }
 
   /**

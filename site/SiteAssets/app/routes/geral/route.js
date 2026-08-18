@@ -51,6 +51,7 @@ export default defineRoute((config) => {
   const tagFilterField = new FormField({ value: [] });
   let filtersSubscribed = false;
   let suppressFilterRefresh = false;
+  let filtersBuiltForTab = null;
 
   // -- layout containers --
 
@@ -179,10 +180,9 @@ export default defineRoute((config) => {
   // -- filter bar --
 
   function buildFilters() {
-    if (filterBar.children.length > 0) return;
+    if (filtersBuiltForTab === activeTabKey) return;
 
     const titleInput = new TextInput(titleFilterField, { placeholder: 'Pesquisar título...' });
-    const teamCombo = new ComboBox(teamFilterField, teamOptions, { placeholder: 'Equipa impactada...' });
     const tagCombo = new ComboBox(tagFilterField, INITIATIVE_TAGS, { placeholder: 'Tags...', allowMultiple: true });
 
     const clearBtn = new Button('Limpar', {
@@ -193,14 +193,25 @@ export default defineRoute((config) => {
         teamFilterField.value = '';
         tagFilterField.value = [];
         for (const o of teamOptions) o.checked = false;
-        filterBar.children = [];
-        buildFilters();
+        filtersBuiltForTab = null;
         suppressFilterRefresh = false;
+        buildFilters();
         buildUI();
       },
     });
 
-    filterBar.children = [titleInput, teamCombo, tagCombo, clearBtn];
+    if (activeTabKey === 'minha-equipa') {
+      suppressFilterRefresh = true;
+      teamFilterField.value = '';
+      for (const o of teamOptions) o.checked = false;
+      suppressFilterRefresh = false;
+      filterBar.children = [titleInput, tagCombo, clearBtn];
+    } else {
+      const teamCombo = new ComboBox(teamFilterField, teamOptions, { placeholder: 'Equipa impactada...' });
+      filterBar.children = [titleInput, teamCombo, tagCombo, clearBtn];
+    }
+
+    filtersBuiltForTab = activeTabKey;
   }
 
   // -- build UI --

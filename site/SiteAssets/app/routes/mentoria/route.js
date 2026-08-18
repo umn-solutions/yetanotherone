@@ -369,7 +369,8 @@ export default defineRoute((config) => {
       }
 
       const mySubmetidos = myItems.filter((i) => i.Status === STATUS.SUBMETIDO);
-      projectItems = [...unassigned, ...mySubmetidos];
+      const unassignedIds = new Set(unassigned.map((i) => i.Id));
+      projectItems = [...unassigned, ...mySubmetidos.filter((i) => !unassignedIds.has(i.Id))];
       myValidadoGestor = myItems.filter((i) => i.Status === STATUS.VALIDADO_GESTOR);
       myTrackingItems = myItems.filter((i) =>
         i.Status === STATUS.VALIDADO_MENTOR ||

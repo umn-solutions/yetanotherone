@@ -4,7 +4,6 @@ import {
 	CurrentUser,
 	ContextStore,
 	SiteApi,
-	resolvePath,
 	StyleResource,
 	Toast,
 	SystemError,
@@ -14,7 +13,6 @@ import { canAccess, isInGroup } from "./utils/roles.js";
 import { BOOTSTRAP_ADMIN_GROUP } from "./utils/constants.js";
 
 await pageReset({
-	themePath: resolvePath("@/css/pace-theme.css"),
 	clearConsole: false,
 });
 

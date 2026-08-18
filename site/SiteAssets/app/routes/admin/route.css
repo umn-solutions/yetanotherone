@@ -68,8 +68,11 @@
   min-width: 160px;
   flex: 1;
   max-width: 220px;
-  position: relative;
-  z-index: 1;
+  /* No position/z-index here: the base .nofbiz__combobox already sets
+     position: relative (for its absolute dropdown). Adding z-index would make
+     each ComboBox its own stacking context capped at that value, trapping the
+     open dropdown (z-index 1000) below later sibling ComboBoxes. Left at auto,
+     the dropdown correctly overlays the other filters regardless of DOM order. */
 }
 
 .admin-filters-row .nofbiz__textinput {

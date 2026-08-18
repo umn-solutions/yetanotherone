@@ -13,7 +13,6 @@ import {
   extractComboBoxValue,
   UserIdentity,
   SystemError,
-  PeoplePicker,
   __dayjs,
 } from '../libs/nofbiz/nofbiz.base.js';
 
@@ -112,6 +111,17 @@ function confirm(title, message, opts = {}) {
 }
 
 /**
+ * Flushes pending debounced input syncs by blurring every input/textarea in a
+ * dialog before its FormField values are read on confirm. SPARC TextArea/TextInput
+ * sync to their FormField on a 300ms debounce or on blur; without this flush a
+ * fast confirm-click could read a stale value.
+ * @param {Dialog} dialog
+ */
+function flushDialogInputs(dialog) {
+  dialog?.instance?.find('input, textarea').trigger('blur');
+}
+
+/**
  * Shows a confirmation Dialog with a mandatory comment TextArea.
  * Returns the comment string on confirm, or null on cancel/empty comment.
  * @param {string} title
@@ -155,6 +165,7 @@ function confirmWithComment(title, message, opts = {}) {
         new Button(confirmLabel, {
           variant: 'danger',
           onClickHandler: () => {
+            flushDialogInputs(dialog);
             const comment = commentField.value?.trim() || '';
             dialog.close();
             dialog.remove();
@@ -220,6 +231,7 @@ export function confirmWithDate(title, message, opts = {}) {
         new Button(confirmLabel, {
           variant: 'primary',
           onClickHandler: () => {
+            flushDialogInputs(dialog);
             const value = (dateField.value || '').trim();
             if (!value) {
               Toast.error('Indique a data prevista de conclusão.');
@@ -282,6 +294,7 @@ function confirmWithEmployeeComboBox(title, message, options) {
         new Button('Confirmar', {
           variant: 'primary',
           onClickHandler: () => {
+            flushDialogInputs(dialog);
             if (!personField.value) {
               Toast.error('Selecione uma pessoa.');
               return;
@@ -300,6 +313,24 @@ function confirmWithEmployeeComboBox(title, message, options) {
     dialog.render();
     dialog.open();
   });
+}
+
+/**
+ * Builds ComboBox options ({ label, value: UserIdentity }) from OrgHierarchy employees.
+ * @param {Object[]} employees - OrgHierarchy records (from getAllEmployees()).
+ * @param {Object} [opts]
+ * @param {string} [opts.role] - When set, keep only employees whose deriveRoles() includes this role.
+ * @param {string} [opts.excludeEmail] - When set, drop the employee matching this email.
+ * @returns {Array<{ label: string, value: UserIdentity }>}
+ */
+function buildEmployeeOptions(employees, { role, excludeEmail } = {}) {
+  return employees
+    .filter(emp =>
+      emp.Email &&
+      (!role || deriveRoles(emp, employees).includes(role)) &&
+      (!excludeEmail || !emailEquals(emp.Email, excludeEmail)),
+    )
+    .map(emp => ({ label: emp.ShortName, value: new UserIdentity(emp.Email, emp.ShortName) }));
 }
 
 /**
@@ -325,12 +356,7 @@ async function confirmWithUserComboBox(title, message) {
   }
   try {
   const currentEmail = ContextStore.get('currentUser').get('email');
-  const personOptions = allEmployees
-    .filter(emp => emp.Email && !emailEquals(emp.Email, currentEmail))
-    .map(emp => ({
-      label: emp.ShortName,
-      value: new UserIdentity(emp.Email, emp.ShortName),
-    }));
+  const personOptions = buildEmployeeOptions(allEmployees, { excludeEmail: currentEmail });
 
   // Gestores may only grant read access; other roles may also grant collaborate.
   const canShareCollaborate = canAccess('partilhar_colaborar');
@@ -379,6 +405,7 @@ async function confirmWithUserComboBox(title, message) {
         new Button('Confirmar', {
           variant: 'primary',
           onClickHandler: () => {
+            flushDialogInputs(dialog);
             if (!personField.value) {
               Toast.error('Selecione uma pessoa.');
               return;
@@ -1056,12 +1083,7 @@ export async function mentorManagerValidation(initiative, button, onSuccess) {
  */
 export async function transferGestor(initiative, button, onSuccess) {
   const allEmployees = await getAllEmployees();
-  const options = allEmployees
-    .filter(emp => deriveRoles(emp).includes('gestor') && !emailEquals(emp.Email, initiative.GestorValidatorEmail))
-    .map(emp => ({
-      label: emp.ShortName,
-      value: new UserIdentity(emp.Email, emp.ShortName),
-    }));
+  const options = buildEmployeeOptions(allEmployees, { role: 'gestor', excludeEmail: initiative.GestorValidatorEmail });
 
   const result = await confirmWithEmployeeComboBox(
     'Transferir Iniciativa',
@@ -1112,12 +1134,7 @@ export async function transferGestor(initiative, button, onSuccess) {
 export async function transferOwnership(initiative, button, onSuccess) {
   const allEmployees = await getAllEmployees();
   const currentEmail = ContextStore.get('currentUser').get('email');
-  const options = allEmployees
-    .filter(emp => deriveRoles(emp).includes('colaborador') && !emailEquals(emp.Email, currentEmail))
-    .map(emp => ({
-      label: emp.ShortName,
-      value: new UserIdentity(emp.Email, emp.ShortName),
-    }));
+  const options = buildEmployeeOptions(allEmployees, { role: 'colaborador', excludeEmail: currentEmail });
 
   const result = await confirmWithEmployeeComboBox(
     'Transferir Iniciativa',
@@ -1162,68 +1179,6 @@ export async function transferOwnership(initiative, button, onSuccess) {
 }
 
 /**
- * Shows a Dialog with a PeoplePicker to select a new person for a role.
- * Returns { identity: UserIdentity } on confirm, or null on cancel/empty selection.
- * @param {string} title
- * @param {string} message
- * @param {string} [placeholderText]
- * @returns {Promise<{ identity: UserIdentity } | null>}
- */
-function confirmWithPeoplePicker(title, message, placeholderText = 'Pesquisar pessoa...') {
-  const personField = new FormField({ value: null });
-  const picker = new PeoplePicker(personField, { placeholder: placeholderText });
-
-  return new Promise((resolve) => {
-    const dialog = new Dialog({
-      title,
-      variant: 'info',
-      class: 'pace-dialog--overflow-visible pt-v2',
-      content: new Container([
-        new Text(message, { type: 'p' }),
-        new FieldLabel('Pessoa', picker),
-        picker,
-      ]),
-      backdrop: true,
-      closeOnFocusLoss: false,
-      containerSelector: 'body',
-      footer: [
-        new Button('Cancelar', {
-          variant: 'secondary',
-          onClickHandler: () => {
-            dialog.close();
-            dialog.remove();
-            picker.remove();
-            personField.dispose();
-            resolve(null);
-          },
-        }),
-        new Button('Confirmar', {
-          variant: 'primary',
-          onClickHandler: () => {
-            const selected = personField.value;
-            if (!selected) {
-              Toast.error('Selecione uma pessoa.');
-              return;
-            }
-            // PeoplePicker stores UserIdentity as .value on the option
-            const identity = selected?.value instanceof UserIdentity
-              ? selected.value
-              : new UserIdentity(selected?.value?.email || '', selected?.value?.displayName || selected?.label || '');
-            dialog.close();
-            dialog.remove();
-            picker.remove();
-            personField.dispose();
-            resolve({ identity });
-          },
-        }),
-      ],
-    });
-    dialog.render();
-    dialog.open();
-  });
-}
-
-/**
  * Generic mentor-facing role reassignment (Mentor or Gestor fields).
  * Writes an update to the initiative and logs a TRANSFER timeline event.
  *
@@ -1246,21 +1201,24 @@ export async function reassignRole({ role, initiative, button, onSuccess }) {
     ? 'Selecione o novo mentor responsável por esta iniciativa.'
     : 'Selecione o novo gestor validador desta iniciativa.';
 
-  const result = await confirmWithPeoplePicker(dialogTitle, dialogMessage);
+  const allEmployees = await getAllEmployees();
+  const options = isMentor
+    ? buildEmployeeOptions(allEmployees, { role: 'mentor', excludeEmail: initiative.MentorEmail })
+    : buildEmployeeOptions(allEmployees, { role: 'gestor', excludeEmail: initiative.GestorValidatorEmail });
+
+  const result = await confirmWithEmployeeComboBox(dialogTitle, dialogMessage, options);
   if (!result) return;
 
-  const newIdentity = result.identity;
-  if (!newIdentity.email) {
-    Toast.error('Não foi possível determinar o email da pessoa selecionada.');
-    return;
-  }
+  const extracted = extractComboBoxValue(result.person);
+  const newIdentity = new UserIdentity(extracted.email, extracted.displayName);
 
   const fields = isMentor
     ? { Mentor: newIdentity, MentorEmail: newIdentity.email }
     : { GestorValidator: newIdentity, GestorValidatorEmail: newIdentity.email };
 
   const roleLabel = isMentor ? 'Mentor' : 'Gestor';
-  const comment = `${roleLabel} alterado para ${newIdentity.displayName}.`;
+  const baseComment = `${roleLabel} alterado para ${newIdentity.displayName}.`;
+  const comment = result.comment ? `${baseComment} ${result.comment}` : baseComment;
 
   button.isLoading = true;
   const loading = Toast.loading(`A alterar ${roleLabel.toLowerCase()}...`);
