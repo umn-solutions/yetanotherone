@@ -1,5 +1,5 @@
 import { Container, Text } from '../libs/nofbiz/nofbiz.base.js';
-import { STATUS_DESCRIPTIONS } from './constants.js';
+import { STATUS_DESCRIPTIONS, MENTOR_MANAGER_LABELS } from './constants.js';
 
 export const STATUS = {
   RASCUNHO: 'Rascunho',
@@ -154,7 +154,7 @@ export function renderStatusCell(initiative) {
 
   const label = initiative.FinalValidationLabel;
   if (label) {
-    const labelClass = label === 'Validado pela equipa PLACE'
+    const labelClass = label === MENTOR_MANAGER_LABELS.PLACE
       ? 'pace-chip pace-chip--final-place'
       : 'pace-chip pace-chip--final-finance';
 

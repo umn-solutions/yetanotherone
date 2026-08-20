@@ -26,7 +26,7 @@ export const EVENT_TYPES = {
 export const SOFT_SAVINGS_THRESHOLD_EUR = 10000;
 
 export const MENTOR_MANAGER_LABELS = {
-  PLACE: 'Validado pela equipa PLACE',
+  PLACE: 'Validado pela equipa de mentoria',
   AREA_FINANCEIRA: 'Validado pela área financeira',
 };
 

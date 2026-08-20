@@ -628,9 +628,11 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     approvalsOnly: true,
     // Gate all forwarded workflow actions through a save: flush inputs, persist
     // base and financial edits, refresh the ETag, THEN run the status transition.
-    // This ensures approvers who edit data before clicking Aprovar/Validar do not
-    // silently discard their changes. Only injected in the approver edit modal.
-    beforeAction: asApprover ? persistFormEdits : null,
+    // This ensures anyone who edits data before clicking a workflow action (owner
+    // clicking "Solicitar Validação" after adding a metric, approver clicking
+    // Aprovar/Validar) does not silently discard their changes. These buttons only
+    // exist inside the edit modal, so persisting first is always correct.
+    beforeAction: persistFormEdits,
   }) : [];
 
   // ===== ACTION BUTTONS (built once, reused across steps) =====
