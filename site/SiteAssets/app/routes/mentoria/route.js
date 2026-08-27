@@ -203,7 +203,7 @@ export default defineRoute((config) => {
 
     kpiRow.children = [
       buildKpi(String(projectItems.length), 'Validação Projecto'),
-      buildKpi(String(myValidadoGestor.length), 'Confirmação Final'),
+      buildKpi(String(myValidadoGestor.length), 'Validação Savings'),
       buildKpi(String(myTrackingItems.length), 'Em Acompanhamento'),
       ...(isManager ? [buildKpi(String(implementacaoItems.length), 'Confirmação de Implementação')] : []),
     ];
@@ -223,10 +223,10 @@ export default defineRoute((config) => {
         ),
         new Container(
           [
-            new Text('Confirmação Final', { type: 'h3' }),
+            new Text('Validação de Savings', { type: 'h3' }),
             ...myValidadoGestor.map((item) => buildPendingItem(item, 'savings')),
             ...(myValidadoGestor.length === 0
-              ? [new Text('Sem iniciativas pendentes de confirmação final.', { type: 'p', class: 'pace-empty' })]
+              ? [new Text('Sem iniciativas pendentes de validação de savings.', { type: 'p', class: 'pace-empty' })]
               : []),
           ],
           { class: 'pace-validation-col pace-validation-col--savings pace-validation-col--scroll' }
@@ -287,8 +287,8 @@ export default defineRoute((config) => {
 
     const actionLabel = !canAct ? 'Ver'
       : item.Status === STATUS.SUBMETIDO ? 'Validar'
-      : item.Status === STATUS.VALIDADO_GESTOR ? 'Confirmar'
-      : item.Status === STATUS.VALIDADO_FINAL ? 'Confirmar'
+      : item.Status === STATUS.EM_VALIDACAO_MENTOR ? 'Validar'
+      : item.Status === STATUS.EM_VALIDACAO_MM ? 'Confirmar'
       : 'Ver';
 
     const metaChildren = [
@@ -350,7 +350,7 @@ export default defineRoute((config) => {
       // Mentors/mentor-managers see all initiatives across all teams (total visibility).
       // Non-mentors see only initiatives assigned to them as mentor.
       const isMentor = isMentorUser();
-      const trackingStatuses = [STATUS.SUBMETIDO, STATUS.VALIDADO_MENTOR, STATUS.EM_EXECUCAO, STATUS.POR_VALIDAR, STATUS.VALIDADO_GESTOR, STATUS.VALIDADO_FINAL];
+      const trackingStatuses = [STATUS.SUBMETIDO, STATUS.VALIDADO_MENTOR, STATUS.EM_EXECUCAO, STATUS.EM_VALIDACAO_MENTOR, STATUS.EM_VALIDACAO_GESTOR, STATUS.EM_VALIDACAO_MM];
       const [unassigned, myItems, sharedRecords, teams] = await Promise.all([
         getUnassignedByStatuses([STATUS.SUBMETIDO]),
         isMentor
@@ -363,7 +363,7 @@ export default defineRoute((config) => {
       teamOptions = teams;
 
       if (canAccess('validar_implementacao_final')) {
-        implementacaoItems = await getByStatuses([STATUS.VALIDADO_FINAL]);
+        implementacaoItems = await getByStatuses([STATUS.EM_VALIDACAO_MM]);
       } else {
         implementacaoItems = [];
       }
@@ -371,13 +371,13 @@ export default defineRoute((config) => {
       const mySubmetidos = myItems.filter((i) => i.Status === STATUS.SUBMETIDO);
       const unassignedIds = new Set(unassigned.map((i) => i.Id));
       projectItems = [...unassigned, ...mySubmetidos.filter((i) => !unassignedIds.has(i.Id))];
-      myValidadoGestor = myItems.filter((i) => i.Status === STATUS.VALIDADO_GESTOR);
+      myValidadoGestor = myItems.filter((i) => i.Status === STATUS.EM_VALIDACAO_MENTOR);
       myTrackingItems = myItems.filter((i) =>
         i.Status === STATUS.VALIDADO_MENTOR ||
         i.Status === STATUS.EM_EXECUCAO ||
-        i.Status === STATUS.POR_VALIDAR ||
-        i.Status === STATUS.VALIDADO_GESTOR ||
-        i.Status === STATUS.VALIDADO_FINAL
+        i.Status === STATUS.EM_VALIDACAO_MENTOR ||
+        i.Status === STATUS.EM_VALIDACAO_GESTOR ||
+        i.Status === STATUS.EM_VALIDACAO_MM
       );
 
       sharedByMap = new Map();

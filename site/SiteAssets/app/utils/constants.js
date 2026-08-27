@@ -127,17 +127,17 @@ export function annualizeSavings(value, timePeriod) {
 }
 
 export const STATUS_DESCRIPTIONS = {
-  'Rascunho':        'Iniciativa em elaboração, ainda não submetida para validação.',
-  'Submetido':       'Aguarda validação pelo mentor.',
-  'Validado Mentor': 'Aprovado pelo mentor.',
-  'Em Execucao':     'Iniciativa em execução activa.',
-  'Por Validar':     'Savings submetidos, aguarda validação pelo gestor.',
-  'Validado Gestor': 'Savings validados pelo gestor, aguarda confirmação final.',
-  'Validado Final':  'Confirmado pelo mentor. Aguarda validação final pelo manager da equipa de mentores.',
-  'Implementado':    'Iniciativa implementada e concluída com sucesso.',
-  'Em Revisao':      'Devolvida para revisão antes de nova submissão.',
-  'Rejeitado':       'Iniciativa rejeitada pelo avaliador.',
-  'Cancelado':       'Iniciativa cancelada.',
+  'Rascunho':                    'Iniciativa em elaboração, ainda não submetida para validação.',
+  'Submetido':                   'Aguarda validação pelo mentor.',
+  'Validado Mentor':             'Aprovado pelo mentor.',
+  'Em Execucao':                 'Iniciativa em execução activa.',
+  'Em Validacao Mentor':         'Savings submetidos. Aguarda validação pelo mentor da equipa.',
+  'Em Validacao Gestor':         'Savings validados pelo mentor. Aguarda aprovação pelo gestor da equipa.',
+  'Em Validacao Mentor Manager': 'Savings aprovados pelo gestor. Aguarda validação pelo manager da equipa de mentores.',
+  'Implementado':                'Iniciativa implementada e concluída com sucesso.',
+  'Em Revisao':                  'Devolvida para revisão antes de nova submissão.',
+  'Rejeitado':                   'Iniciativa rejeitada pelo avaliador.',
+  'Cancelado':                   'Iniciativa cancelada.',
 };
 
 export const INITIATIVE_TAGS = [

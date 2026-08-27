@@ -299,7 +299,7 @@ function getToBePhase(payload) {
 /**
  * Validates that every enabled category has both a complete As-Is phase and a
  * complete To-Be phase (all input fields present and > 0) before a transition
- * into POR_VALIDAR (declareSavings, resubmit targeting POR_VALIDAR).
+ * into EM_VALIDACAO_MENTOR (declareSavings, resubmit targeting EM_VALIDACAO_MENTOR).
  * For the qualidade category, requires non-empty description text instead.
  *
  * @param {Object|null} financials - Financials row from SP (auto-parsed)

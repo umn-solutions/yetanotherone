@@ -104,8 +104,9 @@ export const SCHEMA = {
 
   SavingsTargets: [
     { title: 'Title', indexed: true, builtIn: true },
-    { title: 'FTETarget' },
-    { title: 'CategoryTargets', multiline: true },
+    { title: 'ImplementedTarget' },
+    { title: 'HardSavingsTarget' },
+    { title: 'SoftSavingsTarget' },
     { title: 'LastModifiedBy', multiline: true },
     { title: 'LastModifiedByEmail' },
     { title: 'LastModifiedDate' },

@@ -521,38 +521,23 @@ export async function submitInitiative(initiative, button, onSuccess) {
  * @returns {Promise<void>}
  */
 export async function performResubmitTransition(initiative) {
-  const rawPrev = initiative.PreviousStatus || STATUS.SUBMETIDO;
-  const remapped = (rawPrev === STATUS.VALIDADO_GESTOR || rawPrev === STATUS.VALIDADO_FINAL);
-  const target = remapped ? STATUS.POR_VALIDAR : rawPrev;
+  const target = initiative.PreviousStatus || STATUS.SUBMETIDO;
 
   if (!canTransitionTo(STATUS.EM_REVISAO, target)) {
     throw new SystemError('InvalidTransition', 'Transição de estado inválida.', { breaksFlow: false });
   }
 
   const extraFields = { PreviousStatus: '' };
-  let assignedGestor = null;
 
-  if (target === STATUS.POR_VALIDAR) {
+  if (target === STATUS.EM_VALIDACAO_MENTOR) {
     let financials = null;
     try { financials = await getFinancials(initiative.UUID); } catch (_) { /* non-critical */ }
     assertToBeComplete(financials);
-
-    const savingType = financials?.SavingType || deriveSavingType(financials?.SavingCategory);
-    const annualVal = computeAnnualizedToBeTotalEur(financials);
-    assignedGestor = await getAssignedGestor(savingType, String(annualVal), initiative.ImpactedTeamOUID);
-    if (assignedGestor) {
-      extraFields.GestorValidator = { email: assignedGestor.email, displayName: assignedGestor.displayName };
-      extraFields.GestorValidatorEmail = assignedGestor.email;
-    }
   }
 
-  const eventComment = remapped
-    ? `Iniciativa anteriormente validada (${statusLabel(rawPrev)}) -- re-encaminhada para nova validação do gestor.`
-    : '';
-
   await transitionStatus(initiative.Id, target, initiative['odata.etag'], extraFields);
-  await createEvent(initiative.UUID, EVENT_TYPES.RESUBMISSION, STATUS.EM_REVISAO, target, eventComment);
-  await createEmail(EMAIL_EVENTS.RESUBMITTED, { initiative, gestor: assignedGestor }).send();
+  await createEvent(initiative.UUID, EVENT_TYPES.RESUBMISSION, STATUS.EM_REVISAO, target);
+  await createEmail(EMAIL_EVENTS.RESUBMITTED, { initiative }).send();
 }
 
 /**
@@ -748,7 +733,7 @@ export async function approveProject(initiative, button, onSuccess) {
 }
 
 /**
- * Reject: SUBMETIDO/POR_VALIDAR/VALIDADO_GESTOR -> REJEITADO
+ * Reject: SUBMETIDO/EM_VALIDACAO_MENTOR/EM_VALIDACAO_GESTOR/EM_VALIDACAO_MM -> REJEITADO
  * Requires mandatory comment.
  */
 export async function rejectInitiative(initiative, button, onSuccess) {
@@ -791,7 +776,7 @@ export async function rejectInitiative(initiative, button, onSuccess) {
 }
 
 /**
- * Request revision: SUBMETIDO/POR_VALIDAR/VALIDADO_GESTOR -> EM_REVISAO
+ * Request revision: SUBMETIDO/EM_VALIDACAO_MENTOR/EM_VALIDACAO_GESTOR/EM_VALIDACAO_MM -> EM_REVISAO
  * Sets PreviousStatus so resubmission returns to the right place.
  * Requires mandatory comment.
  */
@@ -810,12 +795,12 @@ export async function requestRevision(initiative, button, onSuccess) {
   );
   if (!comment) return;
 
-  // Resubmit routing rule: post-Gestor-approval revisions always cycle back through
-  // POR_VALIDAR (Gestor must re-validate any change to the financial data after their
-  // first approval). Pre-approval revisions return to their origin checkpoint.
-  const previousStatus = (currentStatus === STATUS.VALIDADO_GESTOR || currentStatus === STATUS.VALIDADO_FINAL)
-    ? STATUS.POR_VALIDAR
-    : currentStatus;
+  // Resubmit routing rule: pre-mentor-approval revisions (SUBMETIDO) return to SUBMETIDO;
+  // any post-execution validation stage revision returns to EM_VALIDACAO_MENTOR so the
+  // mentor re-validates before the gestor is re-engaged.
+  const previousStatus = currentStatus === STATUS.SUBMETIDO
+    ? STATUS.SUBMETIDO
+    : STATUS.EM_VALIDACAO_MENTOR;
 
   button.isLoading = true;
   const loading = Toast.loading('A solicitar revisão...');
@@ -873,11 +858,11 @@ export async function startExecution(initiative, button, onSuccess) {
 }
 
 /**
- * Declare savings / request validation: EM_EXECUCAO -> POR_VALIDAR
- * Auto-assigns GestorValidator via routing rules.
+ * Declare savings / request mentor validation: EM_EXECUCAO -> EM_VALIDACAO_MENTOR
+ * Notifies the assigned mentor. Gestor routing happens at the mentor step.
  */
 export async function declareSavings(initiative, button, onSuccess) {
-  if (!canTransitionTo(initiative.Status, STATUS.POR_VALIDAR)) {
+  if (!canTransitionTo(initiative.Status, STATUS.EM_VALIDACAO_MENTOR)) {
     Toast.error('Transição de estado inválida.');
     return;
   }
@@ -891,26 +876,15 @@ export async function declareSavings(initiative, button, onSuccess) {
   button.isLoading = true;
   const loading = Toast.loading('A solicitar validação...');
   try {
-    // Resolve gestor via routing rules
     let financials = null;
     try { financials = await getFinancials(initiative.UUID); } catch (_) { /* non-critical */ }
 
     // Mandatory toBe gate (asIs is always required earlier; toBe optional until now)
     assertToBeComplete(financials);
 
-    const savingType = financials?.SavingType || deriveSavingType(financials?.SavingCategory);
-    const annualVal = computeAnnualizedToBeTotalEur(financials);
-    const gestor = await getAssignedGestor(savingType, String(annualVal), initiative.ImpactedTeamOUID);
-
-    const extraFields = {};
-    if (gestor) {
-      extraFields.GestorValidator = { email: gestor.email, displayName: gestor.displayName };
-      extraFields.GestorValidatorEmail = gestor.email;
-    }
-
-    await transitionStatus(initiative.Id, STATUS.POR_VALIDAR, initiative['odata.etag'], extraFields);
-    await createEvent(initiative.UUID, EVENT_TYPES.SAVINGS_SUBMISSION, STATUS.EM_EXECUCAO, STATUS.POR_VALIDAR);
-    await createEmail(EMAIL_EVENTS.SAVINGS_VALIDATION_REQUESTED, { initiative, gestor }).send();
+    await transitionStatus(initiative.Id, STATUS.EM_VALIDACAO_MENTOR, initiative['odata.etag'], {});
+    await createEvent(initiative.UUID, EVENT_TYPES.SAVINGS_SUBMISSION, STATUS.EM_EXECUCAO, STATUS.EM_VALIDACAO_MENTOR);
+    await createEmail(EMAIL_EVENTS.MENTOR_VALIDATION_REQUESTED, { initiative }).send();
     loading.success('Pedido de validação enviado.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -926,10 +900,10 @@ export async function declareSavings(initiative, button, onSuccess) {
 }
 
 /**
- * Approve savings: POR_VALIDAR -> VALIDADO_GESTOR
+ * Approve savings: EM_VALIDACAO_GESTOR -> EM_VALIDACAO_MM
  */
 export async function approveSavings(initiative, button, onSuccess) {
-  if (!canTransitionTo(initiative.Status, STATUS.VALIDADO_GESTOR)) {
+  if (!canTransitionTo(initiative.Status, STATUS.EM_VALIDACAO_MM)) {
     Toast.error('Transição de estado inválida.');
     return;
   }
@@ -943,8 +917,8 @@ export async function approveSavings(initiative, button, onSuccess) {
   button.isLoading = true;
   const loading = Toast.loading('A aprovar savings...');
   try {
-    await transitionStatus(initiative.Id, STATUS.VALIDADO_GESTOR, initiative['odata.etag']);
-    await createEvent(initiative.UUID, EVENT_TYPES.BUSINESS_VALIDATION, STATUS.POR_VALIDAR, STATUS.VALIDADO_GESTOR);
+    await transitionStatus(initiative.Id, STATUS.EM_VALIDACAO_MM, initiative['odata.etag']);
+    await createEvent(initiative.UUID, EVENT_TYPES.BUSINESS_VALIDATION, STATUS.EM_VALIDACAO_GESTOR, STATUS.EM_VALIDACAO_MM);
 
     const actorEmail = ContextStore.get('currentUser').get('email');
     let recipients = [];
@@ -969,44 +943,58 @@ export async function approveSavings(initiative, button, onSuccess) {
 }
 
 /**
- * Mentor final validation: VALIDADO_GESTOR -> VALIDADO_FINAL.
- * Logs the MENTOR_FINAL_VALIDATION event so the timeline reflects the confirmation.
- * The final transition to IMPLEMENTADO is handled by mentorManagerValidation.
+ * Mentor savings validation: EM_VALIDACAO_MENTOR -> EM_VALIDACAO_GESTOR.
+ * Routes and assigns the gestor here (moved from declareSavings).
+ * Logs the MENTOR_FINAL_VALIDATION event and notifies the routed gestor.
  */
-export async function mentorFinalValidation(initiative, button, onSuccess) {
-  if (!canTransitionTo(initiative.Status, STATUS.VALIDADO_FINAL)) {
+export async function mentorSavingsValidation(initiative, button, onSuccess) {
+  if (!canTransitionTo(initiative.Status, STATUS.EM_VALIDACAO_GESTOR)) {
     Toast.error('Transição de estado inválida.');
     return;
   }
 
   const confirmed = await confirm(
-    'Confirmar Savings',
-    'Confirma os savings desta iniciativa? A iniciativa ficará aguardar validação final pelo manager da equipa de mentores.',
-    { confirmLabel: 'Confirmar Savings' },
+    'Validar Savings',
+    'Valida os savings desta iniciativa? A iniciativa avançará para aprovação pelo gestor responsável.',
+    { confirmLabel: 'Validar Savings' },
   );
   if (!confirmed) return;
 
   button.isLoading = true;
-  const loading = Toast.loading('A confirmar savings...');
+  const loading = Toast.loading('A validar savings...');
   try {
-    await transitionStatus(initiative.Id, STATUS.VALIDADO_FINAL, initiative['odata.etag']);
-    await createEvent(initiative.UUID, EVENT_TYPES.MENTOR_FINAL_VALIDATION, STATUS.VALIDADO_GESTOR, STATUS.VALIDADO_FINAL);
+    let financials = null;
+    try { financials = await getFinancials(initiative.UUID); } catch (_) { /* non-critical */ }
 
-    const actorEmail = ContextStore.get('currentUser').get('email');
-    await createEmail(EMAIL_EVENTS.MENTOR_FINAL_VALIDATED, { initiative, excludeEmail: actorEmail }).send();
+    const savingType = financials?.SavingType || deriveSavingType(financials?.SavingCategory);
+    const annualVal = computeAnnualizedToBeTotalEur(financials);
+    const gestor = await getAssignedGestor(savingType, String(annualVal), initiative.ImpactedTeamOUID);
 
-    loading.success('Savings confirmados. Iniciativa aguarda validação final.');
+    const extraFields = {};
+    if (gestor) {
+      extraFields.GestorValidator = { email: gestor.email, displayName: gestor.displayName };
+      extraFields.GestorValidatorEmail = gestor.email;
+    } else {
+      console.warn('[mentorSavingsValidation] gestor routing returned null -- GestorValidator left unassigned', { uuid: initiative.UUID });
+      Toast.warning('Não foi possível determinar o gestor responsável automaticamente. A iniciativa avançará sem gestor atribuído.');
+    }
+
+    await transitionStatus(initiative.Id, STATUS.EM_VALIDACAO_GESTOR, initiative['odata.etag'], extraFields);
+    await createEvent(initiative.UUID, EVENT_TYPES.MENTOR_FINAL_VALIDATION, STATUS.EM_VALIDACAO_MENTOR, STATUS.EM_VALIDACAO_GESTOR);
+    await createEmail(EMAIL_EVENTS.SAVINGS_VALIDATION_REQUESTED, { initiative, gestor }).send();
+
+    loading.success('Savings validados. Iniciativa encaminhada para aprovação do gestor.');
     if (onSuccess) onSuccess();
   } catch (error) {
     console.error(error);
-    loading.error(actionErrorMessage(error, 'Erro ao confirmar savings.'));
+    loading.error(actionErrorMessage(error, 'Erro ao validar savings.'));
   } finally {
     button.isLoading = false;
   }
 }
 
 /**
- * Mentor-manager final validation: VALIDADO_FINAL -> IMPLEMENTADO.
+ * Mentor-manager final validation: EM_VALIDACAO_MM -> IMPLEMENTADO.
  * Opens date picker, resolves FinalValidationLabel, logs MENTOR_MANAGER_VALIDATION
  * and OWNER_IMPLEMENTATION events, and persists the label to the initiative.
  */
@@ -1048,12 +1036,12 @@ export async function mentorManagerValidation(initiative, button, onSuccess) {
     await createEvent(
       initiative.UUID,
       EVENT_TYPES.MENTOR_MANAGER_VALIDATION,
-      STATUS.VALIDADO_FINAL,
+      STATUS.EM_VALIDACAO_MM,
       STATUS.IMPLEMENTADO,
       '',
       { ValidationLabel: validationLabel },
     );
-    await createEvent(initiative.UUID, EVENT_TYPES.OWNER_IMPLEMENTATION, STATUS.VALIDADO_FINAL, STATUS.IMPLEMENTADO);
+    await createEvent(initiative.UUID, EVENT_TYPES.OWNER_IMPLEMENTATION, STATUS.EM_VALIDACAO_MM, STATUS.IMPLEMENTADO);
 
     const currentUser = ContextStore.get('currentUser');
     const actorEmail = currentUser.get('email');
@@ -1078,8 +1066,8 @@ export async function mentorManagerValidation(initiative, button, onSuccess) {
 }
 
 /**
- * Transfer: Gestor reassigns a POR_VALIDAR initiative to another gestor.
- * Status stays POR_VALIDAR; GestorValidator and GestorValidatorEmail are updated.
+ * Transfer: Gestor reassigns an EM_VALIDACAO_GESTOR initiative to another gestor.
+ * Status stays EM_VALIDACAO_GESTOR; GestorValidator and GestorValidatorEmail are updated.
  */
 export async function transferGestor(initiative, button, onSuccess) {
   const allEmployees = await getAllEmployees();
@@ -1105,7 +1093,7 @@ export async function transferGestor(initiative, button, onSuccess) {
       GestorValidatorEmail: newIdentity.email,
     }, initiative['odata.etag']);
 
-    await createEvent(initiative.UUID, EVENT_TYPES.TRANSFER, STATUS.POR_VALIDAR, STATUS.POR_VALIDAR, transferComment);
+    await createEvent(initiative.UUID, EVENT_TYPES.TRANSFER, STATUS.EM_VALIDACAO_GESTOR, STATUS.EM_VALIDACAO_GESTOR, transferComment);
 
     // Notify new gestor
     await createEmail(EMAIL_EVENTS.GESTOR_TRANSFERRED, {

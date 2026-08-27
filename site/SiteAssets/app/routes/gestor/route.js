@@ -209,7 +209,7 @@ export default defineRoute((config) => {
     const rightInfo = `${days}d pendente`;
 
     const actionLabel = !canAct ? 'Ver'
-      : item.Status === STATUS.POR_VALIDAR ? 'Aprovar'
+      : item.Status === STATUS.EM_VALIDACAO_GESTOR ? 'Aprovar'
       : 'Ver';
 
     const metaChildren = [
@@ -265,12 +265,11 @@ export default defineRoute((config) => {
     const implementadasCount = gestorTracking.filter((i) => i.Status === STATUS.IMPLEMENTADO).length;
     const emAcompanhamentoCount = gestorTracking.filter((i) =>
       i.Status === STATUS.EM_EXECUCAO ||
-      i.Status === STATUS.VALIDADO_GESTOR ||
-      i.Status === STATUS.VALIDADO_FINAL
+      i.Status === STATUS.EM_VALIDACAO_MM
     ).length;
 
     kpiRow.children = [
-      buildKpi(String(gestorPendentes.length), 'Por Validar'),
+      buildKpi(String(gestorPendentes.length), 'Savings Por Validar'),
       buildKpi(String(implementadasCount), 'Implementadas'),
       buildKpi(String(emAcompanhamentoCount), 'Em Acompanhamento'),
     ];
@@ -307,9 +306,8 @@ export default defineRoute((config) => {
       const [allGestorItems, sharedRecords, teams] = await Promise.all([
         getByStatusesAndGestor([
           STATUS.EM_EXECUCAO,
-          STATUS.POR_VALIDAR,
-          STATUS.VALIDADO_GESTOR,
-          STATUS.VALIDADO_FINAL,
+          STATUS.EM_VALIDACAO_GESTOR,
+          STATUS.EM_VALIDACAO_MM,
           STATUS.IMPLEMENTADO,
         ], currentEmail),
         getSharedWithMe(currentEmail),
@@ -317,8 +315,8 @@ export default defineRoute((config) => {
       ]);
 
       teamOptions = teams;
-      gestorPendentes = allGestorItems.filter((i) => i.Status === STATUS.POR_VALIDAR);
-      gestorTracking = allGestorItems.filter((i) => i.Status !== STATUS.POR_VALIDAR);
+      gestorPendentes = allGestorItems.filter((i) => i.Status === STATUS.EM_VALIDACAO_GESTOR);
+      gestorTracking = allGestorItems.filter((i) => i.Status !== STATUS.EM_VALIDACAO_GESTOR);
 
       sharedByMap = new Map();
       colabItems = [];

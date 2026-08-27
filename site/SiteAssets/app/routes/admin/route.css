@@ -29,7 +29,7 @@
   z-index: calc(var(--z-modal) + 1);
 }
 
-/* Savings target dialog -- tall form (year, FTE, 4 categories, summary).
+/* Savings target dialog -- form (year, implemented target, hard/soft savings, derived total).
    No ComboBox, so it must NOT use overflow-visible. Cap the shell height and
    scroll the body while header/footer stay fixed (same pattern as form modal). */
 .nofbiz__dialog.pt-v2:has(.admin-target-dialog__content) {

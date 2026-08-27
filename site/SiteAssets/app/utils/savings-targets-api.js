@@ -1,47 +1,17 @@
-import { SiteApi, SystemError, ContextStore, fromFieldValue } from '../libs/nofbiz/nofbiz.base.js';
-import { SAVING_CATEGORIES, NO_FINANCIALS_CATEGORIES, HARD_CATEGORIES, SOFT_CATEGORIES } from './constants.js';
+import { SiteApi, SystemError, ContextStore } from '../libs/nofbiz/nofbiz.base.js';
 import { FULL_SCAN } from './sp-paging.js';
 
 const listApi = new SiteApi().list('SavingsTargets');
 
 /**
- * Financial saving categories (those with actual € targets).
- * Derived at runtime so it stays in sync with constants.js taxonomy.
- */
-export const FINANCIAL_CATEGORIES = SAVING_CATEGORIES.filter(
-  (c) => !NO_FINANCIALS_CATEGORIES.includes(c)
-);
-
-/**
- * Returns the saving type label for a category.
- * @param {string} category
- * @returns {'Hard Cost' | 'Soft Cost'}
- */
-export function getCategoryType(category) {
-  if (HARD_CATEGORIES.includes(category)) return 'Hard Cost';
-  return 'Soft Cost';
-}
-
-/**
- * Computes derived totals from a categoryTargets object.
- * Reused by both the table rows and the dialog live summary.
- * @param {Record<string, number>} categoryTargets
+ * Computes derived totals from a flat target item's savings fields.
+ * Maintains the existing consumer contract: { hardTotal, softTotal, total }.
+ * @param {object} target - Parsed target item (from parseItem or getTargetByYear/getAllTargets)
  * @returns {{ hardTotal: number, softTotal: number, total: number }}
  */
-export function computeTargetTotals(categoryTargets) {
-  if (!categoryTargets || typeof categoryTargets !== 'object') {
-    return { hardTotal: 0, softTotal: 0, total: 0 };
-  }
-  let hardTotal = 0;
-  let softTotal = 0;
-  for (const [cat, val] of Object.entries(categoryTargets)) {
-    const num = parseFloat(val) || 0;
-    if (HARD_CATEGORIES.includes(cat)) {
-      hardTotal += num;
-    } else if (SOFT_CATEGORIES.includes(cat)) {
-      softTotal += num;
-    }
-  }
+export function computeTargetTotals(target) {
+  const hardTotal = parseFloat(target && target.HardSavingsTarget) || 0;
+  const softTotal = parseFloat(target && target.SoftSavingsTarget) || 0;
   return { hardTotal, softTotal, total: hardTotal + softTotal };
 }
 
@@ -53,8 +23,9 @@ export function computeTargetTotals(categoryTargets) {
 function parseItem(raw) {
   return {
     ...raw,
-    FTETarget: parseFloat(raw.FTETarget) || 0,
-    CategoryTargets: fromFieldValue(raw.CategoryTargets) || {},
+    ImplementedTarget: parseInt(raw.ImplementedTarget, 10) || 0,
+    HardSavingsTarget: parseFloat(raw.HardSavingsTarget) || 0,
+    SoftSavingsTarget: parseFloat(raw.SoftSavingsTarget) || 0,
   };
 }
 
@@ -82,10 +53,10 @@ export async function getTargetByYear(year) {
 /**
  * Creates a new savings target for the given year.
  * Throws SystemError('DuplicateYear', ..., { breaksFlow: false }) if the year already exists.
- * @param {{ year: string|number, fteTarget: number, categoryTargets: Record<string, number> }} payload
+ * @param {{ year: string|number, implementedTarget: number, hardSavingsTarget: number, softSavingsTarget: number }} payload
  * @returns {Promise<void>}
  */
-export async function createTarget({ year, fteTarget, categoryTargets }) {
+export async function createTarget({ year, implementedTarget, hardSavingsTarget, softSavingsTarget }) {
   const existing = await getTargetByYear(year);
   if (existing) {
     throw new SystemError(
@@ -100,8 +71,9 @@ export async function createTarget({ year, fteTarget, categoryTargets }) {
 
   await listApi.createItem({
     Title: String(year),
-    FTETarget: String(fteTarget),
-    CategoryTargets: JSON.stringify(categoryTargets),
+    ImplementedTarget: String(implementedTarget),
+    HardSavingsTarget: String(hardSavingsTarget),
+    SoftSavingsTarget: String(softSavingsTarget),
     LastModifiedBy: currentUser
       ? JSON.stringify({ email: currentUser.get('email'), displayName: currentUser.get('displayName') })
       : '',
@@ -113,7 +85,7 @@ export async function createTarget({ year, fteTarget, categoryTargets }) {
 /**
  * Updates an existing savings target row (partial MERGE).
  * @param {number} id
- * @param {{ fteTarget?: number, categoryTargets?: Record<string, number> }} fields
+ * @param {{ implementedTarget?: number, hardSavingsTarget?: number, softSavingsTarget?: number }} fields
  * @param {string} etag
  * @returns {Promise<void>}
  */
@@ -122,8 +94,9 @@ export async function updateTarget(id, fields, etag) {
   const now = new Date().toISOString();
 
   const payload = {};
-  if (fields.fteTarget !== undefined) payload.FTETarget = String(fields.fteTarget);
-  if (fields.categoryTargets !== undefined) payload.CategoryTargets = JSON.stringify(fields.categoryTargets);
+  if (fields.implementedTarget !== undefined) payload.ImplementedTarget = String(fields.implementedTarget);
+  if (fields.hardSavingsTarget !== undefined) payload.HardSavingsTarget = String(fields.hardSavingsTarget);
+  if (fields.softSavingsTarget !== undefined) payload.SoftSavingsTarget = String(fields.softSavingsTarget);
   payload.LastModifiedBy = currentUser
     ? JSON.stringify({ email: currentUser.get('email'), displayName: currentUser.get('displayName') })
     : '';

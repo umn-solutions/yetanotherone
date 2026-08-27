@@ -308,8 +308,8 @@ export default defineRoute((config) => {
     // -- KPI row (unfiltered totals) --
     const submitted = allMyItems.filter((i) => i.Status !== STATUS.RASCUNHO).length;
     const inProgress = allMyItems.filter((i) =>
-      [STATUS.SUBMETIDO, STATUS.VALIDADO_MENTOR, STATUS.EM_EXECUCAO, STATUS.POR_VALIDAR,
-       STATUS.VALIDADO_GESTOR, STATUS.VALIDADO_FINAL, STATUS.EM_REVISAO].includes(i.Status)
+      [STATUS.SUBMETIDO, STATUS.VALIDADO_MENTOR, STATUS.EM_EXECUCAO, STATUS.EM_VALIDACAO_MENTOR,
+       STATUS.EM_VALIDACAO_GESTOR, STATUS.EM_VALIDACAO_MM, STATUS.EM_REVISAO].includes(i.Status)
     ).length;
     const implemented = allMyItems.filter((i) => i.Status === STATUS.IMPLEMENTADO).length;
 

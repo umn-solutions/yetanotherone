@@ -12,7 +12,7 @@ import {
   requestRevision,
   startExecution,
   approveSavings,
-  mentorFinalValidation,
+  mentorSavingsValidation,
   mentorManagerValidation,
   transferOwnership,
   manageAccessAction,
@@ -180,7 +180,10 @@ export function buildWorkflowButtons({
       if (reviewBtn) buttons.push(reviewBtn);
       if (resubmitBtn) buttons.push(resubmitBtn);
       if (cancelBtn) buttons.push(cancelBtn);
-    } else if (status === STATUS.POR_VALIDAR || status === STATUS.VALIDADO_GESTOR) {
+    } else if (
+      status === STATUS.EM_VALIDACAO_MENTOR ||
+      status === STATUS.EM_VALIDACAO_GESTOR
+    ) {
       if (!approvalsOnly && canAccess('cancelar_proprio')) {
         const cancelBtn = new Button('Cancelar', {
           variant: 'danger',
@@ -189,7 +192,7 @@ export function buildWorkflowButtons({
         });
         buttons.push(cancelBtn);
       }
-    } else if (status === STATUS.VALIDADO_FINAL) {
+    } else if (status === STATUS.EM_VALIDACAO_MM) {
       if (!approvalsOnly && canAccess('cancelar_proprio')) {
         const cancelBtn = new Button('Cancelar', {
           variant: 'danger',
@@ -244,11 +247,11 @@ export function buildWorkflowButtons({
         });
         buttons.push(revisionBtn);
       }
-    } else if (status === STATUS.VALIDADO_GESTOR) {
+    } else if (status === STATUS.EM_VALIDACAO_MENTOR) {
       if (canAccess('validar_savings_final')) {
-        const confirmBtn = new Button('Confirmar Savings', {
+        const confirmBtn = new Button('Validar Savings', {
           variant: 'primary',
-          onClickHandler: runAction(() => mentorFinalValidation(initiative, confirmBtn, handleSuccess)),
+          onClickHandler: runAction(() => mentorSavingsValidation(initiative, confirmBtn, handleSuccess)),
         });
         buttons.push(confirmBtn);
       }
@@ -277,7 +280,7 @@ export function buildWorkflowButtons({
         });
         buttons.push(revisionBtn);
       }
-    } else if (status === STATUS.VALIDADO_FINAL) {
+    } else if (status === STATUS.EM_VALIDACAO_MM) {
       if (canAccess('validar_implementacao_final')) {
         const implConfirmBtn = new Button('Validar Implementação', {
           variant: 'primary',
@@ -304,7 +307,7 @@ export function buildWorkflowButtons({
   }
 
   if (context === 'gestor' && canAct) {
-    if (status === STATUS.POR_VALIDAR) {
+    if (status === STATUS.EM_VALIDACAO_GESTOR) {
       if (canAccess('validar_savings_auto')) {
         const approveBtn = new Button('Aprovar Savings', {
           variant: 'primary',

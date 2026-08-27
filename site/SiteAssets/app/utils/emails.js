@@ -98,6 +98,7 @@ export const EMAIL_EVENTS = {
   SUBMITTED_MANAGER: 'SUBMITTED_MANAGER',
   MENTOR_ASSIGNED: 'MENTOR_ASSIGNED',
   RESUBMITTED: 'RESUBMITTED',
+  MENTOR_VALIDATION_REQUESTED: 'MENTOR_VALIDATION_REQUESTED',
   SAVINGS_VALIDATION_REQUESTED: 'SAVINGS_VALIDATION_REQUESTED',
   CANCELLED: 'CANCELLED',
   DELETED: 'DELETED',
@@ -106,7 +107,6 @@ export const EMAIL_EVENTS = {
   REVISION_REQUESTED: 'REVISION_REQUESTED',
   EXECUTION_STARTED: 'EXECUTION_STARTED',
   SAVINGS_APPROVED: 'SAVINGS_APPROVED',
-  MENTOR_FINAL_VALIDATED: 'MENTOR_FINAL_VALIDATED',
   IMPLEMENTED: 'IMPLEMENTED',
   GESTOR_TRANSFERRED: 'GESTOR_TRANSFERRED',
   GESTOR_CHANGED: 'GESTOR_CHANGED',
@@ -287,6 +287,18 @@ const EMAIL_TEMPLATES = {
     notificationTitle: (ctx) => `${safeText(ctx.initiative?.Title)} re-submetida. Aprovação pendente.`,
     intro: approvalRequestIntro,
   },
+  [EMAIL_EVENTS.MENTOR_VALIDATION_REQUESTED]: {
+    type: NOTIFICATION_TYPE.STATE_CHANGE,
+    to: (ctx) => ctx.initiative?.MentorEmail
+      ? [{ email: ctx.initiative.MentorEmail, name: ctx.initiative.Mentor?.displayName || '' }]
+      : [],
+    notificationTitle: (ctx) => `${safeText(ctx.initiative?.Title)} requer validação de savings pelo mentor.`,
+    subject: () => 'PLACE — Validação de savings pendente (Mentor)',
+    intro: (ctx) => {
+      const T = esc(ctx.initiative?.Title);
+      return `A iniciativa "<b>${T}</b>" requer a sua validação de savings como mentor responsável.`;
+    },
+  },
   [EMAIL_EVENTS.SAVINGS_VALIDATION_REQUESTED]: {
     type: NOTIFICATION_TYPE.STATE_CHANGE,
     to: (ctx) => ctx.gestor ? [{ email: ctx.gestor.email, name: ctx.gestor.displayName || '' }] : [],
@@ -386,19 +398,6 @@ const EMAIL_TEMPLATES = {
     intro: (ctx) => {
       const T = esc(ctx.initiative?.Title);
       return `Os savings da iniciativa "<b>${T}</b>" foram aprovados. Confirmação final pendente.`;
-    },
-  },
-  [EMAIL_EVENTS.MENTOR_FINAL_VALIDATED]: {
-    type: NOTIFICATION_TYPE.STATE_CHANGE,
-    to: (ctx) => [
-      { email: ctx.initiative?.SubmittedByEmail, name: ctx.initiative?.SubmittedBy?.displayName || '' },
-      { email: ctx.initiative?.GestorValidatorEmail, name: ctx.initiative?.GestorValidator?.displayName || '' },
-    ],
-    notificationTitle: () => 'Savings confirmados pelo mentor. Aguarda validação final.',
-    subject: () => 'PLACE — Savings confirmados',
-    intro: (ctx) => {
-      const T = esc(ctx.initiative?.Title);
-      return `Os savings da iniciativa "<b>${T}</b>" foram confirmados pelo mentor. Aguarda validação final.`;
     },
   },
   [EMAIL_EVENTS.IMPLEMENTED]: {

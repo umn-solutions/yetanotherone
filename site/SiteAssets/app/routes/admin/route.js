@@ -8,7 +8,7 @@ import { importFromCSV, getAllEmployees, deriveRoles, updateEmployeeRole, getTea
 import { buildKpi } from '../../utils/format-helpers.js';
 import {
   getAllTargets, getTargetByYear, createTarget, updateTarget, deleteTarget,
-  computeTargetTotals, FINANCIAL_CATEGORIES, getCategoryType,
+  computeTargetTotals,
 } from '../../utils/savings-targets-api.js';
 import {
   getAllMentorTeams, getMentorTeamsByEmail, createMentorTeams, updateMentorTeams, deleteMentorTeams,
@@ -615,10 +615,10 @@ export default defineRoute((config) => {
    */
   function buildTargetsListData() {
     return configTargets.map((t) => {
-      const { hardTotal, softTotal, total } = computeTargetTotals(t.CategoryTargets);
+      const { hardTotal, softTotal, total } = computeTargetTotals(t);
       return [
         t.Title,
-        String(t.FTETarget),
+        String(t.ImplementedTarget),
         formatEuro(hardTotal),
         formatEuro(softTotal),
         formatEuro(total),
@@ -627,7 +627,7 @@ export default defineRoute((config) => {
   }
 
   const targetsList = new List({
-    headers: ['Ano', 'FTE', 'Hard (€)', 'Soft (€)', 'Total (€)'],
+    headers: ['Ano', 'Implementadas', 'Hard (€)', 'Soft (€)', 'Total (€)'],
     data: [],
     emptyListMessage: 'Nenhum objectivo definido. Clique em "Adicionar Ano" para começar.',
     onItemSelectHandler: (rowData) => {
@@ -686,7 +686,7 @@ export default defineRoute((config) => {
                 class: 'pace-cta-text',
               }),
               new Text(
-                'Defina as metas anuais de poupança esperadas por categoria financeira e por FTE. Um registo por ano.',
+                'Defina as metas anuais: iniciativas implementadas, hard savings e soft savings. O total é a soma de hard e soft. Um registo por ano.',
                 { type: 'p', class: 'pace-cta-text' }
               ),
             ],
@@ -737,47 +737,6 @@ export default defineRoute((config) => {
   }
 
   /**
-   * Builds a live-updating totals summary container.
-   * Returns { summaryContainer, refreshSummary }.
-   */
-  function buildTotalsSummary(categoryFields) {
-    const hardText = new Text('€ 0', { type: 'span', class: 'pace-kpi-value' });
-    const softText = new Text('€ 0', { type: 'span', class: 'pace-kpi-value' });
-    const totalText = new Text('€ 0', { type: 'span', class: 'pace-kpi-value' });
-
-    const summaryContainer = new Container(
-      [
-        new Container(
-          [hardText, new Text('Hard Cost', { type: 'span', class: 'pace-kpi-label' })],
-          { class: 'pace-kpi' }
-        ),
-        new Container(
-          [softText, new Text('Soft Cost', { type: 'span', class: 'pace-kpi-label' })],
-          { class: 'pace-kpi' }
-        ),
-        new Container(
-          [totalText, new Text('Total', { type: 'span', class: 'pace-kpi-label' })],
-          { class: 'pace-kpi' }
-        ),
-      ],
-      { class: 'pace-kpi-row' }
-    );
-
-    function refreshSummary() {
-      const snapshot = {};
-      for (const [cat, field] of Object.entries(categoryFields)) {
-        snapshot[cat] = parseFloat(field.value) || 0;
-      }
-      const { hardTotal, softTotal, total } = computeTargetTotals(snapshot);
-      hardText.children = [formatEuro(hardTotal)];
-      softText.children = [formatEuro(softTotal)];
-      totalText.children = [formatEuro(total)];
-    }
-
-    return { summaryContainer, refreshSummary };
-  }
-
-  /**
    * Opens the create/edit dialog for a savings target.
    * @param {object|null} target - Existing target for edit, or null for create.
    */
@@ -792,8 +751,8 @@ export default defineRoute((config) => {
 
     const isEdit = target !== null;
 
-    // -- Year field --
-    const yearField = new FormField(isEdit ? parseFloat(target.Title) : null);
+    // -- Year field (hidden in edit mode) --
+    const yearField = new FormField({ value: isEdit ? parseFloat(target.Title) : null });
     const yearInput = new NumberInput(yearField, {
       placeholder: 'Ex: 2027',
       min: 2020,
@@ -802,36 +761,56 @@ export default defineRoute((config) => {
     });
     const yearLabel = new FieldLabel('Ano', yearInput, { position: 'top' });
 
-    // -- FTE field --
-    const fteField = new FormField(isEdit ? target.FTETarget : 0);
-    const fteInput = new NumberInput(fteField, {
-      placeholder: 'Número de FTE',
+    // -- Implemented initiatives count --
+    const implementedField = new FormField({ value: isEdit ? target.ImplementedTarget : 0 });
+    const implementedInput = new NumberInput(implementedField, {
+      placeholder: '0',
       min: 0,
-      step: 0.1,
+      step: 1,
     });
-    const fteLabel = new FieldLabel('Objectivo FTE', fteInput, { position: 'top' });
+    const implementedLabel = new FieldLabel('Iniciativas Implementadas (meta)', implementedInput, { position: 'top' });
 
-    // -- Category fields (one per financial category) --
-    const categoryFields = {};
-    const categoryFieldLabels = [];
-    for (const cat of FINANCIAL_CATEGORIES) {
-      const existingVal = isEdit && target.CategoryTargets ? (parseFloat(target.CategoryTargets[cat]) || 0) : 0;
-      const field = new FormField(existingVal);
-      categoryFields[cat] = field;
-      const type = getCategoryType(cat);
-      const input = new NumberInput(field, { placeholder: '0', min: 0, step: 100 });
-      const label = new FieldLabel(`${cat} (${type})`, input, { position: 'top' });
-      categoryFieldLabels.push(label);
+    // -- Hard savings target --
+    const hardField = new FormField({ value: isEdit ? target.HardSavingsTarget : 0 });
+    const hardInput = new NumberInput(hardField, {
+      placeholder: '0',
+      min: 0,
+      step: 100,
+    });
+    const hardLabel = new FieldLabel('Hard Savings (€)', hardInput, { position: 'top' });
+
+    // -- Soft savings target --
+    const softField = new FormField({ value: isEdit ? target.SoftSavingsTarget : 0 });
+    const softInput = new NumberInput(softField, {
+      placeholder: '0',
+      min: 0,
+      step: 100,
+    });
+    const softLabel = new FieldLabel('Soft Savings (€)', softInput, { position: 'top' });
+
+    // -- Live derived total (read-only, sum of hard + soft) --
+    const totalField = new FormField({
+      value: (parseFloat(hardField.value) || 0) + (parseFloat(softField.value) || 0),
+    });
+    const totalInput = new NumberInput(totalField, {
+      min: 0,
+      step: 100,
+      isDisabled: true,
+    });
+    const totalLabel = new FieldLabel('Savings Totais', totalInput, { position: 'top' });
+
+    function refreshSummary() {
+      const hard = parseFloat(hardField.value) || 0;
+      const soft = parseFloat(softField.value) || 0;
+      totalField.value = hard + soft;
     }
 
-    // -- Live totals summary --
-    const { summaryContainer, refreshSummary } = buildTotalsSummary(categoryFields);
     refreshSummary();
 
-    // Subscribe all category fields to update the summary on change
-    const unsubscribers = Object.values(categoryFields).map((f) =>
-      f.subscribe(refreshSummary)
-    );
+    const unsubscribers = [
+      hardField.subscribe(refreshSummary),
+      softField.subscribe(refreshSummary),
+    ];
 
     // -- Dialog buttons --
     const cancelBtn = new Button('Cancelar', {
@@ -846,16 +825,13 @@ export default defineRoute((config) => {
     const saveBtn = new Button(isEdit ? 'Guardar' : 'Adicionar', {
       onClickHandler: async () => {
         const year = yearField.value;
-        const fte = parseFloat(fteField.value) || 0;
+        const implementedTarget = parseInt(implementedField.value, 10) || 0;
+        const hardSavingsTarget = parseFloat(hardField.value) || 0;
+        const softSavingsTarget = parseFloat(softField.value) || 0;
 
-        if (!year || isNaN(year) || year < 2020 || year > 2100) {
+        if (!isEdit && (!year || isNaN(year) || year < 2020 || year > 2100)) {
           Toast.error('Introduza um ano válido (ex: 2026).');
           return;
-        }
-
-        const catTargets = {};
-        for (const [cat, field] of Object.entries(categoryFields)) {
-          catTargets[cat] = parseFloat(field.value) || 0;
         }
 
         saveBtn.isLoading = true;
@@ -866,10 +842,10 @@ export default defineRoute((config) => {
             // Re-fetch the item to get the current etag before updating
             const fresh = await getTargetByYear(target.Title);
             if (!fresh) throw new SystemError('NotFound', `Objectivo para ${target.Title} não encontrado.`, { breaksFlow: false });
-            await updateTarget(fresh.Id, { fteTarget: fte, categoryTargets: catTargets }, fresh['odata.etag']);
+            await updateTarget(fresh.Id, { implementedTarget, hardSavingsTarget, softSavingsTarget }, fresh['odata.etag']);
             loading.success('Objectivo actualizado com sucesso.');
           } else {
-            await createTarget({ year, fteTarget: fte, categoryTargets: catTargets });
+            await createTarget({ year, implementedTarget, hardSavingsTarget, softSavingsTarget });
             loading.success('Objectivo criado com sucesso.');
           }
           unsubscribers.forEach((u) => u());
@@ -906,11 +882,10 @@ export default defineRoute((config) => {
     const dialogContent = new Container(
       [
         ...(isEdit ? [] : [yearLabel]),
-        fteLabel,
-        new Text('Metas por Categoria (€)', { type: 'p', class: 'pace-cta-text' }),
-        ...categoryFieldLabels,
-        new Text('Resumo Derivado', { type: 'p', class: 'pace-filter-count' }),
-        summaryContainer,
+        implementedLabel,
+        hardLabel,
+        softLabel,
+        totalLabel,
       ],
       { class: 'admin-target-dialog__content' }
     );
