@@ -529,12 +529,8 @@ export async function performResubmitTransition(initiative) {
 
   const extraFields = { PreviousStatus: '' };
 
-  if (target === STATUS.EM_VALIDACAO_MENTOR) {
-    let financials = null;
-    try { financials = await getFinancials(initiative.UUID); } catch (_) { /* non-critical */ }
-    assertToBeComplete(financials);
-  }
-
+  // No completeness gate on re-submit -- re-entry lands at the mentor stage, where
+  // mentorSavingsValidation enforces metric completeness before advancing to the gestor.
   await transitionStatus(initiative.Id, target, initiative['odata.etag'], extraFields);
   await createEvent(initiative.UUID, EVENT_TYPES.RESUBMISSION, STATUS.EM_REVISAO, target);
   await createEmail(EMAIL_EVENTS.RESUBMITTED, { initiative }).send();
@@ -558,7 +554,7 @@ export async function resubmitInitiative(initiative, button, onSuccess) {
     if (onSuccess) onSuccess();
   } catch (error) {
     console.error(error);
-    if (error && (error.name === 'IncompleteFinancials' || error.name === 'InvalidTransition')) {
+    if (error && error.name === 'InvalidTransition') {
       loading.error(actionErrorMessage(error, error.message));
     } else {
       loading.error(actionErrorMessage(error, 'Erro ao re-submeter iniciativa.'));
@@ -876,12 +872,8 @@ export async function declareSavings(initiative, button, onSuccess) {
   button.isLoading = true;
   const loading = Toast.loading('A solicitar validação...');
   try {
-    let financials = null;
-    try { financials = await getFinancials(initiative.UUID); } catch (_) { /* non-critical */ }
-
-    // Mandatory toBe gate (asIs is always required earlier; toBe optional until now)
-    assertToBeComplete(financials);
-
+    // No completeness gate here -- metric completeness is enforced only at the
+    // mentor validation step (mentorSavingsValidation), before advancing to the gestor.
     await transitionStatus(initiative.Id, STATUS.EM_VALIDACAO_MENTOR, initiative['odata.etag'], {});
     await createEvent(initiative.UUID, EVENT_TYPES.SAVINGS_SUBMISSION, STATUS.EM_EXECUCAO, STATUS.EM_VALIDACAO_MENTOR);
     await createEmail(EMAIL_EVENTS.MENTOR_VALIDATION_REQUESTED, { initiative }).send();
@@ -889,11 +881,7 @@ export async function declareSavings(initiative, button, onSuccess) {
     if (onSuccess) onSuccess();
   } catch (error) {
     console.error(error);
-    if (error && error.name === 'IncompleteFinancials') {
-      loading.error(actionErrorMessage(error, error.message));
-    } else {
-      loading.error(actionErrorMessage(error, 'Erro ao solicitar validação.'));
-    }
+    loading.error(actionErrorMessage(error, 'Erro ao solicitar validação.'));
   } finally {
     button.isLoading = false;
   }
@@ -966,6 +954,10 @@ export async function mentorSavingsValidation(initiative, button, onSuccess) {
     let financials = null;
     try { financials = await getFinancials(initiative.UUID); } catch (_) { /* non-critical */ }
 
+    // Gate: every selected metric must have all its fields filled (As-Is + To-Be, or
+    // description text for qualidade) before the mentor advances the savings to the gestor.
+    assertToBeComplete(financials);
+
     const savingType = financials?.SavingType || deriveSavingType(financials?.SavingCategory);
     const annualVal = computeAnnualizedToBeTotalEur(financials);
     const gestor = await getAssignedGestor(savingType, String(annualVal), initiative.ImpactedTeamOUID);
@@ -987,7 +979,11 @@ export async function mentorSavingsValidation(initiative, button, onSuccess) {
     if (onSuccess) onSuccess();
   } catch (error) {
     console.error(error);
-    loading.error(actionErrorMessage(error, 'Erro ao validar savings.'));
+    if (error && error.name === 'IncompleteFinancials') {
+      loading.error(actionErrorMessage(error, error.message));
+    } else {
+      loading.error(actionErrorMessage(error, 'Erro ao validar savings.'));
+    }
   } finally {
     button.isLoading = false;
   }

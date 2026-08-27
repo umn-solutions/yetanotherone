@@ -269,8 +269,10 @@ function computePhaseTotal(key, phase) {
 /**
  * Single source of truth for which phases are editable at each initiative status.
  * Both asIs and toBe are editable across all non-locked statuses for users with
- * write access. toBe optionality (vs mandatory) is enforced at transition time
- * (declareSavings, resubmitInitiative), not here.
+ * write access. Metric completeness is enforced at the mentor validation step
+ * (mentorSavingsValidation), so EM_VALIDACAO_MENTOR must stay editable -- the mentor
+ * fills/corrects every selected metric's fields before advancing to the gestor.
+ * Once past the mentor stage (EM_VALIDACAO_GESTOR / EM_VALIDACAO_MM) the phases lock.
  *
  * @param {string} status - Current initiative status (STATUS.* constant)
  * @returns {{ asIs: boolean, toBe: boolean }}
@@ -282,6 +284,7 @@ export function getPhaseEditability(status) {
     case STATUS.VALIDADO_MENTOR:
     case STATUS.EM_EXECUCAO:
     case STATUS.EM_REVISAO:
+    case STATUS.EM_VALIDACAO_MENTOR:
       return { asIs: true, toBe: true };
     default:
       return { asIs: false, toBe: false };
