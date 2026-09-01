@@ -19,6 +19,7 @@ export const SCHEMA = {
     { title: 'Status', indexed: true },
     { title: 'PreviousStatus' },
     { title: 'ImpactedTeamOUID', indexed: true },
+    { title: 'OwnerTeamOUID', indexed: true },
     { title: 'IsConfidential' },
     { title: 'SubmittedBy', multiline: true },
     { title: 'SubmittedByEmail', indexed: true },

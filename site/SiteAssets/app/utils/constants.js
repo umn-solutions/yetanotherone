@@ -30,6 +30,9 @@ export const MENTOR_MANAGER_LABELS = {
   AREA_FINANCEIRA: 'Validado pela área financeira',
 };
 
+export const FINANCE_VALIDATION_NOTICE =
+  'Para validar esta iniciativa, certifique-se que obteve a aprovação da área financeira.';
+
 // OrgHierarchy Category values that grant gestor role
 // ('Top Management' was removed from the org schema; former Top Management is now 'Management')
 export const GESTOR_CATEGORIES = ['EXECUTIVE', 'Management'];

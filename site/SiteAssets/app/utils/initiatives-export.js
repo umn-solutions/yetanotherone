@@ -296,7 +296,7 @@ export function buildFinancialFields(fin, { detailed = true, isPrivileged = fals
  * @returns {Object}
  */
 function buildRow(item, ctx) {
-  const { finMap, commentsMap, eventsMap, isPrivileged, includeSection, detailed } = ctx;
+  const { finMap, commentsMap, eventsMap, isPrivileged, includeSection, detailed, includeActivity = true } = ctx;
   const fin = finMap.get(item.UUID) || null;
 
   const row = {};
@@ -325,10 +325,44 @@ function buildRow(item, ctx) {
   const finFields = buildFinancialFields(fin, { detailed, isPrivileged });
   Object.assign(row, finFields);
 
-  row.Comments = serializeComments(commentsMap.get(item.UUID));
-  row.Events   = serializeEvents(eventsMap.get(item.UUID));
+  if (includeActivity) {
+    row.Comments = serializeComments(commentsMap.get(item.UUID));
+    row.Events   = serializeEvents(eventsMap.get(item.UUID));
+  }
 
   return row;
+}
+
+// ---------------------------------------------------------------------------
+// Public helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetches all related maps and returns flat row objects for the given initiative rows.
+ * Shared between the CSV export path and the Power BI multi-sheet export.
+ *
+ * @param {Object[]} rows - Initiative records
+ * @param {{ detailed?: boolean, isPrivileged?: boolean, includeSection?: boolean }} [opts]
+ *   detailed        - Include per-phase raw inputs and simulador columns (default false)
+ *   isPrivileged    - Include FTEAnnualCost (default false)
+ *   includeSection  - Include __section grouping column (default: auto-detect from rows)
+ *   includeActivity - Include Comments/Events columns; false skips both columns and
+ *                     their list fetches (default true)
+ * @returns {Promise<Object[]>} Flat row objects ready for CSV/XLSX serialization
+ */
+export async function buildInitiativeExportRows(rows, { detailed = false, isPrivileged = false, includeSection, includeActivity = true } = {}) {
+  const [finMap, commentsMap, eventsMap] = await Promise.all([
+    financialsApi.getAllAsMap(),
+    includeActivity ? commentsApi.getAllAsMap() : Promise.resolve(null),
+    includeActivity ? eventsApi.getAllAsMap() : Promise.resolve(null),
+  ]);
+
+  const resolvedIncludeSection = includeSection !== undefined
+    ? includeSection
+    : rows.some((r) => r.__section !== undefined);
+
+  const ctx = { finMap, commentsMap, eventsMap, isPrivileged, includeSection: resolvedIncludeSection, detailed, includeActivity };
+  return rows.map((item) => buildRow(item, ctx));
 }
 
 // ---------------------------------------------------------------------------
@@ -371,23 +405,12 @@ export function createExportButton({ getRows, filenamePrefix, label = 'Exportar'
         });
       }
 
-      // Detect whether any row carries __section to decide column inclusion
-      const includeSection = rows.some((r) => r.__section !== undefined);
-
       btn.isLoading = true;
       const loading = Toast.loading('A preparar exportação...');
 
       try {
         const isPrivileged = hasAnyProfile([ROLES.MENTOR, ROLES.GESTOR]);
-
-        const [finMap, commentsMap, eventsMap] = await Promise.all([
-          financialsApi.getAllAsMap(),
-          commentsApi.getAllAsMap(),
-          eventsApi.getAllAsMap(),
-        ]);
-
-        const ctx = { finMap, commentsMap, eventsMap, isPrivileged, includeSection, detailed };
-        const serialised = rows.map((item) => buildRow(item, ctx));
+        const serialised = await buildInitiativeExportRows(rows, { detailed, isPrivileged });
 
         const csv = dataToCSV(serialised, { bom: true });
         const filename = `${filenamePrefix}-${__dayjs().format('YYYY-MM-DD')}.csv`;

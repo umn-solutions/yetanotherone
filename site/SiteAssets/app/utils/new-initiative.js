@@ -21,7 +21,7 @@ import {
 } from '../libs/nofbiz/nofbiz.base.js';
 
 import { getTeamOptions } from './org-hierarchy-api.js';
-import { canAccess } from './roles.js';
+import { canAccess, isMentorUser } from './roles.js';
 import { createTagsToggle } from './tags-toggle.js';
 import {
   INITIATIVE_TAGS,
@@ -176,7 +176,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
 
   // Base fields lock past SUBMETIDO. Exception: EM_REVISAO with PreviousStatus=SUBMETIDO
   // unlocks them again (mentor sent back before approving — full edit allowed).
-  const baseFieldsLocked = isEdit && areBaseFieldsLocked(currentStatus, initiative?.PreviousStatus);
+  const baseFieldsLocked = isEdit && areBaseFieldsLocked(currentStatus, initiative?.PreviousStatus) && !isMentorUser();
 
   // Hydrate from existing financials, or start empty
   const categoryStates = financials
@@ -368,7 +368,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
         const loading = Toast.loading('A guardar...');
         try {
           const baseFields = collectBaseFields();
-          const fields = { ...baseFields, Status: STATUS.RASCUNHO };
+          const fields = { ...baseFields, Status: STATUS.RASCUNHO, OwnerTeamOUID: ContextStore.get('userOUID') || '' };
           const currentUser = ContextStore.get('currentUser');
           const identity = { email: currentUser.get('email'), displayName: currentUser.get('displayName') };
           const uuid = await generateInitiativeUID();
@@ -429,6 +429,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
         SubmittedBy: identity,
         SubmittedByEmail: currentUser.get('email'),
         SubmittedDate: new Date().toISOString(),
+        OwnerTeamOUID: ContextStore.get('userOUID') || '',
       };
 
       let finalUUID;

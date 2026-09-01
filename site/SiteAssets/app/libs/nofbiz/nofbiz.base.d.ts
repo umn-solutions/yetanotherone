@@ -867,6 +867,17 @@ declare class CurrentUser {
      * Email is a stable, AD-authoritative identifier that is not affected by
      * duplicate UIL entries.
      *
+     * For the authenticated user (when `options.targetUser` is not set), group
+     * resolution uses `_spPageContextInfo.userEmail` as the email key, falling
+     * back to the email returned by {@link getFullUserDetails} only if the session
+     * email is absent. The session email comes from the authenticated session and
+     * is immune to ghost UIL entries. When `options.targetUser` IS set, the
+     * session email belongs to the authenticated user, not the target, so
+     * `data.email` (from the target's profile) is used exclusively.
+     *
+     * The email stored in `#data` (accessible via `get('email')`) is always the
+     * value returned by {@link getFullUserDetails} and is not altered here.
+     *
      * @param groupHierarchy - Optional ordered list of groups from lowest to
      *   highest privilege. The array is walked from last index to first; the
      *   highest-priority match wins (parallel membership checks per entry).

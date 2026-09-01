@@ -37,6 +37,7 @@ import { emailEquals } from './email-helpers.js';
  * @param {boolean} [params.excludeEdit=false] - omit Editar/Rever/Submeter/Re-submeter (caller is an edit form)
  * @param {boolean} [params.excludeShare=false] - omit Partilhar
  * @param {boolean} [params.approvalsOnly=false] - only forward workflow actions (Aprovar/Validar/Submeter/etc); drop Cancelar/Rejeitar/Solicitar Revisão/Transferir/Eliminar/Replicar
+ * @param {boolean} [params.isMentorRole=false] - true when the current user has the mentor or mentor-manager role; grants full owner-power buttons (Editar/Cancelar/Eliminar) at any non-terminal status regardless of context
  * @param {'collaborate'|'read'|null} [params.shareType=null] - the current user's delegated share type for this initiative
  * @param {(() => Promise<boolean>) | null} [params.beforeAction=null] - optional async gate that runs before
  *   every transition/action click handler. If it resolves to false the action is aborted. When null (default)
@@ -59,10 +60,17 @@ export function buildWorkflowButtons({
   approvalsOnly = false,
   shareType = null,
   beforeAction = null,
+  isMentorRole = false,
 }) {
   const buttons = [];
   const writeAccess = hasWriteAccess ?? isOwner;
   const TERMINAL_STATUSES = [STATUS.IMPLEMENTADO, STATUS.REJEITADO, STATUS.CANCELADO];
+
+  // Dedup flags: set to true whenever a context block already pushed that owner-power button.
+  // The mentor-power block at the end checks these before adding its own copies.
+  let ownerEditPushed = false;
+  let ownerCancelPushed = false;
+  let ownerDeletePushed = false;
 
   const handleSuccess = () => {
     if (closable && typeof closable.close === 'function') closable.close();
@@ -94,6 +102,7 @@ export function buildWorkflowButtons({
           },
         });
         buttons.push(editBtn);
+        ownerEditPushed = true;
       }
       if (!approvalsOnly && canAccess('eliminar_proprio')) {
         const deleteBtn = new Button('Eliminar', {
@@ -102,6 +111,7 @@ export function buildWorkflowButtons({
           onClickHandler: runAction(() => deleteInitiative(initiative, deleteBtn, handleSuccess)),
         });
         buttons.push(deleteBtn);
+        ownerDeletePushed = true;
       }
     } else if (status === STATUS.SUBMETIDO) {
       if (!excludeEdit && canAccess('editar')) {
@@ -113,6 +123,7 @@ export function buildWorkflowButtons({
           },
         });
         buttons.push(editBtn);
+        ownerEditPushed = true;
       }
       if (!approvalsOnly && canAccess('cancelar_proprio')) {
         const cancelBtn = new Button('Cancelar', {
@@ -121,6 +132,7 @@ export function buildWorkflowButtons({
           onClickHandler: runAction(() => cancelInitiative(initiative, cancelBtn, handleSuccess)),
         });
         buttons.push(cancelBtn);
+        ownerCancelPushed = true;
       }
     } else if (status === STATUS.VALIDADO_MENTOR) {
       const startBtn = new Button('Declarar Início Execução', {
@@ -135,6 +147,7 @@ export function buildWorkflowButtons({
           onClickHandler: runAction(() => cancelInitiative(initiative, cancelBtn, handleSuccess)),
         });
         buttons.push(cancelBtn);
+        ownerCancelPushed = true;
       }
     } else if (status === STATUS.EM_EXECUCAO) {
       const savingsBtn = new Button('Solicitar Validação', {
@@ -151,6 +164,7 @@ export function buildWorkflowButtons({
           },
         });
         buttons.push(editBtn);
+        ownerEditPushed = true;
       }
       if (!approvalsOnly && canAccess('cancelar_proprio')) {
         const cancelBtn = new Button('Cancelar', {
@@ -159,6 +173,7 @@ export function buildWorkflowButtons({
           onClickHandler: runAction(() => cancelInitiative(initiative, cancelBtn, handleSuccess)),
         });
         buttons.push(cancelBtn);
+        ownerCancelPushed = true;
       }
     } else if (status === STATUS.EM_REVISAO) {
       const reviewBtn = (!excludeEdit && canAccess('editar')) ? new Button('Rever', {
@@ -177,9 +192,9 @@ export function buildWorkflowButtons({
         isOutlined: true,
         onClickHandler: runAction(() => cancelInitiative(initiative, cancelBtn, handleSuccess)),
       }) : null;
-      if (reviewBtn) buttons.push(reviewBtn);
+      if (reviewBtn) { buttons.push(reviewBtn); ownerEditPushed = true; }
       if (resubmitBtn) buttons.push(resubmitBtn);
-      if (cancelBtn) buttons.push(cancelBtn);
+      if (cancelBtn) { buttons.push(cancelBtn); ownerCancelPushed = true; }
     } else if (
       status === STATUS.EM_VALIDACAO_MENTOR ||
       status === STATUS.EM_VALIDACAO_GESTOR
@@ -191,6 +206,7 @@ export function buildWorkflowButtons({
           onClickHandler: runAction(() => cancelInitiative(initiative, cancelBtn, handleSuccess)),
         });
         buttons.push(cancelBtn);
+        ownerCancelPushed = true;
       }
     } else if (status === STATUS.EM_VALIDACAO_MM) {
       if (!approvalsOnly && canAccess('cancelar_proprio')) {
@@ -200,6 +216,7 @@ export function buildWorkflowButtons({
           onClickHandler: runAction(() => cancelInitiative(initiative, cancelBtn, handleSuccess)),
         });
         buttons.push(cancelBtn);
+        ownerCancelPushed = true;
       }
     }
 
@@ -231,6 +248,7 @@ export function buildWorkflowButtons({
           },
         });
         buttons.push(editBtn);
+        ownerEditPushed = true;
       }
       if (!approvalsOnly && canAccess('rejeitar')) {
         const rejectBtn = new Button('Rejeitar', {
@@ -264,6 +282,7 @@ export function buildWorkflowButtons({
           },
         });
         buttons.push(editBtn);
+        ownerEditPushed = true;
       }
       if (!approvalsOnly && canAccess('rejeitar')) {
         const rejectBtn = new Button('Rejeitar', {
@@ -324,6 +343,7 @@ export function buildWorkflowButtons({
           },
         });
         buttons.push(editBtn);
+        ownerEditPushed = true;
       }
       if (!approvalsOnly && canAccess('rejeitar')) {
         const rejectBtn = new Button('Rejeitar', {
@@ -361,6 +381,40 @@ export function buildWorkflowButtons({
         onClickHandler: runAction(() => deleteInitiative(initiative, deleteBtn, handleSuccess)),
       });
       buttons.push(deleteBtn);
+      ownerDeletePushed = true;
+    }
+  }
+
+  // Mentor-power block: mentors and mentor-managers can perform full owner-equivalent
+  // actions on ANY initiative at any non-terminal status, regardless of context or
+  // whether they are the assigned mentor of that initiative. Buttons are only added
+  // here when a context block above has not already pushed the same action.
+  if (isMentorRole && !approvalsOnly && !TERMINAL_STATUSES.includes(status)) {
+    if (!excludeEdit && !ownerEditPushed) {
+      const mentorEditBtn = new Button('Editar', {
+        variant: 'secondary',
+        onClickHandler: () => {
+          closable.close();
+          openEditInitiativeModal(initiative, onSuccess, { context, currentEmail, hasWriteAccess: true });
+        },
+      });
+      buttons.push(mentorEditBtn);
+    }
+    if (!ownerCancelPushed) {
+      const mentorCancelBtn = new Button('Cancelar', {
+        variant: 'danger',
+        isOutlined: true,
+        onClickHandler: runAction(() => cancelInitiative(initiative, mentorCancelBtn, handleSuccess)),
+      });
+      buttons.push(mentorCancelBtn);
+    }
+    if (!ownerDeletePushed) {
+      const mentorDeleteBtn = new Button('Eliminar', {
+        variant: 'danger',
+        isOutlined: true,
+        onClickHandler: runAction(() => deleteInitiative(initiative, mentorDeleteBtn, handleSuccess)),
+      });
+      buttons.push(mentorDeleteBtn);
     }
   }
 

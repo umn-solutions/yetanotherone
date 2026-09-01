@@ -354,6 +354,40 @@ export function pickTeamHead(ouMembers) {
 }
 
 /**
+ * Returns the set of emails that have management-chain visibility over an impacted team.
+ * Includes the direct team head AND every ancestor up to the root.
+ *
+ * Uses the cached gestor map — call getGestorMap() first so the cache is warm.
+ * On missing OU or missing head, logs a warning and returns an empty Set (fail-closed).
+ *
+ * @param {string} impactedTeamOUID
+ * @returns {Promise<Set<string>>} Lowercase email set
+ */
+export async function getManagementChainEmails(impactedTeamOUID) {
+  if (!impactedTeamOUID) return new Set();
+  const { byId, byOUID } = await getGestorMap();
+  const ouMembers = byOUID.get(impactedTeamOUID);
+  if (!ouMembers || ouMembers.length === 0) {
+    console.warn('[getManagementChainEmails] no members found for OUID', { impactedTeamOUID });
+    return new Set();
+  }
+  const head = pickTeamHead(ouMembers);
+  if (!head || !head.AncestorPath) {
+    console.warn('[getManagementChainEmails] no head or AncestorPath for OUID', { impactedTeamOUID });
+    return new Set();
+  }
+  const chainIds = head.AncestorPath.split('|');
+  const emails = new Set();
+  for (const id of chainIds) {
+    const emp = byId.get(id);
+    if (emp && emp.Email) {
+      emails.add(emp.Email.toLowerCase());
+    }
+  }
+  return emails;
+}
+
+/**
  * Resolves the immediate manager (one level up) for an employee.
  * @param {string} employeeId
  * @returns {Promise<{email:string,name:string}|null>}

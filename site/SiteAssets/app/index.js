@@ -58,7 +58,7 @@ if (employee) {
 	userOUID = employee.OUID || "";
 	userDeptAncestorPath = employee.DeptAncestorPath || "";
 } else if (isInGroup(user, BOOTSTRAP_ADMIN_GROUP)) {
-	userRoles = ["mentor", "gestor", "colaborador"];
+	userRoles = ["mentor-manager", "mentor", "gestor", "colaborador"];
 	ContextStore.set("isBootstrapMode", true);
 }
 

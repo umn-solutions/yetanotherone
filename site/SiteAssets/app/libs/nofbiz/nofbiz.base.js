@@ -2269,8 +2269,10 @@ class CurrentUser {
             const siteApi = new SiteApi;
             const loginName = options?.targetUser ?? _spPageContextInfo.userLoginName;
             const data = await getFullUserDetails(loginName, siteApi);
+            const isCurrentUser = !options?.targetUser;
+            const groupEmail = isCurrentUser ? _spPageContextInfo.userEmail || data.email : data.email;
             __classPrivateFieldSet(this, _CurrentUser_data, data, "f");
-            __classPrivateFieldSet(this, _CurrentUser_group, groupHierarchy.length ? await __classPrivateFieldGet(this, _CurrentUser_instances, "m", _CurrentUser_resolveGroupByEmail).call(this, groupHierarchy, data.email, siteApi) : null, "f");
+            __classPrivateFieldSet(this, _CurrentUser_group, groupHierarchy.length ? await __classPrivateFieldGet(this, _CurrentUser_instances, "m", _CurrentUser_resolveGroupByEmail).call(this, groupHierarchy, groupEmail, siteApi) : null, "f");
             __classPrivateFieldSet(this, _CurrentUser_initialized, true, "f");
             return this;
         } catch (error) {
@@ -2320,8 +2322,8 @@ class CurrentUser {
 _a$3 = CurrentUser, _CurrentUser_data = new WeakMap, _CurrentUser_group = new WeakMap, 
 _CurrentUser_initialized = new WeakMap, _CurrentUser_instances = new WeakSet, _CurrentUser_resolveGroupByEmail = async function _CurrentUser_resolveGroupByEmail(hierarchy, email, siteApi) {
     if (!email) {
-        const ctxEmail = _spPageContextInfo?.userEmail;
-        if (!ctxEmail || typeof ctxEmail !== "string") {
+        const ctxEmail = _spPageContextInfo.userEmail;
+        if (!ctxEmail) {
             console.warn("[CurrentUser] no email available for access resolution -- group hierarchy will not be applied");
             return null;
         }

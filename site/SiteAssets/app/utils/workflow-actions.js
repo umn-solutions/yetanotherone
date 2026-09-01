@@ -30,7 +30,7 @@ import {
 } from './notifications-api.js';
 import { createEmail, EMAIL_EVENTS } from './emails.js';
 import { EVENT_TYPES, deriveSavingType } from './constants.js';
-import { assertToBeComplete, computeAnnualizedToBeTotalEur, resolveFinalValidationLabel } from './financial-forms.js';
+import { assertToBeComplete, computeAnnualizedToBeTotalEur, resolveFinalValidationLabel, isFinanceValidated, createFinanceValidationNotice } from './financial-forms.js';
 import { getAssignedGestor } from './routing-rules.js';
 import {
   getByInitiative as getFinancials,
@@ -201,6 +201,7 @@ export function confirmWithDate(title, message, opts = {}) {
     label = 'Data prevista de conclusão',
     placeholder = 'AAAA-MM-DD',
     defaultValue = '',
+    notice = null,
   } = opts;
 
   const dateField = new FormField({ value: defaultValue });
@@ -213,6 +214,7 @@ export function confirmWithDate(title, message, opts = {}) {
       class: 'pace-dialog--overflow-visible pt-v2',
       content: new Container([
         new Text(message, { type: 'p' }),
+        ...(notice ? [notice] : []),
         new FieldLabel(label, dateInput),
       ]),
       backdrop: true,
@@ -951,8 +953,19 @@ export async function mentorSavingsValidation(initiative, button, onSuccess) {
   button.isLoading = true;
   const loading = Toast.loading('A validar savings...');
   try {
+    // Financials MUST load here: the completeness gate below validates against them.
+    // A silent failure would let the mentor advance with nothing validated -- fail closed.
     let financials = null;
-    try { financials = await getFinancials(initiative.UUID); } catch (_) { /* non-critical */ }
+    try {
+      financials = await getFinancials(initiative.UUID);
+    } catch (err) {
+      console.error('[mentorSavingsValidation] getFinancials failed -- blocking validation', { uuid: initiative.UUID, err });
+      throw new SystemError(
+        'IncompleteFinancials',
+        'Não foi possível carregar os dados financeiros para validação. Tente novamente.',
+        { breaksFlow: false },
+      );
+    }
 
     // Gate: every selected metric must have all its fields filled (As-Is + To-Be, or
     // description text for qualidade) before the mentor advances the savings to the gestor.
@@ -960,15 +973,31 @@ export async function mentorSavingsValidation(initiative, button, onSuccess) {
 
     const savingType = financials?.SavingType || deriveSavingType(financials?.SavingCategory);
     const annualVal = computeAnnualizedToBeTotalEur(financials);
-    const gestor = await getAssignedGestor(savingType, String(annualVal), initiative.ImpactedTeamOUID);
 
+    // If a gestor was manually assigned before auto-routing runs, preserve it and skip routing.
+    const hasManualGestor = typeof initiative.GestorValidatorEmail === 'string' && initiative.GestorValidatorEmail.trim() !== '';
+
+    let gestor;
     const extraFields = {};
-    if (gestor) {
-      extraFields.GestorValidator = { email: gestor.email, displayName: gestor.displayName };
-      extraFields.GestorValidatorEmail = gestor.email;
+
+    if (hasManualGestor) {
+      // Manual assignment prevails -- do NOT overwrite GestorValidator/GestorValidatorEmail.
+      // Reconstruct a minimal gestor object for the email recipient from the stored fields.
+      const storedValidator = initiative.GestorValidator;
+      gestor = {
+        email: initiative.GestorValidatorEmail,
+        displayName: (storedValidator && storedValidator.displayName) ? storedValidator.displayName : initiative.GestorValidatorEmail,
+      };
+      console.info('[mentorSavingsValidation] gestor manually assigned -- skipping auto-routing', { uuid: initiative.UUID, gestorEmail: gestor.email });
     } else {
-      console.warn('[mentorSavingsValidation] gestor routing returned null -- GestorValidator left unassigned', { uuid: initiative.UUID });
-      Toast.warning('Não foi possível determinar o gestor responsável automaticamente. A iniciativa avançará sem gestor atribuído.');
+      gestor = await getAssignedGestor(savingType, String(annualVal), initiative.ImpactedTeamOUID);
+      if (gestor) {
+        extraFields.GestorValidator = { email: gestor.email, displayName: gestor.displayName };
+        extraFields.GestorValidatorEmail = gestor.email;
+      } else {
+        console.warn('[mentorSavingsValidation] gestor routing returned null -- GestorValidator left unassigned', { uuid: initiative.UUID });
+        Toast.warning('Não foi possível determinar o gestor responsável automaticamente. A iniciativa avançará sem gestor atribuído.');
+      }
     }
 
     await transitionStatus(initiative.Id, STATUS.EM_VALIDACAO_GESTOR, initiative['odata.etag'], extraFields);
@@ -1005,6 +1034,12 @@ export async function mentorManagerValidation(initiative, button, onSuccess) {
     return;
   }
 
+  let financials = null;
+  try { financials = await getFinancials(initiative.UUID); }
+  catch (err) { console.warn('[mentorManagerValidation] getFinancials failed (non-critical)', err); }
+  const validationLabel = resolveFinalValidationLabel(initiative, financials);
+  const notice = isFinanceValidated(initiative, financials) ? createFinanceValidationNotice() : null;
+
   const pickedDate = await confirmWithDate(
     'Validar Implementação',
     'Confirma a implementação desta iniciativa e indique a data de implementação.',
@@ -1012,6 +1047,8 @@ export async function mentorManagerValidation(initiative, button, onSuccess) {
       defaultValue: __dayjs().format('YYYY-MM-DD'),
       label: 'Data de implementação',
       confirmLabel: 'Validar Implementação',
+      variant: notice ? 'warning' : 'info',
+      notice,
     },
   );
   if (!pickedDate) return;
@@ -1019,11 +1056,6 @@ export async function mentorManagerValidation(initiative, button, onSuccess) {
   button.isLoading = true;
   const loading = Toast.loading('A confirmar implementação...');
   try {
-    let financials = null;
-    try { financials = await getFinancials(initiative.UUID); } catch (_) { /* non-critical */ }
-
-    const validationLabel = resolveFinalValidationLabel(initiative, financials);
-
     await transitionStatus(initiative.Id, STATUS.IMPLEMENTADO, initiative['odata.etag'], {
       ImplementedDate: __dayjs(pickedDate).toISOString(),
       FinalValidationLabel: validationLabel,
@@ -1134,10 +1166,12 @@ export async function transferOwnership(initiative, button, onSuccess) {
     const extracted = extractComboBoxValue(result.person);
     const newIdentity = new UserIdentity(extracted.email, extracted.displayName);
     const transferComment = 'Transferido para ' + newIdentity.displayName + (result.comment ? '. ' + result.comment : '');
+    const newOwnerTeamOUID = allEmployees.find(e => emailEquals(e.Email, newIdentity.email))?.OUID || '';
 
     await update(initiative.Id, {
       SubmittedBy: newIdentity,
       SubmittedByEmail: newIdentity.email,
+      OwnerTeamOUID: newOwnerTeamOUID,
     }, initiative['odata.etag']);
 
     await createEvent(initiative.UUID, EVENT_TYPES.TRANSFER, initiative.Status, initiative.Status, transferComment);

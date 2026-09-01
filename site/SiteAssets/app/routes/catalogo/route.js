@@ -7,11 +7,13 @@ import {
   TextInput,
   View,
   Toast,
+  ContextStore,
   defineRoute,
   extractComboBoxValue,
   __dayjs,
 } from '../../libs/nofbiz/nofbiz.base.js';
 import { getByStatuses } from '../../utils/initiatives-api.js';
+import { filterVisibleInitiatives } from '../../utils/initiative-visibility.js';
 import {
   STATUS,
   statusLabel,
@@ -32,6 +34,8 @@ import { createExportButton } from '../../utils/initiatives-export.js';
 
 export default defineRoute((config) => {
   config.setRouteTitle('Catálogo');
+
+  const currentEmail = ContextStore.get('currentUser').get('email');
 
   // -- state --
 
@@ -133,7 +137,7 @@ export default defineRoute((config) => {
         getByStatuses([STATUS.IMPLEMENTADO, STATUS.CANCELADO, STATUS.REJEITADO]),
         getTeamOptions(),
       ]);
-      allItems = items;
+      allItems = await filterVisibleInitiatives(items, currentEmail);
       teamOptions = teams;
       loading.dismiss();
       buildUI();

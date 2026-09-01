@@ -7,6 +7,7 @@ import {
   TextInput,
   Toast,
   View,
+  ContextStore,
   defineRoute,
   extractComboBoxValue,
 } from '../../libs/nofbiz/nofbiz.base.js';
@@ -17,13 +18,16 @@ import { openInitiativeDetail } from '../../utils/side-panel-detail.js';
 import { createPageLayout } from '../../utils/navbar.js';
 import { buildKpi, mentorName, gestorName } from '../../utils/format-helpers.js';
 import { createSortableTable } from '../../utils/table-helpers.js';
-import { getUserDeptAncestorPath, isMentorUser } from '../../utils/roles.js';
+import { getUserDeptAncestorPath } from '../../utils/roles.js';
 import { getTeamOptions, getTeamScope } from '../../utils/org-hierarchy-api.js';
 import { INITIATIVE_TAGS } from '../../utils/constants.js';
 import { createExportButton } from '../../utils/initiatives-export.js';
+import { filterVisibleInitiatives } from '../../utils/initiative-visibility.js';
 
 export default defineRoute((config) => {
   config.setRouteTitle('Geral');
+
+  const currentEmail = ContextStore.get('currentUser').get('email');
 
   const ONGOING_STATUSES = [
     STATUS.SUBMETIDO,
@@ -163,8 +167,7 @@ export default defineRoute((config) => {
       const loading = Toast.loading('A carregar outras equipas...');
       try {
         const items = await getByStatuses(ONGOING_STATUSES);
-        // Mentors/mentor-managers can see confidential initiatives; others cannot.
-        allData = isMentorUser() ? items : items.filter((i) => !i.IsConfidential);
+        allData = await filterVisibleInitiatives(items, currentEmail);
         loading.dismiss();
       } catch (error) {
         console.error('[geral/loadOthers] failed', error);
@@ -271,8 +274,7 @@ export default defineRoute((config) => {
       const scopedItems = scopeCodes.length
         ? await getByStatusesAndTeamScope(ONGOING_STATUSES, scopeCodes)
         : [];
-      // Mentors/mentor-managers bypass the confidential filter.
-      myTeamData = isMentorUser() ? scopedItems : scopedItems.filter((i) => !i.IsConfidential);
+      myTeamData = await filterVisibleInitiatives(scopedItems, currentEmail);
 
       loading.dismiss();
       buildUI();

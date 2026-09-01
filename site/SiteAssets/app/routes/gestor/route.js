@@ -13,6 +13,7 @@ import {
   extractComboBoxValue,
 } from '../../libs/nofbiz/nofbiz.base.js';
 import { getByStatusesAndGestor, getByUUIDs } from '../../utils/initiatives-api.js';
+import { filterVisibleInitiatives } from '../../utils/initiative-visibility.js';
 import { getSharedWithMe } from '../../utils/shared-api.js';
 import { STATUS, statusLabel, statusDescription, renderStatusCell } from '../../utils/status-helpers.js';
 import {
@@ -332,9 +333,11 @@ export default defineRoute((config) => {
           ...gestorPendentes.map((i) => i.UUID),
           ...gestorTracking.map((i) => i.UUID),
         ]);
+        const sharedUUIDs = new Set(sharedRecords.map((r) => r.InitiativeUUID));
         try {
           const fetched = await getByUUIDs(sharedRecords.map((r) => r.InitiativeUUID));
-          colabItems = fetched.filter((i) => !assignedUUIDs.has(i.UUID));
+          const nonAssigned = fetched.filter((i) => !assignedUUIDs.has(i.UUID));
+          colabItems = await filterVisibleInitiatives(nonAssigned, currentEmail, { sharedUUIDs });
         } catch (error) { console.error('[gestor/loadData] getByUUIDs failed', error); }
       }
 

@@ -24,6 +24,8 @@ import {
   buildCategoryDisplay,
   buildTotalsPanel,
   resolveFinalValidationLabel,
+  isFinanceValidated,
+  createFinanceValidationNotice,
 } from './financial-forms.js';
 import { buildFteCostController } from './fte-cost-field.js';
 import { buildWorkflowButtons } from './workflow-buttons.js';
@@ -88,6 +90,7 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
   const isSharedUser = shareType !== null;
   const isCollaborator = shareType === 'collaborate';
   const hasWriteAccess = isOwner || isCollaborator;
+  const isMentorRole = isMentorUser();
   const status = initiative.Status;
 
   // Fetch financials for savings display (non-critical)
@@ -175,6 +178,11 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
     buildInfoGrid(dadosPairs),
     ...mentorReassignChildren,
   ]);
+
+  const financeNoticeSection =
+    (isMentorRole && status === STATUS.EM_VALIDACAO_MM && isFinanceValidated(initiative, financials))
+      ? new Container([createFinanceValidationNotice()], { class: 'pace-detail-section' })
+      : null;
 
   // -- Description, Objective --
   const sections = [];
@@ -471,6 +479,7 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
   const content = new Container([
     header,
     dadosGerais,
+    ...(financeNoticeSection ? [financeNoticeSection] : []),
     ...sections,
     ...(progressSection ? [progressSection] : []),
     ...(commentsSection ? [commentsSection] : []),
@@ -515,6 +524,7 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
     canAct,
     currentEmail,
     shareType,
+    isMentorRole,
   });
   if (footerButtons.length > 0) {
     footerContainer.children = footerButtons;

@@ -5373,6 +5373,13 @@ html:has(> body.disable-scroll) {
   color: var(--pt-ink-soft);
 }
 
+.pace-field-callout--warning,
+.pt-v2 .pace-field-callout--warning {
+  background: var(--color-warning-bg);
+  border-left-color: var(--color-warning-primary);
+  color: var(--color-fg-secondary);
+}
+
 /* -- Computed impact row -- */
 
 .pt-v2 .pace-impact-row--computed {

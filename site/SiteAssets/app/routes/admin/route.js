@@ -15,6 +15,7 @@ import {
   findTeamConflicts,
 } from '../../utils/mentor-teams-api.js';
 import { createExportButton } from '../../utils/initiatives-export.js';
+import { createPowerBIExportButton } from '../../utils/powerbi-export.js';
 import * as initiativesApi from '../../utils/initiatives-api.js';
 import { emailEquals } from '../../utils/email-helpers.js';
 import { acquireOverlayOpen } from '../../utils/overlay-guard.js';
@@ -1289,7 +1290,11 @@ export default defineRoute((config) => {
         detailed: true,
       });
 
-      exportarView.children = [exportCtaBanner, countText, exportBtn];
+      const powerBIBtn = createPowerBIExportButton({
+        getAllInitiatives: () => allInitiatives,
+      });
+
+      exportarView.children = [exportCtaBanner, countText, exportBtn, powerBIBtn];
       exportLoaded = true;
     } catch (err) {
       console.error('[admin/loadExportarTab] failed', err);

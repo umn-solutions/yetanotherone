@@ -28,6 +28,7 @@ import {
   INPUT_LABELS_BY_CATEGORY,
   SOFT_SAVINGS_THRESHOLD_EUR,
   MENTOR_MANAGER_LABELS,
+  FINANCE_VALIDATION_NOTICE,
   inferCategoriesFromMetrics,
   inferSavingTypeFromMetrics,
   formatSavingTypeShort,
@@ -301,9 +302,12 @@ function getToBePhase(payload) {
 
 /**
  * Validates that every enabled category has both a complete As-Is phase and a
- * complete To-Be phase (all input fields present and > 0) before a transition
- * into EM_VALIDACAO_MENTOR (declareSavings, resubmit targeting EM_VALIDACAO_MENTOR).
+ * complete To-Be phase (all input fields present and > 0) before the mentor
+ * advances the initiative to the gestor (mentorSavingsValidation).
  * For the qualidade category, requires non-empty description text instead.
+ * For the producao category with an active Simulador Financeiro override, the
+ * raw As-Is/To-Be fields are optional -- the override value is the sole source
+ * of truth for that metric's annual figure, mirroring computeAnnualizedToBeTotalEur.
  *
  * @param {Object|null} financials - Financials row from SP (auto-parsed)
  * @throws {SystemError} name='IncompleteFinancials', breaksFlow:false
@@ -315,6 +319,7 @@ export function assertToBeComplete(financials) {
   for (const key of enabled) {
     if (!CATEGORY_KEYS.includes(key)) continue;
     const categoryLabel = CATEGORY_LABELS[key] || key;
+
     // qualidade: skip the numeric As-Is/To-Be check, but require non-empty text
     if (key === 'qualidade') {
       const fieldName = CATEGORY_FIELD_NAMES[key];
@@ -330,9 +335,20 @@ export function assertToBeComplete(financials) {
       }
       continue;
     }
+
     const fieldName = CATEGORY_FIELD_NAMES[key];
     const payload = financials[fieldName];
+
+    // producao: when the Simulador Financeiro override is active, the raw
+    // As-Is/To-Be inputs are not used for the financial result -- skip them.
+    // Mirrors the same branch in computeAnnualizedToBeTotalEur.
+    if (key === 'producao') {
+      const sim = getSimuladorFromPayload(payload);
+      if (sim.active) continue;
+    }
+
     const inputKeys = INPUT_KEYS_BY_CATEGORY[key] || [];
+
     // Check As-Is completeness
     const asIsPayload = payload && payload.asIs;
     const asIsIncomplete = !asIsPayload || inputKeys.some(ik => {
@@ -346,6 +362,7 @@ export function assertToBeComplete(financials) {
         { breaksFlow: false },
       );
     }
+
     // Check To-Be completeness
     const toBe = getToBePhase(payload);
     const toBeIncomplete = !toBe || inputKeys.some(ik => {
@@ -454,6 +471,20 @@ export function resolveFinalValidationLabel(initiative, financials) {
     return MENTOR_MANAGER_LABELS.PLACE;
   }
   return MENTOR_MANAGER_LABELS.AREA_FINANCEIRA;
+}
+
+// True when the initiative will receive the financial-area (high-tier) validation label.
+export function isFinanceValidated(initiative, financials) {
+  return resolveFinalValidationLabel(initiative, financials) === MENTOR_MANAGER_LABELS.AREA_FINANCEIRA;
+}
+
+// Factory (NOT a const): SPARC component instances are stateful and mounted/disposed
+// per use -- the side panel and the modal each need their own instance.
+export function createFinanceValidationNotice() {
+  return new Text(FINANCE_VALIDATION_NOTICE, {
+    type: 'p',
+    class: 'pace-field-callout pace-field-callout--block pace-field-callout--warning',
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ import {
 } from '../../libs/nofbiz/nofbiz.base.js';
 
 import { getPersonalAndShared } from '../../utils/initiatives-api.js';
+import { filterVisibleInitiatives } from '../../utils/initiative-visibility.js';
 import { getSharedWithMe } from '../../utils/shared-api.js';
 import { STATUS, statusLabel, statusDescription, renderStatusCell } from '../../utils/status-helpers.js';
 import { openInitiativeDetail } from '../../utils/side-panel-detail.js';
@@ -301,8 +302,25 @@ export default defineRoute((config) => {
       }
     }
 
-    allMyItems = combined;
-    sharedItems = sharedItemsList;
+    let visibleCombined;
+    try {
+      visibleCombined = await filterVisibleInitiatives(combined, currentEmail, {
+        sharedUUIDs: sharedUUIDSet,
+      });
+    } catch (err) {
+      // filterVisibleInitiatives is internally fail-closed and does not throw today; this
+      // guard is defensive. Fail CLOSED: hide confidential items (except the user's own)
+      // rather than leak them if visibility resolution ever fails.
+      console.error('[pessoal/loadData] filterVisibleInitiatives failed -- hiding confidential items', err);
+      Toast.error('Erro ao verificar visibilidade. Algumas iniciativas confidenciais podem estar ocultas.');
+      visibleCombined = combined.filter((i) =>
+        !(i.IsConfidential === true || i.IsConfidential === 'true') || emailEquals(i.SubmittedByEmail, currentEmail)
+      );
+    }
+
+    const visibleUUIDs = new Set(visibleCombined.map((v) => v.UUID));
+    allMyItems = visibleCombined;
+    sharedItems = sharedItemsList.filter((i) => visibleUUIDs.has(i.UUID));
     sharedByMap = new Map(sharedRecords.map((r) => [r.InitiativeUUID, r]));
 
     // -- KPI row (unfiltered totals) --

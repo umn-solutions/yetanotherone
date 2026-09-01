@@ -643,6 +643,7 @@ var _spMockData = {
         { InternalName: 'Objective', Title: 'Objective', TypeAsString: 'Note' },
         { InternalName: 'Status', Title: 'Status', TypeAsString: 'Text' },
         { InternalName: 'ImpactedTeamOUID', Title: 'ImpactedTeamOUID', TypeAsString: 'Text' },
+        { InternalName: 'OwnerTeamOUID', Title: 'OwnerTeamOUID', TypeAsString: 'Text' },
         { InternalName: 'IsConfidential', Title: 'IsConfidential', TypeAsString: 'Text' },
         { InternalName: 'SubmittedBy', Title: 'SubmittedBy', TypeAsString: 'Note' },
         { InternalName: 'SubmittedByEmail', Title: 'SubmittedByEmail', TypeAsString: 'Text' },

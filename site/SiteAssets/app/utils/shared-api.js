@@ -94,3 +94,11 @@ export async function unshareInitiative(id, etag) {
 export async function getAllByInitiative(initiativeUUID) {
   return listApi.getItems({ InitiativeUUID: initiativeUUID }, FULL_SCAN);
 }
+
+/**
+ * Fetches all sharing records across all initiatives (admin/Power BI export).
+ * @returns {Promise<Array>}
+ */
+export async function getAllShares() {
+  return listApi.getItems(undefined, FULL_SCAN);
+}
