@@ -21,6 +21,32 @@ export const EVENT_TYPES = {
   EDIT_APPROVER: 'EditApprover',
 };
 
+/**
+ * Human-readable labels for each event type, mirroring the side-panel progress
+ * timeline. Shared between the side panel and the Power BI export.
+ */
+export const EVENT_TYPE_LABELS = {
+  Creation:                'Rascunho',
+  Submission:              'Submetido',
+  MentorApproval:          'Aprovado pelo Mentor',
+  MentorRejection:         'Rejeitado pelo Mentor',
+  ExecutionStart:          'Início de Execução',
+  SavingsSubmission:       'Savings Submetidos para Validação do Mentor',
+  MentorFinalValidation:   'Validado pelo Mentor — Encaminhado ao Gestor',
+  BusinessValidation:      'Aprovado pelo Gestor',
+  BusinessRejection:       'Rejeitado pelo Gestor',
+  ReviewRequest:           'Revisão Solicitada',
+  Resubmission:            'Re-submetido',
+  Cancellation:            'Cancelado',
+  Implementation:          'Implementado',
+  MentorManagerValidation: 'Validação Final pelo Mentor Manager',
+  OwnerImplementation:     'Implementado pelo Colaborador',
+  Comment:                 'Comentário',
+  Transfer:                'Transferido',
+  Share:                   'Partilhado',
+  EditApprover:            'Editado por Validador',
+};
+
 // -- Final validation label constants --
 
 export const SOFT_SAVINGS_THRESHOLD_EUR = 10000;

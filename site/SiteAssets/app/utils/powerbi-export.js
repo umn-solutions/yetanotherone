@@ -5,6 +5,8 @@ import { buildInitiativeExportRows } from './initiatives-export.js';
 import { getAllEmployees } from './org-hierarchy-api.js';
 import { getAllTargets, computeTargetTotals } from './savings-targets-api.js';
 import { getAllShares } from './shared-api.js';
+import * as eventsApi from './initiative-events-api.js';
+import { EVENT_TYPE_LABELS } from './constants.js';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -138,6 +140,42 @@ function flattenShare(share) {
 }
 
 // ---------------------------------------------------------------------------
+// Timeline builder
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a JSON-string timeline for one initiative's events, mirroring the
+ * side-panel progress timeline: workflow events sorted by date ascending,
+ * each entry { date, actor, type, comment? }.
+ * @param {Array} events - Events for a single initiative (may be empty or undefined)
+ * @returns {string} JSON array string
+ */
+function buildTimeline(events) {
+  const entries = (events || [])
+    .filter((ev) => ev.EventType !== 'Comment' && ev.EventType !== 'Share')
+    .slice()
+    .sort((a, b) => String(a.Date || '').localeCompare(String(b.Date || '')))
+    .map((ev) => {
+      let actorObj = ev.Actor || {};
+      if (typeof actorObj === 'string') {
+        try { actorObj = JSON.parse(actorObj); }
+        catch (err) { console.warn('[powerbi-export] actor parse failed', { raw: ev.Actor, err }); actorObj = {}; }
+      }
+      const type = (ev.EventType === 'MentorManagerValidation' && ev.ValidationLabel)
+        ? ev.ValidationLabel
+        : (EVENT_TYPE_LABELS[ev.EventType] || ev.EventType);
+      const entry = {
+        date: ev.Date ? __dayjs(ev.Date).format('DD/MM/YYYY HH:mm') : '',
+        actor: actorObj.displayName || 'Sistema',
+        type,
+      };
+      if (ev.Comment) entry.comment = ev.Comment;
+      return entry;
+    });
+  return JSON.stringify(entries);
+}
+
+// ---------------------------------------------------------------------------
 // Main export orchestrator
 // ---------------------------------------------------------------------------
 
@@ -149,16 +187,20 @@ function flattenShare(share) {
  * @returns {Promise<void>}
  */
 export async function downloadPowerBIWorkbook(allInitiatives) {
-  const [employees, targets, shares, initiativeRows] = await Promise.all([
+  const [employees, targets, shares, initiativeRows, eventsMap] = await Promise.all([
     getAllEmployees(),
     getAllTargets(),
     getAllShares(),
     buildInitiativeExportRows(allInitiatives, { detailed: true, isPrivileged: true, includeActivity: false }),
+    eventsApi.getAllAsMap(),
   ]);
 
-  // Sheet 1: Iniciativas -- rows already flattened by buildInitiativeExportRows;
-  //   scalarize to catch any residual objects (e.g. legacy ComboBox values)
-  const initiativasData = initiativeRows.map(scalarizeRow);
+  // Sheet 1: Iniciativas -- rows from buildInitiativeExportRows with a Timeline
+  //   JSON column appended, then scalarized for Power BI compatibility.
+  //   Timeline is already a string so toScalar passes it through unchanged.
+  const initiativasData = initiativeRows.map((row) =>
+    scalarizeRow({ ...row, Timeline: buildTimeline(eventsMap.get(row.UUID) || []) })
+  );
 
   // Sheet 2: OrgHierarchy -- explicit flattener (all fields are already scalars
   //   but AncestorPath / DeptAncestorPath are multiline strings -- safe)

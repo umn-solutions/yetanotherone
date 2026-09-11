@@ -17,7 +17,7 @@ import { STATUS, statusLabel, chipClass, getNextFlowStatus, STATUS_LABELS } from
 import { getTeamLabel, getTeamName, isMentorUser } from './roles.js';
 import { mentorName, gestorName } from './format-helpers.js';
 import { getByInitiative as getFinancials } from './financials-api.js';
-import { EVENT_TYPES, STATUS_DESCRIPTIONS, CATEGORY_LABELS, metricsHaveFinancialData, formatSavingTypeShort } from './constants.js';
+import { EVENT_TYPES, EVENT_TYPE_LABELS, STATUS_DESCRIPTIONS, CATEGORY_LABELS, metricsHaveFinancialData, formatSavingTypeShort } from './constants.js';
 import {
   hydrateCategoryStates,
   getPhaseEditability,
@@ -261,6 +261,10 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
       });
       financialDisposers.push(() => fteCost.dispose());
 
+      if (fteCost.displayRow) {
+        financialRows.push(fteCost.displayRow);
+      }
+
       // Totals panel
       const totalsResult = buildTotalsPanel(categoryStates, {
         phase: 'realized',
@@ -273,29 +277,6 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
 
     sections.push(new Container(financialRows, { class: 'pace-financial-section' }));
   }
-
-  // -- Event type labels (used by progress timeline) --
-  const EVENT_TYPE_LABELS = {
-    Creation: 'Criado',
-    Submission: 'Submetido',
-    MentorApproval: 'Aprovado pelo Mentor',
-    MentorRejection: 'Rejeitado pelo Mentor',
-    ExecutionStart: 'Início de Execução',
-    SavingsSubmission: 'Savings Submetidos para Validação do Mentor',
-    MentorFinalValidation: 'Validado pelo Mentor — Encaminhado ao Gestor',
-    BusinessValidation: 'Aprovado pelo Gestor',
-    BusinessRejection: 'Rejeitado pelo Gestor',
-    ReviewRequest: 'Revisão Solicitada',
-    Resubmission: 'Re-submetido',
-    Cancellation: 'Cancelado',
-    Implementation: 'Implementado',
-    MentorManagerValidation: 'Validação Final pelo Mentor Manager',
-    OwnerImplementation: 'Implementado pelo Colaborador',
-    Comment: 'Comentário',
-    Transfer: 'Transferido',
-    Share: 'Partilhado',
-    EditApprover: 'Editado por Validador',
-  };
 
   const EVENT_TO_STATUS = {
     [EVENT_TYPES.CREATION]:                STATUS.RASCUNHO,

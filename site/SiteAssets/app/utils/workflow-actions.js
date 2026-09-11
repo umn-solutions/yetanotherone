@@ -933,6 +933,36 @@ export async function approveSavings(initiative, button, onSuccess) {
 }
 
 /**
+ * Validates that the initiative's base descriptive fields are filled before the mentor
+ * can advance to gestor validation. Throws SystemError('IncompleteFields') on failure.
+ * @param {object} initiative - The initiative record (auto-parsed ListApi read)
+ */
+function assertBaseFieldsComplete(initiative) {
+  if (!initiative.Description || !String(initiative.Description).trim()) {
+    throw new SystemError(
+      'IncompleteFields',
+      'Preencha a descrição do problema antes de pedir validação.',
+      { breaksFlow: false },
+    );
+  }
+  if (!initiative.Objective || !String(initiative.Objective).trim()) {
+    throw new SystemError(
+      'IncompleteFields',
+      'Preencha a descrição da iniciativa antes de pedir validação.',
+      { breaksFlow: false },
+    );
+  }
+  const tags = Array.isArray(initiative.Tags) ? initiative.Tags : [];
+  if (tags.length === 0) {
+    throw new SystemError(
+      'IncompleteFields',
+      'Selecione pelo menos uma tag antes de pedir validação.',
+      { breaksFlow: false },
+    );
+  }
+}
+
+/**
  * Mentor savings validation: EM_VALIDACAO_MENTOR -> EM_VALIDACAO_GESTOR.
  * Routes and assigns the gestor here (moved from declareSavings).
  * Logs the MENTOR_FINAL_VALIDATION event and notifies the routed gestor.
@@ -967,9 +997,36 @@ export async function mentorSavingsValidation(initiative, button, onSuccess) {
       );
     }
 
+    // Gate: base descriptive fields (problema, iniciativa, tags) must be filled.
+    assertBaseFieldsComplete(initiative);
+
+    // Gate: at least one saving metric must be selected before advancing to gestor.
+    // assertToBeComplete returns early when financials is null or EnabledCategories is
+    // empty, so this check must come first to close that loophole.
+    if (!financials || !Array.isArray(financials.EnabledCategories) || financials.EnabledCategories.length === 0) {
+      console.warn('[mentorSavingsValidation] blocked: no saving metric selected', { uuid: initiative.UUID });
+      throw new SystemError(
+        'IncompleteFinancials',
+        'Selecione pelo menos uma métrica de savings antes de encaminhar para o gestor.',
+        { breaksFlow: false },
+      );
+    }
+
     // Gate: every selected metric must have all its fields filled (As-Is + To-Be, or
     // description text for qualidade) before the mentor advances the savings to the gestor.
     assertToBeComplete(financials);
+
+    // Gate: if eficiencia is enabled, FTEAnnualCost must be set (mirrors approveProject gate).
+    // Without it the eficiencia saving computes to 0 and routing is meaningless.
+    const enabledCats = Array.isArray(financials?.EnabledCategories) ? financials.EnabledCategories : [];
+    if (enabledCats.includes('eficiencia') && !(parseFloat(financials?.FTEAnnualCost) > 0)) {
+      console.warn('[mentorSavingsValidation] blocked: eficiencia enabled but FTEAnnualCost unset', { uuid: initiative.UUID });
+      throw new SystemError(
+        'IncompleteFinancials',
+        'Defina o Custo Anual por FTE (necessário para calcular o saving de Eficiência Operacional) antes de pedir validação.',
+        { breaksFlow: false },
+      );
+    }
 
     const savingType = financials?.SavingType || deriveSavingType(financials?.SavingCategory);
     const annualVal = computeAnnualizedToBeTotalEur(financials);
@@ -1008,7 +1065,7 @@ export async function mentorSavingsValidation(initiative, button, onSuccess) {
     if (onSuccess) onSuccess();
   } catch (error) {
     console.error(error);
-    if (error && error.name === 'IncompleteFinancials') {
+    if (error && (error.name === 'IncompleteFinancials' || error.name === 'IncompleteFields')) {
       loading.error(actionErrorMessage(error, error.message));
     } else {
       loading.error(actionErrorMessage(error, 'Erro ao validar savings.'));

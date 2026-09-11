@@ -14,7 +14,7 @@ import {
 } from '../../libs/nofbiz/nofbiz.base.js';
 import { getUnassignedByStatuses, getByStatusesAndMentor, getByUUIDs, getByStatuses } from '../../utils/initiatives-api.js';
 import { getSharedWithMe } from '../../utils/shared-api.js';
-import { canAccess, isMentorUser } from '../../utils/roles.js';
+import { canAccess, isMentorUser, getTeamLabel, getTeamName } from '../../utils/roles.js';
 import { STATUS, statusLabel, statusDescription, renderStatusCell } from '../../utils/status-helpers.js';
 import {
   ownerName,
@@ -78,7 +78,7 @@ export default defineRoute((config) => {
 
   const sharedColumns = [
     { label: 'Iniciativa', sortAccessor: (i) => (i.Title || '').toLowerCase() },
-    { label: 'Equipa', sortAccessor: (i) => i.Team || '' },
+    { label: 'Equipa', sortAccessor: (i) => getTeamLabel(i.ImpactedTeamOUID) || '' },
     { label: 'Colaborador', sortAccessor: ownerName },
     { label: 'Gestor', sortAccessor: gestorName },
     { label: 'Estado', sortAccessor: (i) => statusLabel(i.Status) },
@@ -94,7 +94,7 @@ export default defineRoute((config) => {
     ], { class: 'pace-table-cell-stack' });
     return new Container([
       mergedCell,
-      new Text(item.Team || '', { type: 'span' }),
+      new Text(getTeamLabel(item.ImpactedTeamOUID) || '', { type: 'span' }),
       new Text(ownerName(item), { type: 'span' }),
       new Text(gestorName(item), { type: 'span' }),
       renderStatusCell(item),
@@ -275,7 +275,7 @@ export default defineRoute((config) => {
       : 'pace-pending-item';
 
     const mentor = mentorName(item);
-    const metaParts = [ownerName(item), item.ImpactedTeamOUID];
+    const metaParts = [ownerName(item), getTeamName(item.ImpactedTeamOUID)];
     if (type === 'projecto' && mentor !== '---') {
       metaParts.push(`Mentor: ${mentor}`);
     } else if (type === 'savings' || type === 'implementacao') {

@@ -1,4 +1,4 @@
-import { Button, Container, Toast, getIcon, __dayjs } from '../libs/nofbiz/nofbiz.base.js';
+import { Button, Container, Toast, getIcon, __dayjs, UserIdentity } from '../libs/nofbiz/nofbiz.base.js';
 import { dataToCSV, downloadFile } from '../libs/nofbiz/nofbiz.excelparser.js';
 
 import * as financialsApi from './financials-api.js';
@@ -7,7 +7,7 @@ import * as eventsApi from './initiative-events-api.js';
 
 import { hasAnyProfile, ROLES } from './roles.js';
 import { statusLabel } from './status-helpers.js';
-import { ownerName, mentorName, gestorName } from './format-helpers.js';
+import { ownerName, mentorName, gestorName, parseJsonArray } from './format-helpers.js';
 import {
   CATEGORY_KEYS,
   CATEGORY_LABELS,
@@ -18,8 +18,9 @@ import {
   deriveSavingType,
   annualizeSavings,
   annualSavingColName,
+  FTE_MINUTES_PER_YEAR,
 } from './constants.js';
-import { getSimuladorFromPayload } from './financial-forms.js';
+import { getSimuladorFromPayload, computeAnnualizedToBeTotalEur } from './financial-forms.js';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -307,9 +308,14 @@ function buildRow(item, ctx) {
 
   row.Title                 = item.Title || '';
   row.Description           = item.Description || '';
+  row.Objective             = item.Objective || '';
   row.UUID                  = item.UUID || '';
   row.Status                = statusLabel(item.Status || '');
+  row.PreviousStatus        = statusLabel(item.PreviousStatus || '');
+  row.FinalValidationLabel  = item.FinalValidationLabel || '';
+  row.Tags                  = parseJsonArray(item.Tags).join('; ');
   row.ImpactedTeamOUID      = item.ImpactedTeamOUID || '';
+  row.OwnerTeamOUID         = item.OwnerTeamOUID || '';
   row.SubmittedByEmail      = item.SubmittedByEmail || '';
   row.OwnerName             = ownerName(item);
   row.MentorName            = mentorName(item);
@@ -319,11 +325,33 @@ function buildRow(item, ctx) {
   row.IsConfidential        = item.IsConfidential ? 'Sim' : 'Não';
   row.Created               = item.Created ? String(item.Created).slice(0, 10) : '';
   row.Modified              = item.Modified ? String(item.Modified).slice(0, 10) : '';
+  row.SubmittedDate         = item.SubmittedDate ? String(item.SubmittedDate).slice(0, 10) : '';
   row.ImplementedDate       = item.ImplementedDate ? String(item.ImplementedDate).slice(0, 10) : '';
+  row.ExpectedEndDate       = item.ExpectedEndDate ? String(item.ExpectedEndDate).slice(0, 10) : '';
 
   // Financial fields -- delegated to the shared flattener (same output as before)
   const finFields = buildFinancialFields(fin, { detailed, isPrivileged });
   Object.assign(row, finFields);
+
+  // Financial metadata (export-only -- intentionally NOT part of buildFinancialFields,
+  // so the IMPLEMENTED email table stays limited to metric rows).
+  row.EnabledCategories             = parseJsonArray(fin && fin.EnabledCategories).join('; ');
+  const finModifier                 = fin ? UserIdentity.fromField(fin.LastModifiedBy) : null;
+  row.FinancialsLastModifiedBy      = finModifier ? finModifier.displayName : '';
+  row.FinancialsLastModifiedByEmail = fin ? (fin.LastModifiedByEmail || '') : '';
+  row.FinancialsLastModifiedDate    = fin && fin.LastModifiedDate ? String(fin.LastModifiedDate).slice(0, 10) : '';
+
+  // Computed savings (export-only). Eficiencia is stored in minutes; convert to
+  // FTE-years, and (privileged) to € plus the grand annualized total. The grand
+  // total mirrors the IMPLEMENTED email total, so it stays out of buildFinancialFields.
+  const efAnnualMinutes = fin ? flattenCategory(fin[CATEGORY_FIELD_NAMES.eficiencia], 'eficiencia', fin.TimePeriod || '') : 0;
+  const efFteYears = (fin && FTE_MINUTES_PER_YEAR) ? efAnnualMinutes / FTE_MINUTES_PER_YEAR : '';
+  row.EficienciaFteAnnual = efFteYears;
+  if (isPrivileged) {
+    const efFteCost = fin ? (parseFloat(fin.FTEAnnualCost) || 0) : 0;
+    row.EficienciaAnnualSavingEur = fin ? (efAnnualMinutes / FTE_MINUTES_PER_YEAR) * efFteCost : '';
+    row.TotalAnnualSavingEur = fin ? computeAnnualizedToBeTotalEur(fin) : '';
+  }
 
   if (includeActivity) {
     row.Comments = serializeComments(commentsMap.get(item.UUID));

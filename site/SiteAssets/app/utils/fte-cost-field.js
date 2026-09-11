@@ -5,7 +5,7 @@ import {
   Text,
 } from '../libs/nofbiz/nofbiz.base.js';
 
-import { hasAnyProfile } from './roles.js';
+import { isMentorUser, hasProfile, ROLES } from './roles.js';
 import { buildReadOnlyRow, formatEur } from './financial-forms.js';
 
 /**
@@ -25,7 +25,7 @@ import { buildReadOnlyRow, formatEur } from './financial-forms.js';
  * @returns {boolean}
  */
 export function canViewFteCost() {
-  return hasAnyProfile(['mentor', 'gestor']);
+  return isMentorUser() || hasProfile(ROLES.GESTOR);
 }
 
 /**

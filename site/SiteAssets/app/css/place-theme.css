@@ -5973,3 +5973,126 @@ html:has(> body.disable-scroll) {
   min-width: 0;
   flex: 1 1 auto;
 }
+
+/* ==========================================================================
+ * F07 — Instruções (help) colour alignment
+ *
+ * The profile avatars, guide accents, step numbers and tip callouts on the
+ * Instruções page were authored against the legacy --color-brand-* palette and
+ * hardcoded greens (#9ac433, #5a8a4a, #3d6b52), which clash with the pt-v2
+ * token palette used on every other page. Remap them to pt-v2 tokens here,
+ * scoped to .pt-v2 so only the themed page is affected. Compound selectors
+ * (.pace-profile-avatar.pace-profile--green) and .pt-v2-prefixed guide rules
+ * out-specify the legacy definitions.
+ * ========================================================================== */
+
+/* Profile avatars — subtle green surface, per-role accent border + ink */
+.pt-v2 .pace-profile-avatar {
+  background: var(--pt-surface-alt);
+  border: 2px solid var(--pt-green);
+  color: var(--pt-green-deep);
+}
+.pt-v2 .pace-profile-avatar.pace-profile--green {
+  border-color: var(--pt-green);
+  color: var(--pt-green-deep);
+}
+.pt-v2 .pace-profile-avatar.pace-profile--dark-green {
+  border-color: var(--pt-bnpp-green);
+  color: var(--pt-bnpp-green);
+}
+.pt-v2 .pace-profile-avatar.pace-profile--darker-green {
+  border-color: var(--pt-green-darker);
+  color: var(--pt-green-darker);
+}
+
+/* Guide cards — left accent border keyed to the acting role */
+.pt-v2 .pace-guide--green {
+  border-left: 3px solid var(--pt-green);
+}
+.pt-v2 .pace-guide--dark-green {
+  border-left: 3px solid var(--pt-bnpp-green);
+}
+.pt-v2 .pace-guide--darker-green {
+  border-left: 3px solid var(--pt-green-darker);
+}
+.pt-v2 .pace-guide--gray {
+  border-left: 3px solid var(--pt-ink-muted);
+}
+.pt-v2 .pace-guide--red {
+  border-left: 3px solid var(--pt-status-danger);
+}
+
+/* Guide "who" meta label */
+.pt-v2 .pace-guide-who {
+  color: var(--pt-ink-muted);
+}
+
+/* Numbered step bullets */
+.pt-v2 .pace-step-num {
+  background: var(--pt-surface-alt);
+  color: var(--pt-green-deep);
+}
+
+/* Tip callout box */
+.pt-v2 .pace-guide-tip-box {
+  background: var(--pt-surface-alt);
+  border: 1px solid var(--pt-border);
+}
+.pt-v2 .pace-guide-tip {
+  color: var(--pt-ink-soft);
+}
+
+/* ==========================================================================
+ * F08 — Instruções (help) find-on-page bar
+ *
+ * Sticky search bar at the top of the help content plus the highlight marks it
+ * injects into the page text. Browser-find style: matches in the currently
+ * visible content are wrapped in <mark class="pace-find-hl">, the active one
+ * gets --current. Scoped to .pt-v2.
+ * ========================================================================== */
+.pt-v2 .pace-find-bar {
+  /* The fixed header + tabbar occupy the top ~159px under the app's document-scroll
+     model (tabs z-index 99). Sit below it at rest (margin-top clears the 154px content
+     origin) and pin just under the tabbar while scrolling matches (top: 163px). */
+  position: sticky;
+  top: 163px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--pt-surface);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--radius-lg);
+  padding: 8px 10px;
+  margin-top: 12px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 10px rgba(20, 36, 26, 0.08);
+}
+.pt-v2 .pace-find-bar .pace-find-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+.pt-v2 .pace-find-count {
+  flex: 0 0 auto;
+  min-width: 72px;
+  text-align: right;
+  font-size: var(--pt-fs-xs);
+  font-weight: var(--pt-fw-semibold);
+  color: var(--pt-ink-muted);
+  white-space: nowrap;
+}
+.pt-v2 .pace-find-bar .pace-find-nav,
+.pt-v2 .pace-find-bar .pace-find-clear {
+  flex: 0 0 auto;
+}
+.pt-v2 mark.pace-find-hl {
+  background: rgba(232, 153, 35, 0.32);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.pt-v2 mark.pace-find-hl--current {
+  background: var(--pt-status-warn);
+  color: #ffffff;
+}
