@@ -49,8 +49,8 @@ try {
 	]);
 	employee = byEmail[0] || null;
 	allOrgEmployees = allEmp;
-} catch {
-	// OrgHierarchy list may not exist yet
+} catch (err) {
+	console.warn('[index] OrgHierarchy lookup failed, continuing without employee record', err);
 }
 
 if (employee) {

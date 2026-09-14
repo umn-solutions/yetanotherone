@@ -123,6 +123,7 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
     closeBtn,
     new Container(headerChips, { class: 'pace-detail-chips' }),
     new Text(initiative.Title || 'Sem título', { type: 'h2', class: 'pace-detail-title' }),
+    ...(initiative.UUID ? [new Text(initiative.UUID, { type: 'span', class: 'pace-detail-id' })] : []),
   ], { class: 'pace-detail-header' });
 
   // -- Dados Gerais grid --
@@ -140,7 +141,7 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
   if (gestorDisplay !== '---') {
     dadosPairs.push(['Gestor Validador', gestorDisplay]);
   }
-  if (initiative.FinalValidationLabel) {
+  if (status === STATUS.IMPLEMENTADO && initiative.FinalValidationLabel) {
     dadosPairs.push(['Validação Final', initiative.FinalValidationLabel]);
   }
 

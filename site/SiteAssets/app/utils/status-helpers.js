@@ -101,16 +101,6 @@ export function statusLabel(status) {
 }
 
 /**
- * Returns the full descriptive sentence for a status value.
- * Falls back to statusLabel() if no description is defined.
- * @param {string} status
- * @returns {string}
- */
-export function statusDescription(status) {
-  return STATUS_DESCRIPTIONS[status] || statusLabel(status);
-}
-
-/**
  * Returns true when base fields (Title, Description, ImpactedTeamOUID, Tags,
  * IsConfidential, Objective) should be rendered read-only.
  * Base fields are editable only while the initiative is in RASCUNHO or SUBMETIDO,
@@ -145,8 +135,10 @@ export function chipClass(status) {
 }
 
 /**
- * Returns a Container with the initiative's status chip and, if FinalValidationLabel
- * is set, a second chip showing that label.
+ * Returns a Container with the initiative's status chip and, only once the
+ * initiative reaches IMPLEMENTADO (Mentor Manager validation done), a second chip
+ * showing the FinalValidationLabel. Before that, a lingering label is not shown --
+ * a still-pending initiative must display only its status chip.
  * @param {Object} initiative
  * @returns {Container}
  */
@@ -156,7 +148,7 @@ export function renderStatusCell(initiative) {
     new Text(statusLabel(status), { type: 'span', class: `pace-chip ${chipClass(status)}` }),
   ];
 
-  const label = initiative.FinalValidationLabel;
+  const label = status === STATUS.IMPLEMENTADO ? initiative.FinalValidationLabel : null;
   if (label) {
     const labelClass = label === MENTOR_MANAGER_LABELS.PLACE
       ? 'pace-chip pace-chip--final-place'

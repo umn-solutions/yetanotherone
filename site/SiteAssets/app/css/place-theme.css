@@ -985,6 +985,20 @@
 	margin: 0;
 }
 
+.pace-detail-id {
+	display: inline-flex;
+	align-items: center;
+	margin-top: 8px;
+	padding: 4px 10px;
+	border-radius: 999px;
+	background: var(--color-brand-primary, #2d9442);
+	color: #fff;
+	font-family: monospace;
+	font-size: 0.8rem;
+	font-weight: 700;
+	letter-spacing: 0.03em;
+}
+
 .pace-detail-content {
 	padding: 0 4px;
 }
@@ -5537,6 +5551,22 @@ html:has(> body.disable-scroll) {
   letter-spacing: var(--pt-ls-tight);
   line-height: var(--pt-lh-snug);
   color: var(--pt-ink);
+}
+
+.pt-v2 .pace-detail-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 5px 12px;
+  border-radius: var(--pt-r-pill, 999px);
+  background: var(--pt-accent, #2d9442);
+  color: #fff;
+  font-family: var(--pt-font-mono, monospace);
+  font-size: var(--pt-fs-xs, 0.78rem);
+  font-weight: var(--pt-fw-bold, 700);
+  letter-spacing: 0.04em;
+  box-shadow: var(--pt-shadow-sm);
 }
 
 /* Close button, top-right of the header */

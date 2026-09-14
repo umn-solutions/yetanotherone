@@ -1,14 +1,4 @@
-import { Text, Container, Button, UserIdentity, __dayjs } from '../libs/nofbiz/nofbiz.base.js';
-
-/**
- * Parses a saving value string into a number.
- * Strips non-numeric characters except dots.
- * @param {string|number} val
- * @returns {number}
- */
-export function parseSaving(val) {
-  return parseFloat(String(val).replace(/[^\d.]/g, '')) || 0;
-}
+import { Text, Container, UserIdentity, __dayjs } from '../libs/nofbiz/nofbiz.base.js';
 
 /**
  * Extracts the owner display name from an item's Owner field.
@@ -51,18 +41,6 @@ export function daysPending(dateStr) {
 }
 
 /**
- * Extracts the text value from a ComboBox FormField.
- * Handles both object { key, text } and plain string values.
- * @param {import('../libs/nofbiz/nofbiz.base.js').FormField} field
- * @returns {string}
- */
-export function getComboVal(field) {
-  const val = field.value;
-  if (val && typeof val === 'object') return val.text;
-  return val || '';
-}
-
-/**
  * Safely parses a JSON array string. Returns [] on failure.
  * Also handles values already parsed to arrays by ListApi.
  * @param {string|Array} val
@@ -97,51 +75,3 @@ export function buildKpi(value, label, highlight) {
   );
 }
 
-/**
- * Builds a table header row from an array of column names.
- * @param {string[]} cols
- * @returns {Container}
- */
-export function buildTableHeader(cols) {
-  return new Container(
-    cols.map(
-      (col) => new Text(col, { type: 'span', class: 'pace-table-th' })
-    ),
-    { class: 'pace-table-row pace-table-row--header' }
-  );
-}
-
-/**
- * Builds a collaboration stub section with a label and placeholder button.
- * @param {string} label
- * @returns {Container}
- */
-export function buildCollabStub(label) {
-  return new Container(
-    [
-      new Container(
-        [
-          new Text(label, { type: 'span' }),
-          new Container([], { class: 'pace-split-divider' }),
-        ],
-        { class: 'pace-split-label' }
-      ),
-      new Container(
-        [
-          new Text('Nenhuma colaboração registada.', {
-            type: 'p',
-            class: 'pace-empty',
-          }),
-          new Button(`Gerir ${label}`, {
-            variant: 'secondary',
-            onClickHandler: () => {
-              alert(`Colaboração ${label} (placeholder)`);
-            },
-          }),
-        ],
-        { class: 'pace-collab-stub' }
-      ),
-    ],
-    { class: 'pace-collab-section' }
-  );
-}

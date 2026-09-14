@@ -16,7 +16,7 @@ import {
 import { getPersonalAndShared } from '../../utils/initiatives-api.js';
 import { filterVisibleInitiatives } from '../../utils/initiative-visibility.js';
 import { getSharedWithMe } from '../../utils/shared-api.js';
-import { STATUS, statusLabel, statusDescription, renderStatusCell } from '../../utils/status-helpers.js';
+import { STATUS, statusLabel, renderStatusCell } from '../../utils/status-helpers.js';
 import { openInitiativeDetail } from '../../utils/side-panel-detail.js';
 import { openEditInitiativeModal } from '../../utils/new-initiative.js';
 import { createPageLayout } from '../../utils/navbar.js';
@@ -24,7 +24,7 @@ import { mentorName, gestorName, buildKpi } from '../../utils/format-helpers.js'
 import { createSortableTable } from '../../utils/table-helpers.js';
 import { getTeamOptions } from '../../utils/org-hierarchy-api.js';
 import { INITIATIVE_TAGS, EVENT_TYPES } from '../../utils/constants.js';
-import { canAccess, getTeamLabel } from '../../utils/roles.js';
+import { canAccess, getTeamName } from '../../utils/roles.js';
 import { createExportButton } from '../../utils/initiatives-export.js';
 import { getByEventType } from '../../utils/initiative-events-api.js';
 import { emailEquals } from '../../utils/email-helpers.js';
@@ -66,7 +66,7 @@ export default defineRoute((config) => {
 
   const standardColumns = [
     { label: 'Iniciativa', sortAccessor: (i) => (i.Title || '').toLowerCase() },
-    { label: 'Equipa', sortAccessor: (i) => getTeamLabel(i.ImpactedTeamOUID) || '' },
+    { label: 'Equipa', sortAccessor: (i) => getTeamName(i.ImpactedTeamOUID) || '' },
     { label: 'Mentor', sortAccessor: mentorName },
     { label: 'Gestor', sortAccessor: gestorName },
     { label: 'Estado', sortAccessor: (i) => statusLabel(i.Status) },
@@ -79,7 +79,7 @@ export default defineRoute((config) => {
         class: 'pace-table-link-btn',
       }),
       new Text(item.Description || '---', { type: 'span', class: 'pace-table-description', title: item.Description || '---' }),
-      new Text(getTeamLabel(item.ImpactedTeamOUID) || '', { type: 'span' }),
+      new Text(getTeamName(item.ImpactedTeamOUID) || '', { type: 'span' }),
       new Text(mentorName(item), { type: 'span' }),
       new Text(gestorName(item), { type: 'span' }),
       renderStatusCell(item),

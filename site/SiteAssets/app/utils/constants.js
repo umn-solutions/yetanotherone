@@ -145,12 +145,14 @@ export const ANNUALIZATION_FACTORS = {
 
 /**
  * Annualizes a per-period savings value.
- * @param {string|number} value - The per-period value
+ * Sign is preserved: a negative realized saving (a real loss) remains negative.
+ * @param {number} value - The per-period value (already a JS number)
  * @param {string} timePeriod - One of: Diario, Mensal
  * @returns {number} Annualized value (0 if inputs are invalid)
  */
 export function annualizeSavings(value, timePeriod) {
-  const num = parseFloat(String(value).replace(/[^\d.]/g, '')) || 0;
+  const num = parseFloat(value);
+  if (!Number.isFinite(num)) return 0;
   const factor = ANNUALIZATION_FACTORS[timePeriod] || 0;
   return num * factor;
 }

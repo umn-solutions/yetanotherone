@@ -343,6 +343,19 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     }
   };
 
+  // -- Auto-mentor resolution (DRY: used by both NEW and EDIT submit branches) --
+  // Tries to resolve the mentor for the given team OUID. Returns { email, displayName }
+  // or null. Never throws -- failure is best-effort and must not block submission.
+  const resolveAutoMentor = async (impactedTeamOUID) => {
+    if (!impactedTeamOUID) return null;
+    try {
+      return await getMentorForTeam(impactedTeamOUID);
+    } catch (err) {
+      console.warn('[submitInitiative] getMentorForTeam failed, submitting without auto-assign', { impactedTeamOUID, err });
+      return null;
+    }
+  };
+
   // -- Save functions --
   const saveAsDraft = async (btn) => {
     btn.isLoading = true;
@@ -437,16 +450,21 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
       let finalMentor;
       let finalTitle;
       if (isEdit) {
-        try {
-          await update(initiative.Id, fields, initiative['odata.etag']);
-        } catch (err) {
-          console.error('[submitInitiative] update failed', err);
-          if (err && err.name === 'ConcurrencyConflict') {
-            loading.error('Outra pessoa editou esta iniciativa. Feche e reabra para recarregar.');
-            return;
+        // H3 fix: persist financials BEFORE the status flip.
+        // If financials fail the status is still RASCUNHO -- safe retry. The status flip
+        // is the last initiative write; only after it succeeds do we call finalizeSubmission.
+
+        // Step 1: auto-assign mentor if this draft has none (draft->edit->submit path).
+        if (!initiative.MentorEmail) {
+          const impactedTeamOUID = fields.ImpactedTeamOUID || '';
+          const autoMentor = await resolveAutoMentor(impactedTeamOUID);
+          if (autoMentor) {
+            fields.Mentor = { email: autoMentor.email, displayName: autoMentor.displayName };
+            fields.MentorEmail = autoMentor.email;
           }
-          throw err;
         }
+
+        // Step 2: persist financials first (separate list, own etag -- safe to write before status flip).
         if (userTouchedFinancials()) {
           const finFields = collectFinancialFields();
           if (financials) {
@@ -466,44 +484,71 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
             await createFinancials(initiative.UUID, finFields);
           }
         }
+
+        // Step 3: status flip -- the committing write. Financials already persisted,
+        // so a failure here is safe (status stays RASCUNHO, user retries).
+        try {
+          await update(initiative.Id, fields, initiative['odata.etag']);
+        } catch (err) {
+          console.error('[submitInitiative] update failed', err);
+          if (err && err.name === 'ConcurrencyConflict') {
+            loading.error('Outra pessoa editou esta iniciativa. Feche e reabra para recarregar.');
+            return;
+          }
+          throw err;
+        }
+
         finalUUID = initiative.UUID;
-        finalMentorEmail = initiative.MentorEmail;
-        finalMentor = initiative.Mentor || null;
+        finalMentorEmail = fields.MentorEmail || initiative.MentorEmail || '';
+        finalMentor = fields.Mentor || initiative.Mentor || null;
         finalTitle = fields.Title;
       } else {
         const uuid = await generateInitiativeUID();
 
         // Auto-assign mentor based on ImpactedTeamOUID (pre-routing).
-        // A failure here must NOT block submission -- fall through with empty mentor fields.
+        // resolveAutoMentor never throws -- fall through with empty mentor on failure.
         const impactedTeamOUID = fields.ImpactedTeamOUID || '';
-        if (impactedTeamOUID) {
-          try {
-            const autoMentor = await getMentorForTeam(impactedTeamOUID);
-            if (autoMentor) {
-              fields.Mentor = { email: autoMentor.email, displayName: autoMentor.displayName };
-              fields.MentorEmail = autoMentor.email;
-            }
-          } catch (err) {
-            console.warn('[submitInitiative] getMentorForTeam failed, submitting without auto-assign', { impactedTeamOUID, err });
-          }
+        const autoMentor = await resolveAutoMentor(impactedTeamOUID);
+        if (autoMentor) {
+          fields.Mentor = { email: autoMentor.email, displayName: autoMentor.displayName };
+          fields.MentorEmail = autoMentor.email;
         }
 
+        // create() is the committing write for the NEW branch.
         await create({
           ...fields,
           UUID: uuid,
           SubmittedBy: identity,
           SubmittedByEmail: currentUser.get('email'),
         });
-        await createEvent(uuid, EVENT_TYPES.CREATION, '', STATUS.RASCUNHO);
-        if (userTouchedFinancials()) {
-          await createFinancials(uuid, collectFinancialFields());
+
+        // Post-create side-effects are best-effort: a failure here must not skip
+        // finalizeSubmission (the state is already committed as SUBMETIDO).
+        try {
+          await createEvent(uuid, EVENT_TYPES.CREATION, '', STATUS.RASCUNHO);
+        } catch (err) {
+          console.error('[submitInitiative] createEvent(CREATION) failed (non-fatal, state committed)', err);
         }
+        if (userTouchedFinancials()) {
+          let financialsSaved = false;
+          try {
+            await createFinancials(uuid, collectFinancialFields());
+            financialsSaved = true;
+          } catch (err) {
+            console.error('[submitInitiative] createFinancials failed (non-fatal, state committed)', err);
+          }
+          if (!financialsSaved) {
+            Toast.warning('Iniciativa submetida, mas os dados financeiros não foram guardados. Edite para completar.');
+          }
+        }
+
         finalUUID = uuid;
         finalMentorEmail = fields.MentorEmail || '';
         finalMentor = fields.Mentor || null;
         finalTitle = fields.Title;
       }
 
+      // finalizeSubmission is wrapped in runPostCommitEffects internally -- it never throws.
       await finalizeSubmission(
         {
           UUID: finalUUID,
@@ -574,7 +619,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
   // ===== FIELD COMPONENTS =====
 
   const titleInput = new FieldLabel('Título', new TextInput(titleField, { placeholder: 'Ex: Redução do tempo de...', isDisabled: baseFieldsLocked }), { class: 'pace-required' });
-  const descInput = new FieldLabel('Descrição do problema identificado', new TextArea(descriptionField, { placeholder: 'Descreva a situação actual', rows: 3, isDisabled: baseFieldsLocked }));
+  const descInput = new FieldLabel('Descrição do problema identificado', new TextArea(descriptionField, { placeholder: 'Descreva a situação actual', rows: 3, isDisabled: baseFieldsLocked }), { class: 'pace-required' });
   const teamCombo = new FieldLabel('Equipa', new ComboBox(teamField, teamOptions, { placeholder: 'Seleccionar...', isDisabled: baseFieldsLocked }), { class: 'pace-required' });
   const confidentialHelp = 'Uma iniciativa confidencial restringe a visibilidade à equipa de mentoria, ao gestor atribuído e a quem tenha acesso delegado.';
   const confidentialCb = new CheckBox(confidentialField, { title: confidentialHelp, isDisabled: baseFieldsLocked });
@@ -603,8 +648,8 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
   };
   confidentialField.subscribe(syncConfToggleClass);
   const teamRow = new Container([teamCombo, confidentialCheckInline], { class: 'pace-team-conf-row' });
-  const tagsCombo = new FieldLabel('Tags', createTagsToggle(tagsField, { isDisabled: baseFieldsLocked }));
-  const objectiveInput = new FieldLabel('Descrição da iniciativa de melhoria', new TextArea(objectiveField, { placeholder: 'Qual o objectivo esperado?', rows: 3, isDisabled: baseFieldsLocked }));
+  const tagsCombo = new FieldLabel('Tags', createTagsToggle(tagsField, { isDisabled: baseFieldsLocked }), { class: 'pace-required' });
+  const objectiveInput = new FieldLabel('Descrição da iniciativa de melhoria', new TextArea(objectiveField, { placeholder: 'Qual o objectivo esperado?', rows: 3, isDisabled: baseFieldsLocked }), { class: 'pace-required' });
 
   const isPostSubmission = isEdit && currentStatus !== STATUS.RASCUNHO;
   const isEmRevisao = isEdit && currentStatus === STATUS.EM_REVISAO && !asApprover;
@@ -709,6 +754,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
         { type: 'p', class: 'pace-step-intro' },
       ),
       new Container(sharedFinancial.components, { class: 'pace-shared-financial-fields' }),
+      new Text('É necessário adicionar pelo menos uma métrica de savings para submeter a iniciativa para validação.', { type: 'p', class: 'pace-step-intro' }),
       tabbedSection.container,
       inferredClassification.component,
     ], { class: 'pace-initiative-form' }),

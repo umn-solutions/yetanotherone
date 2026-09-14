@@ -15,7 +15,7 @@ import {
 import { getByStatusesAndGestor, getByUUIDs } from '../../utils/initiatives-api.js';
 import { filterVisibleInitiatives } from '../../utils/initiative-visibility.js';
 import { getSharedWithMe } from '../../utils/shared-api.js';
-import { STATUS, statusLabel, statusDescription, renderStatusCell } from '../../utils/status-helpers.js';
+import { STATUS, statusLabel, renderStatusCell } from '../../utils/status-helpers.js';
 import {
   ownerName,
   mentorName,
@@ -26,7 +26,7 @@ import { createSortableTable } from '../../utils/table-helpers.js';
 import { createPageLayout } from '../../utils/navbar.js';
 import { openInitiativeDetail } from '../../utils/side-panel-detail.js';
 import { getTeamOptions } from '../../utils/org-hierarchy-api.js';
-import { getTeamLabel, getTeamName } from '../../utils/roles.js';
+import { getTeamName } from '../../utils/roles.js';
 import { INITIATIVE_TAGS } from '../../utils/constants.js';
 import { createExportButton } from '../../utils/initiatives-export.js';
 
@@ -76,7 +76,7 @@ export default defineRoute((config) => {
 
   const sharedColumns = [
     { label: 'Iniciativa', sortAccessor: (i) => (i.Title || '').toLowerCase() },
-    { label: 'Equipa', sortAccessor: (i) => getTeamLabel(i.ImpactedTeamOUID) || '' },
+    { label: 'Equipa', sortAccessor: (i) => getTeamName(i.ImpactedTeamOUID) || '' },
     { label: 'Colaborador', sortAccessor: ownerName },
     { label: 'Mentor', sortAccessor: mentorName },
     { label: 'Estado', sortAccessor: (i) => statusLabel(i.Status) },
@@ -92,7 +92,7 @@ export default defineRoute((config) => {
     ], { class: 'pace-table-cell-stack' });
     return new Container([
       mergedCell,
-      new Text(getTeamLabel(item.ImpactedTeamOUID) || '', { type: 'span' }),
+      new Text(getTeamName(item.ImpactedTeamOUID) || '', { type: 'span' }),
       new Text(ownerName(item), { type: 'span' }),
       new Text(mentorName(item), { type: 'span' }),
       renderStatusCell(item),

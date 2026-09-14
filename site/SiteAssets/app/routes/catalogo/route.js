@@ -17,7 +17,6 @@ import { filterVisibleInitiatives } from '../../utils/initiative-visibility.js';
 import {
   STATUS,
   statusLabel,
-  statusDescription,
   renderStatusCell,
 } from '../../utils/status-helpers.js';
 import {
@@ -26,7 +25,7 @@ import {
   buildKpi,
 } from '../../utils/format-helpers.js';
 import { getTeamOptions } from '../../utils/org-hierarchy-api.js';
-import { getTeamLabel } from '../../utils/roles.js';
+import { getTeamName } from '../../utils/roles.js';
 import { INITIATIVE_TAGS } from '../../utils/constants.js';
 import { createSortableTable } from '../../utils/table-helpers.js';
 import { createPageLayout } from '../../utils/navbar.js';
@@ -68,7 +67,7 @@ export default defineRoute((config) => {
     { label: 'Iniciativa', sortAccessor: (i) => (i.Title || '').toLowerCase() },
     { label: 'Descrição', sortAccessor: (i) => (i.Description || '').toLowerCase() },
     { label: 'Colaborador', sortAccessor: ownerName },
-    { label: 'Equipa', sortAccessor: (i) => getTeamLabel(i.ImpactedTeamOUID) || '' },
+    { label: 'Equipa', sortAccessor: (i) => getTeamName(i.ImpactedTeamOUID) || '' },
     { label: 'Gestor', sortAccessor: gestorName },
   ];
 
@@ -80,7 +79,7 @@ export default defineRoute((config) => {
       }),
       new Text(item.Description || '---', { type: 'span', class: 'pace-table-description', title: item.Description || '---' }),
       new Text(ownerName(item), { type: 'span' }),
-      new Text(getTeamLabel(item.ImpactedTeamOUID) || '', { type: 'span' }),
+      new Text(getTeamName(item.ImpactedTeamOUID) || '', { type: 'span' }),
       new Text(gestorName(item), { type: 'span' }),
     ];
   }

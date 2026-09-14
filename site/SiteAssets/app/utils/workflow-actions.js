@@ -439,6 +439,25 @@ async function confirmWithUserComboBox(title, message) {
   }
 }
 
+// -- Post-commit side-effect isolation --
+
+/**
+ * Runs post-commit side-effects (audit events + notification emails) best-effort.
+ * The state change has ALREADY been committed by the time this runs, so a failure
+ * here must NOT propagate: it is logged and swallowed so the caller still reports
+ * success and runs onSuccess. NEVER wrap the committing write (transitionStatus/
+ * create/delete) itself in this -- only the events/emails that follow it.
+ * @param {string} label - subsystem tag for the log
+ * @param {() => Promise<void>} effects
+ */
+async function runPostCommitEffects(label, effects) {
+  try {
+    await effects();
+  } catch (err) {
+    console.error(`[${label}] post-commit side-effects failed (state already committed)`, err);
+  }
+}
+
 // -- Workflow actions --
 
 /**
@@ -452,33 +471,35 @@ async function confirmWithUserComboBox(title, message) {
  * @param {string} fromStatus - The status the record is leaving (SUBMISSION event source).
  */
 export async function finalizeSubmission(initiative, fromStatus) {
-  await createEvent(initiative.UUID, EVENT_TYPES.SUBMISSION, fromStatus, STATUS.SUBMETIDO);
-  const currentUser = ContextStore.get('currentUser');
-  const ownerName = initiative.SubmittedBy?.displayName || (currentUser && currentUser.get('displayName')) || '';
-  const dataHora = __dayjs().format('DD/MM/YYYY HH:mm');
-  await createEmail(EMAIL_EVENTS.SUBMITTED_OWNER, { initiative, ownerName, dataHora }).send();
-  if (initiative.MentorEmail) {
-    await createEmail(EMAIL_EVENTS.SUBMITTED_MENTOR, { initiative, ownerName, dataHora }).send();
-  }
-
-  // Notify the submitter's direct manager / team leader (one level up the org hierarchy).
-  // Guarded: a hierarchy lookup failure must not break the submission flow.
-  try {
-    const submitterId = currentUser && currentUser.get('employeeId');
-    const manager = submitterId ? await getManagerAbove(submitterId) : null;
-    if (manager && manager.email) {
-      await createEmail(EMAIL_EVENTS.SUBMITTED_MANAGER, {
-        initiative,
-        ownerName,
-        dataHora,
-        recipients: [{ email: manager.email, name: manager.name }],
-      }).send();
-    } else {
-      console.warn('[finalizeSubmission] no direct manager found for submitter', { submitterId });
+  await runPostCommitEffects('finalizeSubmission', async () => {
+    await createEvent(initiative.UUID, EVENT_TYPES.SUBMISSION, fromStatus, STATUS.SUBMETIDO);
+    const currentUser = ContextStore.get('currentUser');
+    const ownerName = initiative.SubmittedBy?.displayName || (currentUser && currentUser.get('displayName')) || '';
+    const dataHora = __dayjs().format('DD/MM/YYYY HH:mm');
+    await createEmail(EMAIL_EVENTS.SUBMITTED_OWNER, { initiative, ownerName, dataHora }).send();
+    if (initiative.MentorEmail) {
+      await createEmail(EMAIL_EVENTS.SUBMITTED_MENTOR, { initiative, ownerName, dataHora }).send();
     }
-  } catch (err) {
-    console.error('[finalizeSubmission] manager notification failed', err);
-  }
+
+    // Notify the submitter's direct manager / team leader (one level up the org hierarchy).
+    // Guarded: a hierarchy lookup failure must not break the submission flow.
+    try {
+      const submitterId = currentUser && currentUser.get('employeeId');
+      const manager = submitterId ? await getManagerAbove(submitterId) : null;
+      if (manager && manager.email) {
+        await createEmail(EMAIL_EVENTS.SUBMITTED_MANAGER, {
+          initiative,
+          ownerName,
+          dataHora,
+          recipients: [{ email: manager.email, name: manager.name }],
+        }).send();
+      } else {
+        console.warn('[finalizeSubmission] no direct manager found for submitter', { submitterId });
+      }
+    } catch (err) {
+      console.error('[finalizeSubmission] manager notification failed', err);
+    }
+  });
 }
 
 /**
@@ -534,8 +555,10 @@ export async function performResubmitTransition(initiative) {
   // No completeness gate on re-submit -- re-entry lands at the mentor stage, where
   // mentorSavingsValidation enforces metric completeness before advancing to the gestor.
   await transitionStatus(initiative.Id, target, initiative['odata.etag'], extraFields);
-  await createEvent(initiative.UUID, EVENT_TYPES.RESUBMISSION, STATUS.EM_REVISAO, target);
-  await createEmail(EMAIL_EVENTS.RESUBMITTED, { initiative }).send();
+  await runPostCommitEffects('performResubmitTransition', async () => {
+    await createEvent(initiative.UUID, EVENT_TYPES.RESUBMISSION, STATUS.EM_REVISAO, target);
+    await createEmail(EMAIL_EVENTS.RESUBMITTED, { initiative }).send();
+  });
 }
 
 /**
@@ -587,8 +610,10 @@ export async function cancelInitiative(initiative, button, onSuccess) {
   const loading = Toast.loading('A cancelar iniciativa...');
   try {
     await transitionStatus(initiative.Id, STATUS.CANCELADO, initiative['odata.etag']);
-    await createEvent(initiative.UUID, EVENT_TYPES.CANCELLATION, initiative.Status, STATUS.CANCELADO);
-    await createEmail(EMAIL_EVENTS.CANCELLED, { initiative }).send();
+    await runPostCommitEffects('cancelInitiative', async () => {
+      await createEvent(initiative.UUID, EVENT_TYPES.CANCELLATION, initiative.Status, STATUS.CANCELADO);
+      await createEmail(EMAIL_EVENTS.CANCELLED, { initiative }).send();
+    });
     loading.success('Iniciativa cancelada.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -664,10 +689,12 @@ export async function deleteInitiative(initiative, button, onSuccess) {
 
     // Post-delete notification sent to the actor (deleter) only, after the
     // cascade wipes existing Notification records for this initiative.
-    await createEmail(EMAIL_EVENTS.DELETED, {
-      initiative,
-      actor: { email: deleterEmail, name: deleterName },
-    }).send();
+    await runPostCommitEffects('deleteInitiative', async () => {
+      await createEmail(EMAIL_EVENTS.DELETED, {
+        initiative,
+        actor: { email: deleterEmail, name: deleterName },
+      }).send();
+    });
 
     loading.success('Iniciativa eliminada.');
     if (onSuccess) onSuccess();
@@ -701,8 +728,7 @@ export async function approveProject(initiative, button, onSuccess) {
     // Eficiencia saving = (asIs - toBe minutes) * factor / FTE_MINUTES_PER_YEAR * FTEAnnualCost.
     // Without FTEAnnualCost the saving computes to 0 and routing always drops to base manager.
     const financials = await getFinancials(initiative.UUID);
-    const enabledCats = Array.isArray(financials?.EnabledCategories) ? financials.EnabledCategories : [];
-    if (enabledCats.includes('eficiencia') && !(parseFloat(financials?.FTEAnnualCost) > 0)) {
+    if (isEficienciaFteMissing(financials)) {
       console.warn('[approveProject] blocked: eficiencia enabled but FTEAnnualCost unset', { uuid: initiative.UUID });
       loading.error('Defina o Custo Anual por FTE (necessário para calcular o saving de Eficiência Operacional) antes de aprovar o projecto.');
       return;
@@ -714,12 +740,14 @@ export async function approveProject(initiative, button, onSuccess) {
       Mentor: mentorIdentity,
       MentorEmail: user.get('email'),
     });
-    await createEvent(initiative.UUID, EVENT_TYPES.MENTOR_APPROVAL, STATUS.SUBMETIDO, STATUS.VALIDADO_MENTOR);
-    await createEmail(EMAIL_EVENTS.MENTOR_APPROVED, {
-      initiative,
-      mentorName: user.get('displayName'),
-      dataHora: __dayjs().format('DD/MM/YYYY HH:mm'),
-    }).send();
+    await runPostCommitEffects('approveProject', async () => {
+      await createEvent(initiative.UUID, EVENT_TYPES.MENTOR_APPROVAL, STATUS.SUBMETIDO, STATUS.VALIDADO_MENTOR);
+      await createEmail(EMAIL_EVENTS.MENTOR_APPROVED, {
+        initiative,
+        mentorName: user.get('displayName'),
+        dataHora: __dayjs().format('DD/MM/YYYY HH:mm'),
+      }).send();
+    });
     loading.success('Projecto aprovado.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -757,12 +785,14 @@ export async function rejectInitiative(initiative, button, onSuccess) {
   const loading = Toast.loading('A rejeitar iniciativa...');
   try {
     await transitionStatus(initiative.Id, STATUS.REJEITADO, initiative['odata.etag']);
-    await createEvent(initiative.UUID, eventType, currentStatus, STATUS.REJEITADO, comment);
-    await createEmail(EMAIL_EVENTS.REJECTED, {
-      initiative,
-      reason: comment,
-      actorName: ContextStore.get('currentUser').get('displayName'),
-    }).send();
+    await runPostCommitEffects('rejectInitiative', async () => {
+      await createEvent(initiative.UUID, eventType, currentStatus, STATUS.REJEITADO, comment);
+      await createEmail(EMAIL_EVENTS.REJECTED, {
+        initiative,
+        reason: comment,
+        actorName: ContextStore.get('currentUser').get('displayName'),
+      }).send();
+    });
     loading.success('Iniciativa rejeitada.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -806,12 +836,14 @@ export async function requestRevision(initiative, button, onSuccess) {
     await transitionStatus(initiative.Id, STATUS.EM_REVISAO, initiative['odata.etag'], {
       PreviousStatus: previousStatus,
     });
-    await createEvent(initiative.UUID, EVENT_TYPES.REVIEW_REQUEST, currentStatus, STATUS.EM_REVISAO, comment);
-    await createEmail(EMAIL_EVENTS.REVISION_REQUESTED, {
-      initiative,
-      reason: comment,
-      actorName: ContextStore.get('currentUser').get('displayName'),
-    }).send();
+    await runPostCommitEffects('requestRevision', async () => {
+      await createEvent(initiative.UUID, EVENT_TYPES.REVIEW_REQUEST, currentStatus, STATUS.EM_REVISAO, comment);
+      await createEmail(EMAIL_EVENTS.REVISION_REQUESTED, {
+        initiative,
+        reason: comment,
+        actorName: ContextStore.get('currentUser').get('displayName'),
+      }).send();
+    });
     loading.success('Pedido de revisão enviado.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -843,8 +875,10 @@ export async function startExecution(initiative, button, onSuccess) {
     await transitionStatus(initiative.Id, STATUS.EM_EXECUCAO, initiative['odata.etag'], {
       ExpectedEndDate: expectedEndDate,
     });
-    await createEvent(initiative.UUID, EVENT_TYPES.EXECUTION_START, STATUS.VALIDADO_MENTOR, STATUS.EM_EXECUCAO);
-    await createEmail(EMAIL_EVENTS.EXECUTION_STARTED, { initiative }).send();
+    await runPostCommitEffects('startExecution', async () => {
+      await createEvent(initiative.UUID, EVENT_TYPES.EXECUTION_START, STATUS.VALIDADO_MENTOR, STATUS.EM_EXECUCAO);
+      await createEmail(EMAIL_EVENTS.EXECUTION_STARTED, { initiative }).send();
+    });
     loading.success('Execução iniciada.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -877,8 +911,10 @@ export async function declareSavings(initiative, button, onSuccess) {
     // No completeness gate here -- metric completeness is enforced only at the
     // mentor validation step (mentorSavingsValidation), before advancing to the gestor.
     await transitionStatus(initiative.Id, STATUS.EM_VALIDACAO_MENTOR, initiative['odata.etag'], {});
-    await createEvent(initiative.UUID, EVENT_TYPES.SAVINGS_SUBMISSION, STATUS.EM_EXECUCAO, STATUS.EM_VALIDACAO_MENTOR);
-    await createEmail(EMAIL_EVENTS.MENTOR_VALIDATION_REQUESTED, { initiative }).send();
+    await runPostCommitEffects('declareSavings', async () => {
+      await createEvent(initiative.UUID, EVENT_TYPES.SAVINGS_SUBMISSION, STATUS.EM_EXECUCAO, STATUS.EM_VALIDACAO_MENTOR);
+      await createEmail(EMAIL_EVENTS.MENTOR_VALIDATION_REQUESTED, { initiative }).send();
+    });
     loading.success('Pedido de validação enviado.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -908,20 +944,21 @@ export async function approveSavings(initiative, button, onSuccess) {
   const loading = Toast.loading('A aprovar savings...');
   try {
     await transitionStatus(initiative.Id, STATUS.EM_VALIDACAO_MM, initiative['odata.etag']);
-    await createEvent(initiative.UUID, EVENT_TYPES.BUSINESS_VALIDATION, STATUS.EM_VALIDACAO_GESTOR, STATUS.EM_VALIDACAO_MM);
-
     const actorEmail = ContextStore.get('currentUser').get('email');
-    let recipients = [];
-    try {
-      const mentorManagers = await getMentorManagers();
-      if (mentorManagers.length === 0) {
-        console.warn('[approveSavings] no mentor-manager recipients resolved for SAVINGS_APPROVED', { uuid: initiative.UUID });
+    await runPostCommitEffects('approveSavings', async () => {
+      await createEvent(initiative.UUID, EVENT_TYPES.BUSINESS_VALIDATION, STATUS.EM_VALIDACAO_GESTOR, STATUS.EM_VALIDACAO_MM);
+      let recipients = [];
+      try {
+        const mentorManagers = await getMentorManagers();
+        if (mentorManagers.length === 0) {
+          console.warn('[approveSavings] no mentor-manager recipients resolved for SAVINGS_APPROVED', { uuid: initiative.UUID });
+        }
+        recipients = mentorManagers.map((m) => ({ email: m.email, name: m.displayName }));
+      } catch (err) {
+        console.error('[approveSavings] getMentorManagers failed', err);
       }
-      recipients = mentorManagers.map((m) => ({ email: m.email, name: m.displayName }));
-    } catch (err) {
-      console.error('[approveSavings] getMentorManagers failed', err);
-    }
-    await createEmail(EMAIL_EVENTS.SAVINGS_APPROVED, { initiative, recipients, excludeEmail: actorEmail }).send();
+      await createEmail(EMAIL_EVENTS.SAVINGS_APPROVED, { initiative, recipients, excludeEmail: actorEmail }).send();
+    });
     loading.success('Savings aprovados.');
     if (onSuccess) onSuccess();
   } catch (error) {
@@ -963,6 +1000,61 @@ function assertBaseFieldsComplete(initiative) {
 }
 
 /**
+ * True when the eficiencia metric is enabled but no FTE annual cost is set.
+ * Shared business rule: the eficiencia saving multiplies FTEAnnualCost, so
+ * without it the saving computes to 0 and gestor routing is meaningless.
+ * Used by both the mentor completeness gate and the project-approval gate.
+ * @param {object|null} financials - auto-parsed financials row
+ * @returns {boolean}
+ */
+export function isEficienciaFteMissing(financials) {
+  const enabledCats = Array.isArray(financials?.EnabledCategories) ? financials.EnabledCategories : [];
+  return enabledCats.includes('eficiencia') && !(parseFloat(financials?.FTEAnnualCost) > 0);
+}
+
+/**
+ * Mentor-step completeness gate: throws SystemError (breaksFlow:false) if the
+ * initiative is not ready to advance EM_VALIDACAO_MENTOR -> EM_VALIDACAO_GESTOR.
+ * Pure/synchronous -- no I/O, no UI. Exported so it can be unit-tested in isolation.
+ * Order matters: base fields, then metric-selected, then per-metric completeness,
+ * then eficiencia FTE. Mirrors the sequence previously inlined in mentorSavingsValidation.
+ * @param {object} initiative - auto-parsed initiative record
+ * @param {object|null} financials - auto-parsed financials row (may be null)
+ * @throws {SystemError} name 'IncompleteFields' | 'IncompleteFinancials'
+ */
+export function assertMentorSavingsComplete(initiative, financials) {
+  // Step 1: base descriptive fields (problema, iniciativa, tags) must be filled.
+  assertBaseFieldsComplete(initiative);
+
+  // Step 2: at least one saving metric must be selected before advancing to gestor.
+  // assertToBeComplete returns early when financials is null or EnabledCategories is
+  // empty, so this check must come first to close that loophole.
+  if (!financials || !Array.isArray(financials.EnabledCategories) || financials.EnabledCategories.length === 0) {
+    console.warn('[mentorSavingsValidation] blocked: no saving metric selected', { uuid: initiative.UUID });
+    throw new SystemError(
+      'IncompleteFinancials',
+      'Selecione pelo menos uma métrica de savings antes de encaminhar para o gestor.',
+      { breaksFlow: false },
+    );
+  }
+
+  // Step 3: every selected metric must have all its fields filled (As-Is + To-Be, or
+  // description text for qualidade) before the mentor advances the savings to the gestor.
+  assertToBeComplete(financials);
+
+  // Step 4: if eficiencia is enabled, FTEAnnualCost must be set (shared rule, mirrors approveProject).
+  // Without it the eficiencia saving computes to 0 and routing is meaningless.
+  if (isEficienciaFteMissing(financials)) {
+    console.warn('[mentorSavingsValidation] blocked: eficiencia enabled but FTEAnnualCost unset', { uuid: initiative.UUID });
+    throw new SystemError(
+      'IncompleteFinancials',
+      'Defina o Custo Anual por FTE (necessário para calcular o saving de Eficiência Operacional) antes de pedir validação.',
+      { breaksFlow: false },
+    );
+  }
+}
+
+/**
  * Mentor savings validation: EM_VALIDACAO_MENTOR -> EM_VALIDACAO_GESTOR.
  * Routes and assigns the gestor here (moved from declareSavings).
  * Logs the MENTOR_FINAL_VALIDATION event and notifies the routed gestor.
@@ -997,36 +1089,9 @@ export async function mentorSavingsValidation(initiative, button, onSuccess) {
       );
     }
 
-    // Gate: base descriptive fields (problema, iniciativa, tags) must be filled.
-    assertBaseFieldsComplete(initiative);
-
-    // Gate: at least one saving metric must be selected before advancing to gestor.
-    // assertToBeComplete returns early when financials is null or EnabledCategories is
-    // empty, so this check must come first to close that loophole.
-    if (!financials || !Array.isArray(financials.EnabledCategories) || financials.EnabledCategories.length === 0) {
-      console.warn('[mentorSavingsValidation] blocked: no saving metric selected', { uuid: initiative.UUID });
-      throw new SystemError(
-        'IncompleteFinancials',
-        'Selecione pelo menos uma métrica de savings antes de encaminhar para o gestor.',
-        { breaksFlow: false },
-      );
-    }
-
-    // Gate: every selected metric must have all its fields filled (As-Is + To-Be, or
-    // description text for qualidade) before the mentor advances the savings to the gestor.
-    assertToBeComplete(financials);
-
-    // Gate: if eficiencia is enabled, FTEAnnualCost must be set (mirrors approveProject gate).
-    // Without it the eficiencia saving computes to 0 and routing is meaningless.
-    const enabledCats = Array.isArray(financials?.EnabledCategories) ? financials.EnabledCategories : [];
-    if (enabledCats.includes('eficiencia') && !(parseFloat(financials?.FTEAnnualCost) > 0)) {
-      console.warn('[mentorSavingsValidation] blocked: eficiencia enabled but FTEAnnualCost unset', { uuid: initiative.UUID });
-      throw new SystemError(
-        'IncompleteFinancials',
-        'Defina o Custo Anual por FTE (necessário para calcular o saving de Eficiência Operacional) antes de pedir validação.',
-        { breaksFlow: false },
-      );
-    }
+    // Completeness gate: all four checks in one call (base fields, metric-selected,
+    // per-metric To-Be, eficiencia FTE). Pure/synchronous -- throws SystemError on failure.
+    assertMentorSavingsComplete(initiative, financials);
 
     const savingType = financials?.SavingType || deriveSavingType(financials?.SavingCategory);
     const annualVal = computeAnnualizedToBeTotalEur(financials);
@@ -1058,8 +1123,10 @@ export async function mentorSavingsValidation(initiative, button, onSuccess) {
     }
 
     await transitionStatus(initiative.Id, STATUS.EM_VALIDACAO_GESTOR, initiative['odata.etag'], extraFields);
-    await createEvent(initiative.UUID, EVENT_TYPES.MENTOR_FINAL_VALIDATION, STATUS.EM_VALIDACAO_MENTOR, STATUS.EM_VALIDACAO_GESTOR);
-    await createEmail(EMAIL_EVENTS.SAVINGS_VALIDATION_REQUESTED, { initiative, gestor }).send();
+    await runPostCommitEffects('mentorSavingsValidation', async () => {
+      await createEvent(initiative.UUID, EVENT_TYPES.MENTOR_FINAL_VALIDATION, STATUS.EM_VALIDACAO_MENTOR, STATUS.EM_VALIDACAO_GESTOR);
+      await createEmail(EMAIL_EVENTS.SAVINGS_VALIDATION_REQUESTED, { initiative, gestor }).send();
+    });
 
     loading.success('Savings validados. Iniciativa encaminhada para aprovação do gestor.');
     if (onSuccess) onSuccess();
@@ -1118,27 +1185,28 @@ export async function mentorManagerValidation(initiative, button, onSuccess) {
       FinalValidationLabel: validationLabel,
     });
 
-    await createEvent(
-      initiative.UUID,
-      EVENT_TYPES.MENTOR_MANAGER_VALIDATION,
-      STATUS.EM_VALIDACAO_MM,
-      STATUS.IMPLEMENTADO,
-      '',
-      { ValidationLabel: validationLabel },
-    );
-    await createEvent(initiative.UUID, EVENT_TYPES.OWNER_IMPLEMENTATION, STATUS.EM_VALIDACAO_MM, STATUS.IMPLEMENTADO);
-
     const currentUser = ContextStore.get('currentUser');
     const actorEmail = currentUser.get('email');
-    // The mentor-manager who validated the implementation is the acting user
-    // (validar_implementacao_final is mentor-manager only).
-    await createEmail(EMAIL_EVENTS.IMPLEMENTED, {
-      initiative,
-      financials,
-      implementedDate: __dayjs(pickedDate).format('DD/MM/YYYY'),
-      mentorManagerName: currentUser.get('displayName'),
-      excludeEmail: actorEmail,
-    }).send();
+    await runPostCommitEffects('mentorManagerValidation', async () => {
+      await createEvent(
+        initiative.UUID,
+        EVENT_TYPES.MENTOR_MANAGER_VALIDATION,
+        STATUS.EM_VALIDACAO_MM,
+        STATUS.IMPLEMENTADO,
+        '',
+        { ValidationLabel: validationLabel },
+      );
+      await createEvent(initiative.UUID, EVENT_TYPES.OWNER_IMPLEMENTATION, STATUS.EM_VALIDACAO_MM, STATUS.IMPLEMENTADO);
+      // The mentor-manager who validated the implementation is the acting user
+      // (validar_implementacao_final is mentor-manager only).
+      await createEmail(EMAIL_EVENTS.IMPLEMENTED, {
+        initiative,
+        financials,
+        implementedDate: __dayjs(pickedDate).format('DD/MM/YYYY'),
+        mentorManagerName: currentUser.get('displayName'),
+        excludeEmail: actorEmail,
+      }).send();
+    });
 
     loading.success('Iniciativa implementada.');
     if (onSuccess) onSuccess();
@@ -1178,17 +1246,17 @@ export async function transferGestor(initiative, button, onSuccess) {
       GestorValidatorEmail: newIdentity.email,
     }, initiative['odata.etag']);
 
-    await createEvent(initiative.UUID, EVENT_TYPES.TRANSFER, STATUS.EM_VALIDACAO_GESTOR, STATUS.EM_VALIDACAO_GESTOR, transferComment);
-
-    // Notify new gestor
-    await createEmail(EMAIL_EVENTS.GESTOR_TRANSFERRED, {
-      initiative,
-      recipients: { email: newIdentity.email, name: newIdentity.displayName },
-      actorName: ContextStore.get('currentUser').get('displayName'),
-    }).send();
-
-    // Notify initiative owner
-    await createEmail(EMAIL_EVENTS.GESTOR_CHANGED, { initiative }).send();
+    await runPostCommitEffects('transferGestor', async () => {
+      await createEvent(initiative.UUID, EVENT_TYPES.TRANSFER, STATUS.EM_VALIDACAO_GESTOR, STATUS.EM_VALIDACAO_GESTOR, transferComment);
+      // Notify new gestor
+      await createEmail(EMAIL_EVENTS.GESTOR_TRANSFERRED, {
+        initiative,
+        recipients: { email: newIdentity.email, name: newIdentity.displayName },
+        actorName: ContextStore.get('currentUser').get('displayName'),
+      }).send();
+      // Notify initiative owner
+      await createEmail(EMAIL_EVENTS.GESTOR_CHANGED, { initiative, newGestorName: newIdentity.displayName }).send();
+    });
 
     loading.success('Iniciativa transferida com sucesso.');
     if (onSuccess) onSuccess();
@@ -1231,17 +1299,17 @@ export async function transferOwnership(initiative, button, onSuccess) {
       OwnerTeamOUID: newOwnerTeamOUID,
     }, initiative['odata.etag']);
 
-    await createEvent(initiative.UUID, EVENT_TYPES.TRANSFER, initiative.Status, initiative.Status, transferComment);
-
-    // Notify new owner
-    await createEmail(EMAIL_EVENTS.OWNERSHIP_TRANSFERRED, {
-      initiative,
-      recipients: { email: newIdentity.email, name: newIdentity.displayName },
-      actorName: ContextStore.get('currentUser').get('displayName'),
-    }).send();
-
-    // Notify mentor if exists
-    await createEmail(EMAIL_EVENTS.OWNER_CHANGED, { initiative }).send();
+    await runPostCommitEffects('transferOwnership', async () => {
+      await createEvent(initiative.UUID, EVENT_TYPES.TRANSFER, initiative.Status, initiative.Status, transferComment);
+      // Notify new owner
+      await createEmail(EMAIL_EVENTS.OWNERSHIP_TRANSFERRED, {
+        initiative,
+        recipients: { email: newIdentity.email, name: newIdentity.displayName },
+        actorName: ContextStore.get('currentUser').get('displayName'),
+      }).send();
+      // Notify mentor if exists
+      await createEmail(EMAIL_EVENTS.OWNER_CHANGED, { initiative, newOwnerName: newIdentity.displayName }).send();
+    });
 
     loading.success('Iniciativa transferida com sucesso.');
     if (onSuccess) onSuccess();
@@ -1299,24 +1367,25 @@ export async function reassignRole({ role, initiative, button, onSuccess }) {
   const loading = Toast.loading(`A alterar ${roleLabel.toLowerCase()}...`);
   try {
     await update(initiative.Id, fields, initiative['odata.etag']);
-    await createEvent(initiative.UUID, EVENT_TYPES.TRANSFER, initiative.Status, initiative.Status, comment);
-
-    // Gestor reassignment notifies owner (GESTOR_CHANGED) + new gestor (GESTOR_TRANSFERRED).
-    // Mentor reassignment notifies the new mentor (MENTOR_ASSIGNED).
-    if (isMentor) {
-      await createEmail(EMAIL_EVENTS.MENTOR_ASSIGNED, {
-        initiative,
-        recipients: { email: newIdentity.email, name: newIdentity.displayName },
-        actorName: ContextStore.get('currentUser').get('displayName'),
-      }).send();
-    } else {
-      await createEmail(EMAIL_EVENTS.GESTOR_CHANGED, { initiative }).send();
-      await createEmail(EMAIL_EVENTS.GESTOR_TRANSFERRED, {
-        initiative,
-        recipients: { email: newIdentity.email, name: newIdentity.displayName },
-        actorName: ContextStore.get('currentUser').get('displayName'),
-      }).send();
-    }
+    await runPostCommitEffects('reassignRole', async () => {
+      await createEvent(initiative.UUID, EVENT_TYPES.TRANSFER, initiative.Status, initiative.Status, comment);
+      // Gestor reassignment notifies owner (GESTOR_CHANGED) + new gestor (GESTOR_TRANSFERRED).
+      // Mentor reassignment notifies the new mentor (MENTOR_ASSIGNED).
+      if (isMentor) {
+        await createEmail(EMAIL_EVENTS.MENTOR_ASSIGNED, {
+          initiative,
+          recipients: { email: newIdentity.email, name: newIdentity.displayName },
+          actorName: ContextStore.get('currentUser').get('displayName'),
+        }).send();
+      } else {
+        await createEmail(EMAIL_EVENTS.GESTOR_CHANGED, { initiative, newGestorName: newIdentity.displayName }).send();
+        await createEmail(EMAIL_EVENTS.GESTOR_TRANSFERRED, {
+          initiative,
+          recipients: { email: newIdentity.email, name: newIdentity.displayName },
+          actorName: ContextStore.get('currentUser').get('displayName'),
+        }).send();
+      }
+    });
 
     loading.success(`${roleLabel} alterado com sucesso.`);
     if (onSuccess) onSuccess();
@@ -1344,11 +1413,13 @@ async function addAccessFlow(initiative) {
     const user = ContextStore.get('currentUser');
     const sharedBy = new UserIdentity(user.get('email'), user.get('displayName'));
     await shareInitiative(initiative.UUID, result.person, sharedBy, result.type);
-    await createEmail(EMAIL_EVENTS.ACCESS_GRANTED, {
-      initiative,
-      recipients: { email: result.person.email, name: result.person.displayName },
-      actorName: user.get('displayName'),
-    }).send();
+    await runPostCommitEffects('addAccessFlow', async () => {
+      await createEmail(EMAIL_EVENTS.ACCESS_GRANTED, {
+        initiative,
+        recipients: { email: result.person.email, name: result.person.displayName },
+        actorName: user.get('displayName'),
+      }).send();
+    });
     loading.success('Acesso concedido.');
     return true;
   } catch (error) {
@@ -1372,11 +1443,13 @@ function buildAccessRow(initiative, record, onRemoved) {
       try {
         await revokeAccess(record.Id, record['odata.etag'] || '*');
         const user = ContextStore.get('currentUser');
-        await createEmail(EMAIL_EVENTS.ACCESS_REVOKED, {
-          initiative,
-          recipients: { email: record.SharedWithEmail, name: identity?.displayName || '' },
-          actorName: user.get('displayName'),
-        }).send();
+        await runPostCommitEffects('revokeAccessFlow', async () => {
+          await createEmail(EMAIL_EVENTS.ACCESS_REVOKED, {
+            initiative,
+            recipients: { email: record.SharedWithEmail, name: identity?.displayName || '' },
+            actorName: user.get('displayName'),
+          }).send();
+        });
         loading.success('Acesso removido.');
         onRemoved(record);
       } catch (error) {

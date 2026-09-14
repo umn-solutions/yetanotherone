@@ -19,6 +19,18 @@ const CATEGORY_RANK = {
 };
 
 /**
+ * Comparator: orders OrgHierarchy members by Category rank ascending
+ * (EXECUTIVE first). Unknown categories sort last. Shared by getGestorMap
+ * and deriveRoles so "the OU head" has a single definition.
+ * @param {Object} a
+ * @param {Object} b
+ * @returns {number}
+ */
+function compareByCategoryRank(a, b) {
+  return (CATEGORY_RANK[a.Category] ?? Infinity) - (CATEGORY_RANK[b.Category] ?? Infinity);
+}
+
+/**
  * Imports organizational hierarchy from CSV string or XLSX binary.
  * Full refresh: deletes all existing items and recreates from file.
  *
@@ -265,7 +277,13 @@ export function deriveRoles(employee, allEmployees) {
   // Requires the full employees list to identify the head; skip when not provided.
   if (allEmployees && allEmployees.length > 0 && MENTOR_OUIDS.length > 0) {
     const mentorOUID = MENTOR_OUIDS[0];
-    const ouMembers = allEmployees.filter(e => e.OUID === mentorOUID);
+    // Rank by Category before picking the head: pickTeamHead returns ouMembers[0],
+    // so the list MUST be sorted first (same rule as getGestorMap). An unsorted
+    // filter returns list/ID order and would derive the wrong member as mentor-manager.
+    const ouMembers = allEmployees
+      .filter(e => e.OUID === mentorOUID)
+      .slice()
+      .sort(compareByCategoryRank);
     const head = pickTeamHead(ouMembers);
     if (head && head.Title === employee.Title) {
       return ['mentor-manager', 'mentor'];
@@ -333,9 +351,7 @@ export async function getGestorMap() {
   const byOUID = new Map();
   const gestorMap = {};
   for (const [code, members] of byOUIDRaw) {
-    const sorted = members.slice().sort(
-      (a, b) => (CATEGORY_RANK[a.Category] ?? Infinity) - (CATEGORY_RANK[b.Category] ?? Infinity)
-    );
+    const sorted = members.slice().sort(compareByCategoryRank);
     byOUID.set(code, sorted);
     const best = sorted[0];
     if (best) gestorMap[code] = { email: best.Email, displayName: best.ShortName };

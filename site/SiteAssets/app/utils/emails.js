@@ -16,32 +16,9 @@
 import { sendEmail, escapeHtml, SystemError } from '../libs/nofbiz/nofbiz.base.js';
 import { createNotificationRecord } from './notifications-api.js';
 import { buildFinancialFields } from './initiatives-export.js';
-import { computeAnnualizedToBeTotalEur, formatEur } from './financial-forms.js';
-import { emailEquals } from './email-helpers.js';
+import { computeAnnualizedToBeTotalEur, formatEur, eficienciaMinutesToEur } from './financial-forms.js';
+import { emailEquals, normalizeEmail } from './email-helpers.js';
 import { CATEGORY_KEYS, CATEGORY_LABELS, annualSavingColName } from './constants.js';
-
-/**
- * Maps raw buildFinancialFields keys to the labels used on the financial form,
- * so the IMPLEMENTED email table reads like the form the user filled in.
- * Only the top-level keys are remapped; per-category input columns already
- * carry Portuguese labels from the builder. Keys absent here pass through
- * unchanged (via finFieldLabel). This is email-only -- the CSV export keeps
- * the raw keys as its column headers.
- */
-const FIN_FIELD_LABELS = {
-  TimePeriod: 'Período de Medição',
-  SavingType: 'Classificação do Saving',
-  SavingCategory: 'Categorias',
-  FTEAnnualCost: 'Custo Anual por FTE (€)',
-};
-for (const key of CATEGORY_KEYS) {
-  FIN_FIELD_LABELS[annualSavingColName(key)] = `${CATEGORY_LABELS[key]}: Saving Realizado (Anual)`;
-}
-
-/** Resolves a financial field key to its form label, or the key itself. */
-function finFieldLabel(key) {
-  return FIN_FIELD_LABELS[key] || key;
-}
 
 /**
  * Coerces any value to a safe display string that can never produce "[object Object]".
@@ -169,8 +146,9 @@ function normalizeRecipients(to, excludeEmail) {
     const r = (typeof entry === 'string') ? { email: entry, name: '' } : entry;
     if (!r.email) continue;
     if (excludeEmail && emailEquals(r.email, excludeEmail)) continue;
-    if (seen.has(r.email)) continue;
-    seen.add(r.email);
+    const key = normalizeEmail(r.email);
+    if (seen.has(key)) continue;
+    seen.add(key);
     out.push({ email: r.email, name: safeText(r.name) });
   }
   return out;
@@ -293,20 +271,28 @@ const EMAIL_TEMPLATES = {
       ? [{ email: ctx.initiative.MentorEmail, name: ctx.initiative.Mentor?.displayName || '' }]
       : [],
     notificationTitle: (ctx) => `${safeText(ctx.initiative?.Title)} requer validação de savings pelo mentor.`,
-    subject: () => 'PLACE — Validação de savings pendente (Mentor)',
+    subject: (ctx) => `PLACE — Validação de savings pendente (Mentor) - ${safeText(ctx.initiative?.UUID)}`,
     intro: (ctx) => {
       const T = esc(ctx.initiative?.Title);
-      return `A iniciativa "<b>${T}</b>" requer a sua validação de savings como mentor responsável.`;
+      const ownerName = esc(ctx.ownerName || ctx.initiative?.SubmittedBy?.displayName);
+      return `Informo que a iniciativa "<b>${T}</b>" encontra-se concluída e aguarda a sua validação de savings enquanto mentor responsável.`
+        + `<br><br>- <b>Iniciativa:</b> ${T}`
+        + `<br>- <b>Responsável pela execução:</b> ${ownerName}`
+        + `<br><br>A validação é necessária para dar a ação como concluída.`;
     },
   },
   [EMAIL_EVENTS.SAVINGS_VALIDATION_REQUESTED]: {
     type: NOTIFICATION_TYPE.STATE_CHANGE,
     to: (ctx) => ctx.gestor ? [{ email: ctx.gestor.email, name: ctx.gestor.displayName || '' }] : [],
     notificationTitle: (ctx) => `${safeText(ctx.initiative?.Title)} requer validação de savings.`,
-    subject: () => 'PLACE — Validação de savings pendente',
+    subject: (ctx) => `PLACE — Validação de savings pendente - ${safeText(ctx.initiative?.UUID)}`,
     intro: (ctx) => {
       const T = esc(ctx.initiative?.Title);
-      return `A iniciativa "<b>${T}</b>" requer a sua validação de savings.`;
+      const ownerName = esc(ctx.ownerName || ctx.initiative?.SubmittedBy?.displayName);
+      return `Informo que a iniciativa "<b>${T}</b>" encontra-se concluída e aguarda a sua validação de savings enquanto gestor responsável.`
+        + `<br><br>- <b>Iniciativa:</b> ${T}`
+        + `<br>- <b>Responsável pela execução:</b> ${ownerName}`
+        + `<br><br>A validação é necessária para dar a ação como concluída.`;
     },
   },
   [EMAIL_EVENTS.CANCELLED]: {
@@ -326,13 +312,13 @@ const EMAIL_TEMPLATES = {
   [EMAIL_EVENTS.DELETED]: {
     type: NOTIFICATION_TYPE.STATE_CHANGE,
     to: (ctx) => ctx.actor?.email ? [{ email: ctx.actor.email, name: ctx.actor.name || '' }] : [],
-    subject: (ctx) => `Eliminação da Iniciativa - ${safeText(ctx.initiative?.UUID)}`,
+    subject: (ctx) => `Eliminação da Iniciativa - ${safeText(ctx.initiative?.Title)}`,
     notificationTitle: (ctx) => `Eliminou a iniciativa ${safeText(ctx.initiative?.Title)}.`,
     intro: (ctx) => {
       const UUID = esc(ctx.initiative?.UUID);
       const T = esc(ctx.initiative?.Title);
       const ownerName = esc(ctx.initiative?.SubmittedBy?.displayName);
-      return `Informo que a seguinte iniciativa foi eliminada da aplicação PLACE.<br>Iniciativa: <b>${UUID}</b> - ${T}<br>Responsável: ${ownerName}`;
+      return `Informo que a seguinte iniciativa foi eliminada da aplicação PLACE.<br>Iniciativa: <b>${T}</b> - ${UUID}<br>Responsável: ${ownerName}`;
     },
   },
   [EMAIL_EVENTS.MENTOR_APPROVED]: {
@@ -384,10 +370,15 @@ const EMAIL_TEMPLATES = {
     type: NOTIFICATION_TYPE.STATE_CHANGE,
     to: (ctx) => [{ email: ctx.initiative?.MentorEmail, name: ctx.initiative?.Mentor?.displayName || '' }],
     notificationTitle: (ctx) => `${safeText(ctx.initiative?.Title)} iniciou execução.`,
-    subject: () => 'PLACE — Execução iniciada',
+    subject: (ctx) => `PLACE — Execução iniciada - ${safeText(ctx.initiative?.Title)}`,
     intro: (ctx) => {
+      const UUID = esc(ctx.initiative?.UUID);
       const T = esc(ctx.initiative?.Title);
-      return `A iniciativa "<b>${T}</b>" iniciou execução.`;
+      const ownerName = esc(ctx.ownerName || ctx.initiative?.SubmittedBy?.displayName);
+      return `Informo que a iniciativa abaixo, já se encontra em execução:`
+        + `<br><br>- <b>Pedido Nº:</b> ${UUID}`
+        + `<br>- <b>Iniciativa:</b> ${T}`
+        + `<br>- <b>Responsável:</b> ${ownerName}`;
     },
   },
   [EMAIL_EVENTS.SAVINGS_APPROVED]: {
@@ -397,7 +388,10 @@ const EMAIL_TEMPLATES = {
     subject: () => 'PLACE — Savings aprovados',
     intro: (ctx) => {
       const T = esc(ctx.initiative?.Title);
-      return `Os savings da iniciativa "<b>${T}</b>" foram aprovados. Confirmação final pendente.`;
+      const ownerName = esc(ctx.ownerName || ctx.initiative?.SubmittedBy?.displayName);
+      return `Os savings da iniciativa "<b>${T}</b>" foram aprovados. Confirmação final pendente.`
+        + `<br><br>- <b>Iniciativa:</b> ${T}`
+        + `<br>- <b>Responsável pela execução:</b> ${ownerName}`;
     },
   },
   [EMAIL_EVENTS.IMPLEMENTED]: {
@@ -429,41 +423,29 @@ const EMAIL_TEMPLATES = {
         return opening + `<br><br><i>Sem dados financeiros registados.</i><br><br>` + closing;
       }
 
-      let tableHtml = '';
+      let summaryHtml = '';
       try {
-        // isPrivileged = true: the IMPLEMENTED email goes to owner/mentor/gestor, all privileged
-        const fields = buildFinancialFields(fin, { detailed: true, isPrivileged: true });
+        const fields = buildFinancialFields(fin, { detailed: false });
         const totalEur = computeAnnualizedToBeTotalEur(fin);
-        const rows = Object.entries(fields)
-          .filter(([, v]) => v !== '' && v !== null && v !== undefined && v !== 0)
-          .map(([label, value]) => {
-            return `<tr>`
-              + `<td style="padding:4px 8px;border-bottom:1px solid #e4e7eb;color:#1f2933;">${esc(finFieldLabel(label))}</td>`
-              + `<td style="padding:4px 8px;border-bottom:1px solid #e4e7eb;color:#1f2933;text-align:right;">${esc(value)}</td>`
-              + `</tr>`;
+        const bullets = CATEGORY_KEYS
+          .map((key) => {
+            const raw = Number(fields[annualSavingColName(key)]) || 0;
+            const value = key === 'eficiencia'
+              ? eficienciaMinutesToEur(raw, fin.FTEAnnualCost)
+              : raw;
+            return { label: CATEGORY_LABELS[key], value };
           })
+          .filter((s) => s.value !== 0)
+          .map((s) => `<br>- <b>${esc(s.label)}:</b> ${escapeHtml(formatEur(s.value))}`)
           .join('');
-        const totalRow = `<tr style="background:#f3f9f4;">`
-          + `<td style="padding:6px 8px;font-weight:bold;color:#2e7d32;">Total Anualizado</td>`
-          + `<td style="padding:6px 8px;font-weight:bold;color:#2e7d32;text-align:right;">${escapeHtml(formatEur(totalEur))}</td>`
-          + `</tr>`;
-        tableHtml = `<br><br>`
-          + `<table style="border-collapse:collapse;width:100%;max-width:560px;font-family:Segoe UI,Arial,sans-serif;font-size:13px;">`
-          + `<thead>`
-          + `<tr style="background:#2e7d32;">`
-          + `<th colspan="2" style="padding:8px;color:#fff;text-align:left;font-weight:bold;">Validação dos Ganhos</th>`
-          + `</tr>`
-          + `</thead>`
-          + `<tbody>`
-          + rows
-          + totalRow
-          + `</tbody>`
-          + `</table>`;
+        summaryHtml = `<br><br><b>Resumo dos ganhos validados:</b>`
+          + bullets
+          + `<br>- <b>Total Anualizado:</b> ${escapeHtml(formatEur(totalEur))}`;
       } catch (err) {
-        console.error('[emails:IMPLEMENTED] failed to build financial table', err);
-        tableHtml = '<br><br><i>Erro ao gerar dados financeiros.</i>';
+        console.error('[emails:IMPLEMENTED] failed to build financial summary', err);
+        summaryHtml = '<br><br><i>Erro ao gerar dados financeiros.</i>';
       }
-      return opening + tableHtml + `<br><br>` + closing;
+      return opening + summaryHtml + `<br><br>` + closing;
     },
   },
   [EMAIL_EVENTS.GESTOR_TRANSFERRED]: {
@@ -480,7 +462,8 @@ const EMAIL_TEMPLATES = {
     subject: () => 'PLACE — Gestor alterado',
     intro: (ctx) => {
       const T = esc(ctx.initiative?.Title);
-      return `O gestor da iniciativa "<b>${T}</b>" foi alterado.`;
+      const newGestor = esc(ctx.newGestorName || ctx.initiative?.GestorValidator?.displayName);
+      return `O gestor da iniciativa "<b>${T}</b>" foi alterado para <b>${newGestor}</b>.`;
     },
   },
   [EMAIL_EVENTS.OWNERSHIP_TRANSFERRED]: {
@@ -497,7 +480,8 @@ const EMAIL_TEMPLATES = {
     subject: () => 'PLACE — Proprietário alterado',
     intro: (ctx) => {
       const T = esc(ctx.initiative?.Title);
-      return `O proprietário da iniciativa "<b>${T}</b>" foi alterado.`;
+      const newOwner = esc(ctx.newOwnerName || ctx.initiative?.SubmittedBy?.displayName);
+      return `O proprietário da iniciativa "<b>${T}</b>" foi alterado para <b>${newOwner}</b>.`;
     },
   },
   [EMAIL_EVENTS.ACCESS_GRANTED]: {
@@ -507,7 +491,7 @@ const EMAIL_TEMPLATES = {
     subject: () => 'PLACE — Acesso concedido a uma iniciativa',
     intro: (ctx) => {
       const T = esc(ctx.initiative?.Title);
-      return `${esc(ctx.actorName)} concedeu-lhe acesso à iniciativa "<b>${T}</b>".`;
+      return `${esc(ctx.actorName)} concedeu-lhe acesso à iniciativa "<b>${T}</b>" na aplicação de gestão de iniciativas PLACE.`;
     },
   },
   [EMAIL_EVENTS.ACCESS_REVOKED]: {
@@ -566,14 +550,14 @@ export function createEmail(event, ctx = {}) {
       const sent = [], failed = [];
       console.group(`[email:${event}] ${recipients.length} recipient(s)`);
       for (const r of recipients) {
-        const body = renderBody(tpl.intro(ctx), r.name, { pendingMentor });
-        console.group(`To: ${r.email}`);
-        console.log('To:', r.email);
-        console.log('Subject:', subject);
-        console.log('Body (HTML source):');
-        console.log(body);
-        console.groupEnd();
         try {
+          const body = renderBody(tpl.intro(ctx), r.name, { pendingMentor });
+          console.group(`To: ${r.email}`);
+          console.log('To:', r.email);
+          console.log('Subject:', subject);
+          console.log('Body (HTML source):');
+          console.log(body);
+          console.groupEnd();
           await sendEmail({ to: r.email, subject, body });
           await createNotificationRecord(initiativeUUID, r.email, notificationTitle, type);
           sent.push(r.email);

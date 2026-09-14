@@ -13,12 +13,12 @@ import {
 } from '../../libs/nofbiz/nofbiz.base.js';
 
 import { getByStatuses, getByStatusesAndTeamScope } from '../../utils/initiatives-api.js';
-import { STATUS, statusLabel, statusDescription, renderStatusCell } from '../../utils/status-helpers.js';
+import { STATUS, statusLabel, renderStatusCell } from '../../utils/status-helpers.js';
 import { openInitiativeDetail } from '../../utils/side-panel-detail.js';
 import { createPageLayout } from '../../utils/navbar.js';
 import { buildKpi, mentorName, gestorName } from '../../utils/format-helpers.js';
 import { createSortableTable } from '../../utils/table-helpers.js';
-import { getUserDeptAncestorPath, getTeamLabel } from '../../utils/roles.js';
+import { getUserDeptAncestorPath, getTeamName } from '../../utils/roles.js';
 import { getTeamOptions, getTeamScope } from '../../utils/org-hierarchy-api.js';
 import { INITIATIVE_TAGS } from '../../utils/constants.js';
 import { createExportButton } from '../../utils/initiatives-export.js';
@@ -69,7 +69,7 @@ export default defineRoute((config) => {
 
   const tableColumns = [
     { label: 'Iniciativa', sortAccessor: (i) => (i.Title || '').toLowerCase() },
-    { label: 'Equipa', sortAccessor: (i) => getTeamLabel(i.ImpactedTeamOUID) || '' },
+    { label: 'Equipa', sortAccessor: (i) => getTeamName(i.ImpactedTeamOUID) || '' },
     { label: 'Mentor', sortAccessor: mentorName },
     { label: 'Gestor', sortAccessor: gestorName },
     { label: 'Estado', sortAccessor: (i) => statusLabel(i.Status) },
@@ -85,7 +85,7 @@ export default defineRoute((config) => {
     ], { class: 'pace-table-cell-stack' });
     return new Container([
       mergedCell,
-      new Text(getTeamLabel(item.ImpactedTeamOUID) || '', { type: 'span' }),
+      new Text(getTeamName(item.ImpactedTeamOUID) || '', { type: 'span' }),
       new Text(mentorName(item), { type: 'span' }),
       new Text(gestorName(item), { type: 'span' }),
       renderStatusCell(item),
@@ -224,7 +224,7 @@ export default defineRoute((config) => {
     const filtered = applyFilters(dataset);
 
     const uniqueTeams = new Set(filtered.map((i) => i.ImpactedTeamOUID).filter(Boolean)).size;
-    const uniqueSubmitters = new Set(filtered.map((i) => i.SubmittedBy).filter(Boolean)).size;
+    const uniqueSubmitters = new Set(filtered.map((i) => i.SubmittedByEmail).filter(Boolean)).size;
 
     kpiRow.children = [
       buildKpi(String(filtered.length), 'Iniciativas'),

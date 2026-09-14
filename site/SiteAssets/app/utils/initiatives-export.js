@@ -20,7 +20,7 @@ import {
   annualSavingColName,
   FTE_MINUTES_PER_YEAR,
 } from './constants.js';
-import { getSimuladorFromPayload, computeAnnualizedToBeTotalEur } from './financial-forms.js';
+import { getSimuladorFromPayload, computeAnnualizedToBeTotalEur, eficienciaMinutesToEur } from './financial-forms.js';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -348,8 +348,7 @@ function buildRow(item, ctx) {
   const efFteYears = (fin && FTE_MINUTES_PER_YEAR) ? efAnnualMinutes / FTE_MINUTES_PER_YEAR : '';
   row.EficienciaFteAnnual = efFteYears;
   if (isPrivileged) {
-    const efFteCost = fin ? (parseFloat(fin.FTEAnnualCost) || 0) : 0;
-    row.EficienciaAnnualSavingEur = fin ? (efAnnualMinutes / FTE_MINUTES_PER_YEAR) * efFteCost : '';
+    row.EficienciaAnnualSavingEur = fin ? eficienciaMinutesToEur(efAnnualMinutes, fin.FTEAnnualCost) : '';
     row.TotalAnnualSavingEur = fin ? computeAnnualizedToBeTotalEur(fin) : '';
   }
 

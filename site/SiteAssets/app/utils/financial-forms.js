@@ -181,6 +181,19 @@ export function formatEur(val) {
 }
 
 /**
+ * Converts an annualized eficiencia figure in MINUTES to euros via the FTE annual cost.
+ * Single source of truth shared by the export and the IMPLEMENTED email.
+ * @param {number|string} annualMinutes - annualized minutes saved
+ * @param {number|string} fteAnnualCost - FTEAnnualCost (€/FTE/year)
+ * @returns {number} euros
+ */
+export function eficienciaMinutesToEur(annualMinutes, fteAnnualCost) {
+  const min = parseFloat(annualMinutes) || 0;
+  const cost = parseFloat(fteAnnualCost) || 0;
+  return FTE_MINUTES_PER_YEAR ? (min / FTE_MINUTES_PER_YEAR) * cost : 0;
+}
+
+/**
  * Extracts the plain string value from a ComboBox FormField.
  * Handles both { label, value } objects and plain strings.
  * @param {FormField} field
@@ -213,15 +226,16 @@ export function extractCategoryLabels(field) {
 
 /**
  * Internal: resolves a raw simulador value to { active, value }.
- * "Active" means the value is non-empty, non-null, and parses to a finite number.
- * An explicit 0 is a valid override (active: true, value: 0).
+ * "Active" means the value is non-empty, non-null, and parses to a finite non-zero number.
+ * A value of 0 (including a cleared NumberInput, which syncs Number('')===0) is treated as
+ * INACTIVE so producao falls back to its raw As-Is/To-Be inputs; negative values remain active.
  * @param {*} rawVal
  * @returns {{ active: boolean, value: number }}
  */
 function resolveSimulador(rawVal) {
   if (rawVal === null || rawVal === undefined || rawVal === '') return { active: false, value: 0 };
   const n = parseFloat(rawVal);
-  if (!isFinite(n)) return { active: false, value: 0 };
+  if (!isFinite(n) || n === 0) return { active: false, value: 0 };
   return { active: true, value: n };
 }
 
@@ -1543,7 +1557,7 @@ export function buildCategoryTabbedSection(categoryStates, opts = {}) {
 
     // FTE Anual cost input lives inside the Eficiencia tab inputs row (mentor/gestor only)
     const extraInputs = (key === 'eficiencia' && isMentorOrGestor && fteAnnualCostIsField)
-      ? [new FieldLabel('Custo Anual por FTE (€)', new NumberInput(fteAnnualCost, { placeholder: '0', min: 0 }))]
+      ? [new FieldLabel('Custo Anual por FTE (€)', new NumberInput(fteAnnualCost, { placeholder: '0', min: 0 }), { class: 'pace-required' })]
       : [];
 
     const asIsResult = buildCategoryAsIsForm(state, { timePeriod, extraInputs });

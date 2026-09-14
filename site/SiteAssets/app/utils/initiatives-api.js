@@ -216,18 +216,61 @@ export async function getByStatusAndGestor(status, gestorEmail) {
 }
 
 /**
- * Creates a new initiative with auto-generated UUID.
+ * Creates a new initiative with a collision-safe UID.
+ *
+ * The function inserts the row first, then re-queries the UUID to detect
+ * concurrent duplicates (TOCTOU-safe). If a collision is found, the loser
+ * (higher Id) self-deletes and retries with a fresh UID. A caller-supplied
+ * fields.UUID is honoured on the first attempt only; retries always
+ * regenerate.
+ *
  * @param {Record<string, unknown>} fields
  * @returns {Promise<unknown>}
  */
 export async function create(fields) {
   assertValidStatus(fields.Status, 'Status');
   assertValidStatus(fields.PreviousStatus, 'PreviousStatus');
-  const uuid = fields.UUID || await generateInitiativeUID();
-  return listApi.createItem({
-    ...fields,
-    UUID: uuid,
-  });
+
+  const suppliedUUID = fields.UUID;
+
+  for (let attempt = 0; attempt < UID_MAX_ATTEMPTS; attempt++) {
+    const uuid = (attempt === 0 && suppliedUUID)
+      ? suppliedUUID
+      : await generateInitiativeUID();
+
+    const created = await listApi.createItem({ ...fields, UUID: uuid });
+
+    let dupes;
+    try {
+      dupes = await listApi.getItemByUUID(uuid);
+    } catch (err) {
+      console.warn('[create] post-insert uniqueness check failed, returning created row', { uuid, err });
+      return created;
+    }
+
+    if (!Array.isArray(dupes) || dupes.length <= 1) {
+      return created;
+    }
+
+    // Collision: lowest Id wins.
+    const minId = Math.min(...dupes.map(d => Number(d.Id)));
+
+    if (Number(created.Id) === minId) {
+      console.warn('[create] UID collision resolved; this row is the survivor', { uuid, id: created.Id, count: dupes.length });
+      return created;
+    }
+
+    console.warn('[create] UID collision; backing off and regenerating', { uuid, id: created.Id, minId });
+    try {
+      await listApi.deleteItem(created.Id, created['odata.etag'] || '*');
+    } catch (delErr) {
+      console.error('[create] failed to delete losing duplicate row — manual cleanup may be needed', { uuid, id: created.Id, delErr });
+    }
+    // Continue loop to retry with a fresh UID.
+  }
+
+  console.error('[create] exhausted attempts resolving UID collisions', { attempts: UID_MAX_ATTEMPTS });
+  throw new SystemError('UIDCollision', 'Não foi possível gerar um identificador único para a iniciativa. Tente novamente.', { breaksFlow: false });
 }
 
 /**
