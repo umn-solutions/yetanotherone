@@ -242,6 +242,7 @@ export default defineRoute((config) => {
   const exportBtn = createExportButton({
     getRows: () => activeTab === 'implementados' ? implementados : arquivo,
     filenamePrefix: 'iniciativas-catalogo',
+    detailed: true,
   });
 
   function rebuildToggle() {

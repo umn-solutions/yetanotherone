@@ -298,6 +298,7 @@ export default defineRoute((config) => {
   const exportBtn = createExportButton({
     getRows: () => applyFilters(activeTab === 'minhas' ? gestorTracking : colabItems),
     filenamePrefix: 'iniciativas-gestor',
+    detailed: true,
   });
 
   // -- data loading --

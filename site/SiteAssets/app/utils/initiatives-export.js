@@ -436,7 +436,7 @@ export function createExportButton({ getRows, filenamePrefix, label = 'Exportar'
       const loading = Toast.loading('A preparar exportação...');
 
       try {
-        const isPrivileged = hasAnyProfile([ROLES.MENTOR, ROLES.GESTOR]);
+        const isPrivileged = hasAnyProfile([ROLES.MENTOR, ROLES.MENTOR_MANAGER, ROLES.GESTOR]);
         const serialised = await buildInitiativeExportRows(rows, { detailed, isPrivileged });
 
         const csv = dataToCSV(serialised, { bom: true });

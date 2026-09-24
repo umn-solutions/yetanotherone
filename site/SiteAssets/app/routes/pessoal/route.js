@@ -252,6 +252,7 @@ export default defineRoute((config) => {
       }
     },
     filenamePrefix: 'iniciativas-pessoal',
+    detailed: true,
   });
 
   // -- data loading --

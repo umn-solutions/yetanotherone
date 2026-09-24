@@ -509,7 +509,7 @@ var SPInterceptor = (function ($) {
       var list = _ensureList(title);
 
       // Update list properties (Hidden, form URLs, etc.)
-      if (m === 'MERGE' && !/\/items|\/fields|\/views|\/contenttypes/i.test(url)) {
+      if (m === 'MERGE' && !/\/items|\/fields|\/views|\/contenttypes|\/DefaultView/i.test(url)) {
         var lb = _parseBody(settings);
         delete lb.__metadata;
         $.extend(list, lb);
@@ -636,8 +636,20 @@ var SPInterceptor = (function ($) {
       if (m === 'MERGE' && (/\/DefaultView\s*$/i.test(url) || /\/views\/getbytitle\('[^']+'\)\s*$/i.test(url))) {
         var uvBody = _parseBody(settings);
         var uvLabel = /DefaultView/i.test(url) ? 'DefaultView' : url.match(/getbytitle\('([^']+)'\)/i)[1];
+        if (/DefaultView/i.test(url) && uvBody.TabularView !== undefined) {
+          list.defaultView = list.defaultView || {};
+          list.defaultView.TabularView = uvBody.TabularView;
+        }
         _log('MERGE', url, title + ' updateView: ' + uvLabel + ' ' + JSON.stringify(uvBody));
         return _ok(undefined);
+      }
+
+      // GET DefaultView (TabularView reflects quick-edit state)
+      if (m === 'GET' && /\/DefaultView(\?|\s*$)/i.test(url)) {
+        var dvTab = (list.defaultView && list.defaultView.TabularView !== undefined)
+          ? list.defaultView.TabularView : true;
+        _log('GET', url, title + ' getDefaultView: TabularView=' + dvTab);
+        return _ok({ TabularView: dvTab });
       }
 
       // GET view by title
@@ -685,6 +697,19 @@ var SPInterceptor = (function ($) {
           : list.fields;
         _log('GET', url, title + ' getFields (' + filteredFields.length + '/' + list.fields.length + ')');
         return _ok({ value: filteredFields });
+      }
+
+      // GET list properties (getbytitle, no subpath) -- e.g. $select=DefaultNewFormUrl
+      if (m === 'GET' && !/\/(items|fields|views|contenttypes|DefaultView)/i.test(url)) {
+        _log('GET', url, title + ' getList');
+        return _ok({
+          Title: title,
+          Id: 'mock-' + title.toLowerCase().replace(/\s/g, '-'),
+          Hidden: !!list.Hidden,
+          DefaultNewFormUrl: list.DefaultNewFormUrl || '',
+          DefaultEditFormUrl: list.DefaultEditFormUrl || '',
+          ServerRelativeUrl: list.ServerRelativeUrl || (_spPageContextInfo.webAbsoluteUrl + '/Lists/' + title),
+        });
       }
 
       // Delete list (DELETE on list endpoint, no /items or /fields subpath)

@@ -237,7 +237,7 @@ export async function downloadPowerBIWorkbook(allInitiatives) {
     ],
   });
 
-  downloadFile(bytes, `place-powerbi-${__dayjs().format('YYYY-MM-DD')}.xlsx`);
+  downloadFile(bytes, 'Place_PBI_Extraction.xlsx');
 }
 
 // ---------------------------------------------------------------------------

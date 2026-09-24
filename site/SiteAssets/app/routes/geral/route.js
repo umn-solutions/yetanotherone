@@ -247,6 +247,7 @@ export default defineRoute((config) => {
   const exportBtn = createExportButton({
     getRows: () => applyFilters(getActiveDataset()),
     filenamePrefix: 'iniciativas-geral',
+    detailed: true,
   });
 
   // -- data loading --
