@@ -15,7 +15,6 @@ import {
   View,
   ViewSwitcher,
   ContextStore,
-  fromFieldValue,
   getIcon,
   __zod,
 } from '../libs/nofbiz/nofbiz.base.js';
@@ -161,7 +160,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     },
   });
 
-  const existingTags = source?.Tags ? fromFieldValue(source.Tags) : [];
+  const existingTags = Array.isArray(source?.Tags) ? source.Tags : [];
   const tagsField = new FormField({ value: existingTags });
 
   const objectiveField = new FormField({ value: source?.Objective || '' });
