@@ -1,6 +1,6 @@
 import { Button } from '../libs/nofbiz/nofbiz.base.js';
 
-import { STATUS } from './status-helpers.js';
+import { STATUS, isTerminalStatus } from './status-helpers.js';
 import { canAccess, canManageAccess } from './roles.js';
 import {
   submitInitiative,
@@ -64,7 +64,6 @@ export function buildWorkflowButtons({
 }) {
   const buttons = [];
   const writeAccess = hasWriteAccess ?? isOwner;
-  const TERMINAL_STATUSES = [STATUS.IMPLEMENTADO, STATUS.REJEITADO, STATUS.CANCELADO];
 
   // Dedup flags: set to true whenever a context block already pushed that owner-power button.
   // The mentor-power block at the end checks these before adding its own copies.
@@ -221,7 +220,7 @@ export function buildWorkflowButtons({
     }
 
     // Transfer ownership: available at any non-terminal status for any user with write access.
-    if (!approvalsOnly && !TERMINAL_STATUSES.includes(status)) {
+    if (!approvalsOnly && !isTerminalStatus(status)) {
       const transferBtn = new Button('Transferir', {
         variant: 'secondary',
         onClickHandler: runAction(() => transferOwnership(initiative, transferBtn, handleSuccess)),
@@ -389,7 +388,7 @@ export function buildWorkflowButtons({
   // actions on ANY initiative at any non-terminal status, regardless of context or
   // whether they are the assigned mentor of that initiative. Buttons are only added
   // here when a context block above has not already pushed the same action.
-  if (isMentorRole && !approvalsOnly && !TERMINAL_STATUSES.includes(status)) {
+  if (isMentorRole && !approvalsOnly && !isTerminalStatus(status)) {
     if (!excludeEdit && !ownerEditPushed) {
       const mentorEditBtn = new Button('Editar', {
         variant: 'secondary',

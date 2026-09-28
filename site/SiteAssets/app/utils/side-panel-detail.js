@@ -13,7 +13,7 @@ import {
   __dayjs,
 } from '../libs/nofbiz/nofbiz.base.js';
 
-import { STATUS, statusLabel, chipClass, getNextFlowStatus, STATUS_LABELS } from './status-helpers.js';
+import { STATUS, statusLabel, chipClass, getNextFlowStatus, STATUS_LABELS, isTerminalStatus } from './status-helpers.js';
 import { getTeamLabel, getTeamName, isMentorUser } from './roles.js';
 import { mentorName, gestorName } from './format-helpers.js';
 import { getByInitiative as getFinancials } from './financials-api.js';
@@ -156,7 +156,7 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
   };
 
   const mentorReassignChildren = [];
-  if (isMentorUser()) {
+  if (isMentorUser() && context !== 'catalogo' && !isTerminalStatus(status)) {
     const reassignMentorBtn = new Button('Alterar Mentor', {
       variant: 'secondary',
       isOutlined: true,

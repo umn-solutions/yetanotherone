@@ -2628,38 +2628,8 @@ _CurrentUser_initialized = new WeakMap, _CurrentUser_instances = new WeakSet, _C
         const siteApi = new SiteApi;
         const loginName = options?.targetUser ?? _spPageContextInfo.userLoginName;
         const data = await getFullUserDetails(loginName, siteApi);
-        const isCurrentUser = !options?.targetUser;
-        const seenEmails = new Set;
-        const seenLogins = new Set;
-        const identityEmails = [];
-        const identityLogins = [];
-        const _addEmail = v => {
-            const s = v?.trim();
-            if (!s) return;
-            const k = s.toLowerCase();
-            if (!seenEmails.has(k)) {
-                seenEmails.add(k);
-                identityEmails.push(s);
-            }
-        };
-        const _addLogin = v => {
-            const s = v?.trim();
-            if (!s) return;
-            const k = s.toLowerCase();
-            if (!seenLogins.has(k)) {
-                seenLogins.add(k);
-                identityLogins.push(s);
-            }
-        };
-        if (isCurrentUser) _addEmail(_spPageContextInfo.userEmail);
-        for (const e of data.accountEmails) _addEmail(e);
-        _addLogin(data.loginName);
-        for (const l of data.accountLogins) _addLogin(l);
         __classPrivateFieldSet(this, _CurrentUser_data, data, "f");
-        __classPrivateFieldSet(this, _CurrentUser_group, groupHierarchy.length ? await __classPrivateFieldGet(this, _CurrentUser_instances, "m", _CurrentUser_resolveGroup).call(this, groupHierarchy, {
-            emails: identityEmails,
-            logins: identityLogins
-        }, siteApi) : null, "f");
+        __classPrivateFieldSet(this, _CurrentUser_group, groupHierarchy.length ? await __classPrivateFieldGet(this, _CurrentUser_instances, "m", _CurrentUser_resolveGroup).call(this, groupHierarchy, data, siteApi) : null, "f");
         __classPrivateFieldSet(this, _CurrentUser_initialized, true, "f");
         __classPrivateFieldSet(_a$3, _a$3, null, "f", _CurrentUser_initPromise);
         return this;
@@ -2673,54 +2643,31 @@ _CurrentUser_initialized = new WeakMap, _CurrentUser_instances = new WeakSet, _C
             cause: error
         });
     }
-}, _CurrentUser_resolveGroup = async function _CurrentUser_resolveGroup(hierarchy, identities, siteApi) {
-    if (identities.emails.length === 0 && identities.logins.length === 0) {
-        const ctxEmail = _spPageContextInfo.userEmail?.trim();
-        if (!ctxEmail) {
-            console.warn("[CurrentUser] no identifiers available for group resolution -- group hierarchy will not be applied");
-            return null;
-        }
-        console.warn("[CurrentUser] identity set was empty; falling back to session email for group resolution", {
-            ctxEmail: ctxEmail
-        });
-        identities = {
-            emails: [ ctxEmail ],
-            logins: []
-        };
-    }
-    const results = await Promise.all(hierarchy.map(entry => siteApi.isUserInGroupByIdentities(entry.groupTitle, identities)));
-    let matchedEntry = null;
-    for (let i = hierarchy.length - 1; i >= 0; i--) {
-        if (results[i]) {
-            matchedEntry = hierarchy[i];
-            break;
-        }
-    }
-    if (!matchedEntry) return null;
-    let spGroup = null;
-    try {
-        const allGroups = await siteApi.getSiteGroups();
-        spGroup = allGroups.find(g => g.Title.toLowerCase() === matchedEntry.groupTitle.toLowerCase()) ?? null;
-    } catch (err) {
-        console.warn("[CurrentUser] getSiteGroups failed; group getter will hold a minimal stub", {
-            err: err
-        });
-    }
-    if (!spGroup) {
-        console.warn("[CurrentUser] matched hierarchy entry but SPGroup not found in getSiteGroups -- using stub", {
-            groupTitle: matchedEntry.groupTitle
-        });
-        spGroup = {
-            Id: 0,
-            Title: matchedEntry.groupTitle,
-            Description: "",
-            OwnerTitle: ""
-        };
-    }
-    return {
-        entry: matchedEntry,
-        spGroup: spGroup
+}, _CurrentUser_resolveGroup = async function _CurrentUser_resolveGroup(hierarchy, data, siteApi) {
+    const groupUnion = new Map;
+    const _addGroup = g => {
+        const key = g.Id ? String(g.Id) : `t:${g.Title.toLowerCase()}`;
+        if (!groupUnion.has(key)) groupUnion.set(key, g);
     };
+    for (const g of data.groups) _addGroup(g);
+    const primaryLogin = data.loginName?.trim().toLowerCase();
+    const ghostLogins = data.accountLogins.filter(login => login.trim().toLowerCase() !== primaryLogin);
+    const ghostResults = await Promise.all(ghostLogins.map(login => siteApi.getUserGroupsByLogin(login)));
+    for (const ghostGroups of ghostResults) {
+        for (const g of ghostGroups) _addGroup(g);
+    }
+    for (let i = hierarchy.length - 1; i >= 0; i--) {
+        const entry = hierarchy[i];
+        const title = entry.groupTitle.toLowerCase();
+        const matched = [ ...groupUnion.values() ].find(g => g.Title.toLowerCase() === title);
+        if (matched) {
+            return {
+                entry: entry,
+                spGroup: matched
+            };
+        }
+    }
+    return null;
 }, _CurrentUser_assertInitialized = function _CurrentUser_assertInitialized() {
     if (!__classPrivateFieldGet(this, _CurrentUser_initialized, "f")) {
         throw new SystemError("CurrentUserNotInitialized", "CurrentUser.initialize() must be awaited before accessing user data.");
@@ -3362,34 +3309,34 @@ class SiteApi {
     async isUserInGroup(group, email) {
         return (await this.getGroupUsersByEmail(group, email)).length > 0;
     }
-    async getGroupMembersByIdentities(group, identities) {
-        const clauses = [];
-        for (const raw of identities.emails ?? []) {
-            const normalized = normalizeEmail(raw);
-            if (isValidEmail(normalized)) {
-                clauses.push(`Email eq '${escapeODataStr(normalized)}'`);
-            }
+    async getUserGroupsByLogin(login) {
+        const trimmed = login?.trim();
+        if (!trimmed) {
+            console.warn("[SiteApi.getUserGroupsByLogin] empty login -- skipping request");
+            return [];
         }
-        for (const raw of identities.logins ?? []) {
-            const login = raw?.trim();
-            if (login) {
-                clauses.push(`LoginName eq '${escapeODataStr(login)}'`);
+        try {
+            const filter = `LoginName eq '${escapeODataStr(trimmed)}'`;
+            const lookupUrl = `${__classPrivateFieldGet(this, _SiteApi_url, "f")}/_api/web/siteusers` + `?$filter=${encodeURIComponent(filter)}` + `&$select=Id`;
+            const lookupResponse = await spGET(lookupUrl);
+            const users = lookupResponse.value ?? [];
+            if (users.length === 0) {
+                console.warn("[SiteApi.getUserGroupsByLogin] login not found in UIL -- no groups resolved", {
+                    login: trimmed
+                });
+                return [];
             }
-        }
-        if (clauses.length === 0) {
-            console.warn("[SiteApi.getGroupMembersByIdentities] no valid identifiers in identity set -- skipping request", {
-                identities: identities
+            const userId = users[0].Id;
+            const groupsUrl = `${__classPrivateFieldGet(this, _SiteApi_url, "f")}/_api/web/getuserbyid(${userId})/groups`;
+            const groupsResponse = await spGET(groupsUrl);
+            return groupsResponse.value ?? [];
+        } catch (err) {
+            console.warn("[SiteApi.getUserGroupsByLogin] failed to resolve groups for login", {
+                login: trimmed,
+                err: err
             });
             return [];
         }
-        const selector = __classPrivateFieldGet(this, _SiteApi_instances, "m", _SiteApi_groupSelector).call(this, group);
-        const filter = clauses.join(" or ");
-        const url = `${__classPrivateFieldGet(this, _SiteApi_url, "f")}/_api/web/sitegroups/${selector}/users` + `?$filter=${encodeURIComponent(filter)}` + `&$select=Id,LoginName,Title,Email`;
-        const response = await spGET(url);
-        return response.value ?? [];
-    }
-    async isUserInGroupByIdentities(group, identities) {
-        return (await this.getGroupMembersByIdentities(group, identities)).length > 0;
     }
     getWebInfo() {
         return spGET(`${__classPrivateFieldGet(this, _SiteApi_url, "f")}/_api/web`);
@@ -3454,7 +3401,7 @@ function _buildSearchPayload(query, options) {
             MaximumEntitySuggestions: options.maximumSuggestions ?? 10,
             PrincipalType: options.principalType ?? 1,
             PrincipalSource: options.principalSource ?? 15,
-            AllowEmailAddresses: true,
+            AllowEmailAddresses: options.allowEmailAddresses ?? false,
             AllowMultipleEntities: true,
             SharePointGroupID: 0
         }
@@ -3482,7 +3429,7 @@ function _scoreResult(r) {
     return score;
 }
 
-function _normalizeResults(results) {
+function _normalizeResults(results, allowEmailAddresses) {
     const flat = [];
     for (const r of results) {
         flat.push(r);
@@ -3491,8 +3438,20 @@ function _normalizeResults(results) {
         }
     }
     const resolved = flat.filter(r => r.IsResolved === true);
+    let filtered = resolved;
+    if (!allowEmailAddresses) {
+        const before = resolved.length;
+        filtered = resolved.filter(r => !parseEmployeeId(r.Key).includes("@"));
+        const dropped = before - filtered.length;
+        if (dropped > 0) {
+            console.warn("[searchUsers] dropped fabricated email-address result(s)", {
+                count: dropped,
+                keys: resolved.filter(r => parseEmployeeId(r.Key).includes("@")).map(r => r.Key)
+            });
+        }
+    }
     const map = new Map;
-    for (const r of resolved) {
+    for (const r of filtered) {
         const rawKey = r.EntityData?.Email || parseEmployeeId(r.Key);
         const key = rawKey.toLowerCase();
         if (!key) {
@@ -3611,6 +3570,17 @@ async function _resolvePickerIdentity(normalizedLogin) {
     }
 }
 
+function _pickCanonical(cluster) {
+    return [ ...cluster ].sort((a, b) => {
+        const aHasEmail = a.EntityData?.Email ? 1 : 0;
+        const bHasEmail = b.EntityData?.Email ? 1 : 0;
+        if (bHasEmail !== aHasEmail) return bHasEmail - aHasEmail;
+        const scoreDiff = _scoreResult(b) - _scoreResult(a);
+        if (scoreDiff !== 0) return scoreDiff;
+        return a.Key < b.Key ? -1 : a.Key > b.Key ? 1 : 0;
+    })[0];
+}
+
 function parseEmployeeId(loginName) {
     const afterPipe = loginName.includes("|") ? loginName.split("|").pop() : loginName;
     return afterPipe.includes("\\") ? afterPipe.split("\\").pop() : afterPipe;
@@ -3639,7 +3609,7 @@ async function searchUsers(query, options = {}) {
             cause: err
         });
     }
-    return options.raw ? parsed : _normalizeResults(parsed);
+    return options.raw ? parsed : _normalizeResults(parsed, options.allowEmailAddresses);
 }
 
 async function getUserProfile(loginName) {
@@ -3725,6 +3695,55 @@ async function getFullUserDetails(loginName, siteApi = new SiteApi) {
         accountLogins: accountLogins,
         accountEmails: accountEmails
     };
+}
+
+async function resolveCanonicalUser(input, siteApi) {
+    const seedResults = await searchUsers(input, {
+        maximumSuggestions: 30,
+        raw: true
+    });
+    const seedResolved = seedResults.filter(r => r.IsResolved === true);
+    if (seedResolved.length === 0) {
+        throw new SystemError("UserNotResolved", `resolveCanonicalUser: no resolved results found for input "${input}"`, {
+            breaksFlow: false
+        });
+    }
+    const sams = [ ...new Set(seedResolved.map(r => parseEmployeeId(r.Key).toLowerCase())) ];
+    if (sams.length > 1) {
+        console.warn("[resolveCanonicalUser] multiple samAccountNames found in cluster -- deterministic merge by sam may be incomplete", {
+            input: input,
+            sams: sams
+        });
+    }
+    const clusterMap = new Map;
+    for (const sam of sams) {
+        let samResults;
+        try {
+            samResults = await searchUsers(sam, {
+                maximumSuggestions: 50,
+                raw: true
+            });
+        } catch (err) {
+            console.warn("[resolveCanonicalUser] sam search failed, skipping", {
+                sam: sam,
+                err: err
+            });
+            continue;
+        }
+        for (const r of samResults) {
+            if (r.IsResolved === true) {
+                clusterMap.set(r.Key, r);
+            }
+        }
+    }
+    for (const r of seedResolved) {
+        if (!clusterMap.has(r.Key)) {
+            clusterMap.set(r.Key, r);
+        }
+    }
+    const cluster = [ ...clusterMap.values() ];
+    const canonical = _pickCanonical(cluster);
+    return getFullUserDetails(canonical.Key, siteApi);
 }
 
 var _UserIdentity_details, _UserIdentity_properties;
@@ -6041,5 +6060,5 @@ function isHTMDNode(arg) {
     } else return every(arg, isHTMDNode);
 }
 
-export { AccordionGroup, AccordionItem, Button, Card, CheckBox, ComboBox, Container, ContextStore, CurrentUser, DateInput, DateRangeInput, DebouncedInput, Dialog, ErrorBoundary, FORMAT_MAP, FieldLabel, FormControl, FormField, FormSchema, Fragment, HTMDElement, Image, LinkButton, List, Loader, MAX_RECIPIENTS_PER_CALL, Modal, NavigationEvent, NumberInput, PeoplePicker, Router, SP_ACCEPT_MINIMAL, SidePanel, SimpleElapsedTimeBenchmark, SiteApi, StyleResource, SystemError, TabGroup, Text, TextArea, TextInput, Toast, UserIdentity, View, ViewSwitcher, dayjs as __dayjs, Fuse as __fuse, copyToClipboard, defineRoute, enforceStrictObject, escapeAttr, escapeHtml, extractComboBoxValue, fromFieldValue, generateRuntimeUID, generateUUIDv4, getFullUserDetails, getIcon, getUserProfile, isCallable, isComboBoxOption, isHTMDComponent, isHTMDNode, listIcons, pageReset, parseEmployeeId, refreshRequestDigest, registerIcons, resolveEmailsToLogins, resolvePath, runtimeEventName, sanitizeQuery, searchUsers, sendEmail, spDELETE, spGET, spMERGE, spPOST, startDigestTimer, stopDigestTimer, toFieldValue };
+export { AccordionGroup, AccordionItem, Button, Card, CheckBox, ComboBox, Container, ContextStore, CurrentUser, DateInput, DateRangeInput, DebouncedInput, Dialog, ErrorBoundary, FORMAT_MAP, FieldLabel, FormControl, FormField, FormSchema, Fragment, HTMDElement, Image, LinkButton, List, Loader, MAX_RECIPIENTS_PER_CALL, Modal, NavigationEvent, NumberInput, PeoplePicker, Router, SP_ACCEPT_MINIMAL, SidePanel, SimpleElapsedTimeBenchmark, SiteApi, StyleResource, SystemError, TabGroup, Text, TextArea, TextInput, Toast, UserIdentity, View, ViewSwitcher, dayjs as __dayjs, Fuse as __fuse, copyToClipboard, defineRoute, enforceStrictObject, escapeAttr, escapeHtml, extractComboBoxValue, fromFieldValue, generateRuntimeUID, generateUUIDv4, getFullUserDetails, getIcon, getUserProfile, isCallable, isComboBoxOption, isHTMDComponent, isHTMDNode, listIcons, pageReset, parseEmployeeId, refreshRequestDigest, registerIcons, resolveCanonicalUser, resolveEmailsToLogins, resolvePath, runtimeEventName, sanitizeQuery, searchUsers, sendEmail, spDELETE, spGET, spMERGE, spPOST, startDigestTimer, stopDigestTimer, toFieldValue };
 //# sourceMappingURL=nofbiz.base.js.map

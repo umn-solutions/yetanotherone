@@ -16,7 +16,7 @@ import {
   __dayjs,
 } from '../libs/nofbiz/nofbiz.base.js';
 
-import { STATUS, canTransitionTo, statusLabel } from './status-helpers.js';
+import { STATUS, canTransitionTo, statusLabel, isTerminalStatus } from './status-helpers.js';
 import { canAccess, isMentorUser, canManageAccess } from './roles.js';
 import { transitionStatus, update, deleteItem as deleteInitiativeItem } from './initiatives-api.js';
 import {
@@ -1335,6 +1335,12 @@ export async function reassignRole({ role, initiative, button, onSuccess }) {
   if (!isMentorUser()) {
     console.warn('[reassignRole] unauthorized attempt by non-mentor');
     Toast.error('Sem permissão para esta acção.');
+    return;
+  }
+
+  if (isTerminalStatus(initiative.Status)) {
+    console.warn('[reassignRole] attempt on terminal-status initiative', { status: initiative.Status, uuid: initiative.UUID });
+    Toast.error('Não é possível alterar responsáveis de uma iniciativa concluída.');
     return;
   }
 

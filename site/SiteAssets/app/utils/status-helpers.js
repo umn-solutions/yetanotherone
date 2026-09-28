@@ -60,6 +60,11 @@ const TRANSITIONS = {
 /** Terminal statuses that cannot transition further. */
 const TERMINAL = [STATUS.IMPLEMENTADO, STATUS.REJEITADO, STATUS.CANCELADO];
 
+/** True when a status is terminal (cannot transition further). */
+export function isTerminalStatus(status) {
+  return TERMINAL.includes(status);
+}
+
 /**
  * Checks if a transition from currentStatus to targetStatus is valid.
  * @param {string} currentStatus
