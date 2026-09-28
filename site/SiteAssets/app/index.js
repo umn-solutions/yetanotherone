@@ -88,6 +88,7 @@ const routes = allRoutes.filter(canAccess);
 ContextStore.set("routes", routes);
 
 new Router(routes);
+document.title = "PLACE";
 
 if (ContextStore.has("isBootstrapMode")) {
 	Toast.warning(
