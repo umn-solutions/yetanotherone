@@ -1,5 +1,7 @@
 import { Button, Container, Toast, getIcon, __dayjs, UserIdentity } from '../libs/nofbiz/nofbiz.base.js';
-import { dataToCSV, downloadFile } from '../libs/nofbiz/nofbiz.excelparser.js';
+import { hucre, downloadFile } from '../libs/nofbiz/nofbiz.excelparser.js';
+
+import { columnsFromData, scalarizeRow } from './xlsx-export.js';
 
 import * as financialsApi from './financials-api.js';
 import * as commentsApi from './comments-api.js';
@@ -397,8 +399,8 @@ export async function buildInitiativeExportRows(rows, { detailed = false, isPriv
 // ---------------------------------------------------------------------------
 
 /**
- * Creates an "Exportar CSV" Button that, when clicked, fetches related data in
- * batch and downloads a CSV of the currently visible (filtered) initiatives.
+ * Creates an export Button that, when clicked, fetches related data in
+ * batch and downloads an XLSX of the currently visible (filtered) initiatives.
  *
  * @param {{
  *   getRows: () => Object[],
@@ -439,9 +441,12 @@ export function createExportButton({ getRows, filenamePrefix, label = 'Exportar'
         const isPrivileged = hasAnyProfile([ROLES.MENTOR, ROLES.MENTOR_MANAGER, ROLES.GESTOR]);
         const serialised = await buildInitiativeExportRows(rows, { detailed, isPrivileged });
 
-        const csv = dataToCSV(serialised, { bom: true });
-        const filename = `${filenamePrefix}-${__dayjs().format('YYYY-MM-DD')}.csv`;
-        downloadFile(csv, filename);
+        const scalarRows = serialised.map(scalarizeRow);
+        const bytes = await hucre.writeXlsx({
+          sheets: [{ name: 'Iniciativas', columns: columnsFromData(scalarRows), data: scalarRows }],
+        });
+        const filename = `${filenamePrefix}-${__dayjs().format('YYYY-MM-DD')}.xlsx`;
+        downloadFile(bytes, filename);
 
         loading.success(`${rows.length} iniciativa(s) exportada(s).`);
       } catch (err) {

@@ -1268,7 +1268,7 @@ export default defineRoute((config) => {
                 class: 'pace-cta-text',
               }),
               new Text(
-                'Exportar todas as iniciativas para um ficheiro CSV (aberto no Excel). Inclui iniciativas confidenciais e todos os dados financeiros.',
+                'Exportar todas as iniciativas para um ficheiro Excel (.xlsx). Inclui iniciativas confidenciais e todos os dados financeiros.',
                 { type: 'p', class: 'pace-cta-text' }
               ),
             ],
