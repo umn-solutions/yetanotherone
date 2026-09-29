@@ -2,6 +2,9 @@ export const APP_NAME = 'Place';
 export const ORG_NAME = 'pcdfdpgrenhas';
 export const MENTOR_TEAM_EMAIL = 'mentoria@place.pt'; // TODO: replace with real mentor team mailbox
 export const POWERBI_DASHBOARD_URL = 'https://app.powerbi.com/'; // TODO: replace with real Power BI dashboard link
+export const MENTOR_OUIDS = ['COM-BKP'];
+export const BOOTSTRAP_ADMIN_GROUP = 'PACE Owners';
+
 
 export const EVENT_TYPES = {
   CREATION: 'Creation',
@@ -64,11 +67,7 @@ export const FINANCE_VALIDATION_NOTICE =
 // ('Top Management' was removed from the org schema; former Top Management is now 'Management')
 export const GESTOR_CATEGORIES = ['EXECUTIVE', 'Management'];
 
-// OrgHierarchy OUID values whose members are flagged as mentors on CSV import
-export const MENTOR_OUIDS = ['COM-BKP'];
 
-// SharePoint group that grants bootstrap admin access when OrgHierarchy is empty
-export const BOOTSTRAP_ADMIN_GROUP = 'PACE Owners';
 
 // -- Saving Categories (client matrix) --
 

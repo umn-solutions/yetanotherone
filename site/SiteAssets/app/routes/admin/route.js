@@ -67,7 +67,6 @@ export default defineRoute((config) => {
   }
 
   const APP_ROLE_OPTIONS = [
-    { label: 'Automático (sem perfil manual)', value: '' },
     { label: 'Colaborador', value: 'colaborador' },
     { label: 'Gestor', value: 'gestor' },
     { label: 'Mentor', value: 'mentor' },
@@ -436,7 +435,7 @@ export default defineRoute((config) => {
     const currentAppRole = emp.AppRole || '';
 
     const roleField = new FormField({
-      value: APP_ROLE_OPTIONS.find(o => o.value === currentAppRole) || APP_ROLE_OPTIONS[0],
+      value: APP_ROLE_OPTIONS.find(o => o.value === currentAppRole) || null,
     });
     const roleCombo = new ComboBox(roleField, APP_ROLE_OPTIONS, {
       placeholder: 'Seleccionar perfil...',
@@ -452,6 +451,11 @@ export default defineRoute((config) => {
       onClickHandler: async () => {
         const selected = roleField.value;
         const newAppRole = selected ? selected.value : '';
+
+        if (!newAppRole) {
+          Toast.error('Seleccione um perfil.');
+          return;
+        }
 
         if (newAppRole === currentAppRole) {
           roleDialog.close();
