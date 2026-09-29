@@ -6,7 +6,7 @@ export async function setQuickEdit(listName, enabled) {
   try {
     await spMERGE(url, {
       headers: { 'IF-MATCH': '*' },
-      data: { TabularView: enabled },
+      data: { __metadata: { type: 'SP.View' }, TabularView: enabled },
     });
     log(`  [view] Quick edit ${enabled ? 'enabled' : 'disabled'} on ${listName}`);
   } catch (e) {

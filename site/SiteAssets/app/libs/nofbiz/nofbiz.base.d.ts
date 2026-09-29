@@ -2609,13 +2609,6 @@ type pageResetOptions = {
      * Loaded AFTER the base SPARC theme, overriding tokens and adding custom styles.
      */
     themePath?: string;
-    /**
-     * Neutralize OS display scaling (e.g. Windows 125%/150%) so the UI renders at logical 100%.
-     * Manual browser zoom (Ctrl +/-) is preserved. Applied as CSS `zoom` on <html> (not
-     * transform, which would trap fixed-position overlay backdrops). Default true --
-     * pass `false` to opt out.
-     */
-    neutralizeDisplayScaling?: boolean;
     __INTERNAL_DEBUG_OPTIONS?: __INTERNAL_DEBUG_OPTIONS;
 };
 type __INTERNAL_DEBUG_OPTIONS = {
@@ -2629,7 +2622,7 @@ type __INTERNAL_DEBUG_OPTIONS = {
  *
  * @see displaySharePointUI - to show SP's ui back again.
  */
-declare function pageReset({ clearConsole, removeStyles, themePath, neutralizeDisplayScaling, __INTERNAL_DEBUG_OPTIONS, }?: pageResetOptions): Promise<void>;
+declare function pageReset({ clearConsole, removeStyles, themePath, __INTERNAL_DEBUG_OPTIONS, }?: pageResetOptions): Promise<void>;
 
 declare class SimpleElapsedTimeBenchmark {
     private _start;

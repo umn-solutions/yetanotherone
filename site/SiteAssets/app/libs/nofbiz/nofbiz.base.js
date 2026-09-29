@@ -5464,39 +5464,7 @@ class LinkButton extends Button {
     }
 }
 
-function computeFactor(min) {
-    const dpr = window.devicePixelRatio;
-    const inner = window.innerWidth;
-    const outer = window.outerWidth;
-    if (!dpr || !inner) return null;
-    let factor = outer / inner / dpr;
-    factor = Math.max(min, factor);
-    if (Math.abs(factor - 1) < .02) factor = 1;
-    return factor;
-}
-
-function startDisplayScalingLock(options) {
-    const min = .6;
-    function apply() {
-        const factor = computeFactor(min);
-        if (factor === null) return;
-        if (factor === 1) {
-            document.documentElement.style.removeProperty("zoom");
-        } else {
-            document.documentElement.style.setProperty("zoom", String(factor));
-        }
-    }
-    const debouncedApply = debounce(apply, 100);
-    apply();
-    window.addEventListener("resize", debouncedApply);
-    return function stopDisplayScalingLock() {
-        debouncedApply.cancel();
-        window.removeEventListener("resize", debouncedApply);
-        document.documentElement.style.removeProperty("zoom");
-    };
-}
-
-async function pageReset({clearConsole: clearConsole = true, removeStyles: removeStyles = true, themePath: themePath, neutralizeDisplayScaling: neutralizeDisplayScaling = true, __INTERNAL_DEBUG_OPTIONS: __INTERNAL_DEBUG_OPTIONS} = {
+async function pageReset({clearConsole: clearConsole = true, removeStyles: removeStyles = true, themePath: themePath, __INTERNAL_DEBUG_OPTIONS: __INTERNAL_DEBUG_OPTIONS} = {
     clearConsole: true,
     removeStyles: true
 }) {
@@ -5520,7 +5488,6 @@ async function pageReset({clearConsole: clearConsole = true, removeStyles: remov
     const styleEl = document.createElement("style");
     styleEl.textContent = `\n      .${resetClass}{\n        overflow:hidden;\n        padding:0;\n      }\n      .${resetClass}>*{\n        display: none;\n      }\n      #root{\n        display: block;\n        width: 100vw;\n        height: 100svh;\n        margin:0;\n        padding:0;\n        background-color:transparent;\n      }\n    `;
     document.head.appendChild(styleEl);
-    const stopScalingLock = neutralizeDisplayScaling ? startDisplayScalingLock() : undefined;
     const loadPromises = [];
     let baseStyle = null;
     if (!__INTERNAL_DEBUG_OPTIONS?.stopAutoLoadBaseTheme) {
@@ -5546,7 +5513,6 @@ async function pageReset({clearConsole: clearConsole = true, removeStyles: remov
         appTheme?.remove();
         forEach(inheritedStyles, tag => $("head").append(tag));
         $("body").removeClass(resetClass);
-        stopScalingLock?.();
     };
     if (typeof _spPageContextInfo !== "undefined" && !__INTERNAL_DEBUG_OPTIONS?.stopAutoRefreshDigest) {
         startDigestTimer();
