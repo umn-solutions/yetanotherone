@@ -1,5 +1,6 @@
 import { spGET, spMERGE, spPOST } from '../app/libs/nofbiz/nofbiz.base.js'
 import { log } from './log.js'
+import { loadJSOM, execQuery } from './jsom.js'
 
 export async function setQuickEdit(listName, enabled) {
   const url = `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('${listName}')/DefaultView`;
@@ -10,20 +11,33 @@ export async function setQuickEdit(listName, enabled) {
     });
     log(`  [view] Quick edit ${enabled ? 'enabled' : 'disabled'} on ${listName}`);
   } catch (e) {
+    console.error('[views.setQuickEdit]', { listName, enabled, err: e });
     log(`  [view] ! Failed to ${enabled ? 'enable' : 'disable'} quick edit -- ` + (e.message || 'failed'), 'error');
   }
 }
 
+// Redirect the list's New/Edit forms to the app via the content type's form
+// URLs. list.DefaultNewFormUrl cannot do this (read-only over REST; only
+// accepts the list's own SPForms) -- ContentType.NewFormUrl/EditFormUrl is the
+// writable redirect knob and requires JSOM. See setup/jsom.js.
 export async function setFormsRedirect(listName, redirect, appUrl) {
-  const url = `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('${listName}')`;
   const target = redirect ? appUrl : '';
   try {
-    await spMERGE(url, {
-      headers: { 'IF-MATCH': '*' },
-      data: { __metadata: { type: 'SP.List' }, DefaultNewFormUrl: target, DefaultEditFormUrl: target },
-    });
+    await loadJSOM();
+    const ctx = SP.ClientContext.get_current();
+    const cts = ctx.get_web().get_lists().getByTitle(listName).get_contentTypes();
+    ctx.load(cts);
+    await execQuery(ctx);
+    if (cts.get_count() === 0) throw new Error('list has no content types');
+
+    const ct = cts.itemAt(0); // primary/default content type
+    ct.set_newFormUrl(target);
+    ct.set_editFormUrl(target);
+    ct.update(false); // false = do not push to child content types
+    await execQuery(ctx);
     log(`  [forms] ${redirect ? 'Redirected New/Edit forms to app' : 'Restored default New/Edit forms'} on ${listName}`);
   } catch (e) {
+    console.error('[views.setFormsRedirect]', { listName, redirect, err: e });
     log(`  [forms] ! Failed to ${redirect ? 'redirect' : 'restore'} forms -- ` + (e.message || 'failed'), 'error');
   }
 }

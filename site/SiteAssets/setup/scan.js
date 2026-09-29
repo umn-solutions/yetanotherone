@@ -105,10 +105,15 @@ export async function scanSite(siteApi, schema, builtinFields, appUrl) {
         console.warn('[scan] DefaultView read failed for ' + listName, e);
       }
       try {
-        const info = await spGET(`${listBase}?$select=DefaultNewFormUrl,DefaultEditFormUrl`);
-        result[listName].formsRedirected = !!appUrl && info?.DefaultNewFormUrl === appUrl;
+        // Forms redirect lives on the content type's NewFormUrl (JSOM-written),
+        // not the list's read-only DefaultNewFormUrl. Read the primary content
+        // type's NewFormUrl to detect redirect state.
+        const cts = await spGET(`${listBase}/ContentTypes?$top=1`);
+        const ct0 = cts?.value?.[0] ?? cts?.d?.results?.[0] ?? null;
+        const ctNewForm = ct0?.NewFormUrl ?? '';
+        result[listName].formsRedirected = !!appUrl && ctNewForm === appUrl;
       } catch (e) {
-        console.warn('[scan] forms read failed for ' + listName, e);
+        console.warn('[scan] content-type forms read failed for ' + listName, e);
       }
     } else {
       result[listName].diff = schema[listName].map(sf => ({
