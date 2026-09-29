@@ -48,12 +48,6 @@
 	align-items: center;
 	gap: 12px;
 }
-.pace-header__logo {
-	font-size: 22px;
-	font-weight: 800;
-	color: var(--color-brand-primary);
-	letter-spacing: -0.5px;
-}
 .pace-header__subtitle {
 	font-size: 14px;
 	color: var(--color-fg-tertiary);
@@ -3739,6 +3733,10 @@
   display: block;
 }
 
+.pace-header__logo img {
+  max-height: 100%;
+}
+
 .pace-header__divider {
   display: inline-block;
   width: 1px;
@@ -5953,7 +5951,8 @@ html:has(> body.disable-scroll) {
 /* Home grid cards are grid items — they must shrink so their titles truncate.
    pace-home-notifications and pace-mentor-contacts are the two 1fr cells. */
 .pt-v2 .pace-home-notifications,
-.pt-v2 .pace-mentor-contacts {
+.pt-v2 .pace-mentor-contacts,
+.pt-v2 .pace-powerbi {
   min-width: 0;
 }
 

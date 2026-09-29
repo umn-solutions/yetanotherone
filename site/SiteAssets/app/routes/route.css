@@ -9,8 +9,17 @@
   margin-bottom: 24px;
 }
 
+.pace-home-grid--with-powerbi > .pace-home-notifications {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+
 @media (max-width: 768px) {
   .pace-home-grid { grid-template-columns: 1fr; }
+  .pace-home-grid--with-powerbi > .pace-home-notifications {
+    grid-column: auto;
+    grid-row: auto;
+  }
 }
 
 /* Final validation label badge variants */
@@ -34,17 +43,20 @@
   align-items: center;
 }
 
-/* Mentor contacts card — text-to-button breathing room + centered button */
-.pace-mentor-contacts {
+/* Mentor contacts + Power BI cards — flex column, text spacing, centered button */
+.pace-mentor-contacts,
+.pace-powerbi {
   display: flex;
   flex-direction: column;
 }
 
-.pace-mentor-contacts__text {
+.pace-mentor-contacts__text,
+.pace-powerbi__text {
   margin: 0 0 20px 0;
 }
 
-.pace-mentor-contacts__btn {
+.pace-mentor-contacts__btn,
+.pace-powerbi__btn {
   align-self: center;
   white-space: nowrap;
   padding-left: 32px;

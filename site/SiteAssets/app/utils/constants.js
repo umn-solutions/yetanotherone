@@ -1,6 +1,7 @@
 export const APP_NAME = 'Place';
 export const ORG_NAME = 'pcdfdpgrenhas';
 export const MENTOR_TEAM_EMAIL = 'mentoria@place.pt'; // TODO: replace with real mentor team mailbox
+export const POWERBI_DASHBOARD_URL = 'https://app.powerbi.com/'; // TODO: replace with real Power BI dashboard link
 
 export const EVENT_TYPES = {
   CREATION: 'Creation',

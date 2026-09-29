@@ -15,8 +15,8 @@ import {
 import { getRecentForUser } from '../utils/notifications-api.js';
 import { openNewInitiativeModal } from '../utils/new-initiative.js';
 import { createPageLayout } from '../utils/navbar.js';
-import { hasProfile, ROLES } from '../utils/roles.js';
-import { MENTOR_TEAM_EMAIL } from '../utils/constants.js';
+import { hasProfile, hasAnyProfile, ROLES } from '../utils/roles.js';
+import { MENTOR_TEAM_EMAIL, POWERBI_DASHBOARD_URL } from '../utils/constants.js';
 
 export default defineRoute(async (config) => {
   config.setRouteTitle('Início');
@@ -115,10 +115,25 @@ export default defineRoute(async (config) => {
     ], `mailto:${MENTOR_TEAM_EMAIL}`, { variant: 'primary', class: 'pt-btn-hero-primary pace-mentor-contacts__btn' }),
   ], { class: 'pace-mentor-contacts pt-card' });
 
-  const twoColGrid = new Container([
-    notificationsSection,
-    mentorContactsSection,
-  ], { class: 'pace-home-grid' });
+  // -- Power BI dashboard (mentors + gestores only) --
+  const canSeePowerBi = hasAnyProfile([ROLES.MENTOR, ROLES.MENTOR_MANAGER, ROLES.GESTOR]);
+
+  const gridChildren = [notificationsSection, mentorContactsSection];
+  if (canSeePowerBi) {
+    const powerBiSection = new Container([
+      new Text('Dashboard Power BI', { type: 'h2', class: 'pt-section-header__title' }),
+      new Text('O dashboard Power BI reúne a análise de todas as iniciativas e poupanças registadas na plataforma. Explora os dados, acompanha a evolução do impacto e tira as tuas próprias conclusões.', { type: 'p', class: 'pace-powerbi__text' }),
+      new LinkButton([
+        new Container([getIcon('dashboard-line')], { as: 'span', class: 'pace-btn-icon' }),
+        'Abrir dashboard',
+      ], POWERBI_DASHBOARD_URL, { variant: 'primary', class: 'pt-btn-hero-primary pace-powerbi__btn', target: '_blank' }),
+    ], { class: 'pace-powerbi pt-card' });
+    gridChildren.push(powerBiSection);
+  }
+
+  const twoColGrid = new Container(gridChildren, {
+    class: canSeePowerBi ? 'pace-home-grid pace-home-grid--with-powerbi' : 'pace-home-grid',
+  });
 
   return createPageLayout([hero, twoColGrid], { contentClass: 'pt-v2' });
 });
