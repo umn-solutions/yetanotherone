@@ -89,16 +89,21 @@ export async function setFormsRedirect(listName, redirect, appUrl) {
 
 export async function ensureAdminView(listName) {
   const base = `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('${listName}')`;
+  // SharePoint returns 404 OR 400 ("the specified view is invalid") when the
+  // view doesn't exist -- treat any existence-check failure as "not found",
+  // rather than branching on an inconsistent status code.
   try {
     await spGET(`${base}/views/getbytitle('Admin')`);
+    return; // already exists
   } catch (e) {
-    if (e.status && e.status !== 404) {
-      console.error('[views.ensureAdminView]', { listName, err: e });
-      throw e;
-    }
-    await spPOST(`${base}/views`, { data: { __metadata: { type: 'SP.View' }, Title: 'Admin', PersonalView: true, TabularView: true } });
-    log('  [view] Created Admin view');
+    console.warn('[views.ensureAdminView] Admin view not found, creating', { listName, status: e?.status });
   }
+  // PersonalView: true -> the Admin view is visible ONLY to the user who runs
+  // this (each admin who triggers setup gets their own private Admin view).
+  await spPOST(`${base}/views`, {
+    data: { __metadata: { type: 'SP.View' }, Title: 'Admin', PersonalView: true, TabularView: true },
+  });
+  log('  [view] Created personal Admin view');
 }
 
 export async function addFieldToAdminView(listName, fieldName) {
