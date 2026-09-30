@@ -114,22 +114,24 @@ export async function restoreConfig(siteApi, backup, appUrl) {
   log('Config restore complete.', 'success');
 }
 
-// -- System key filter -------------------------------------------------------
+// -- Writable field extraction -----------------------------------------------
+// Restore ONLY the list's own schema fields, minus read-only built-ins. An
+// allowlist (not a blocklist) is used so SharePoint's computed/read-only
+// properties returned by getItems -- ServerRedirectedEmbedUri/Url,
+// ContentTypeId, FileSystemObjectType, OData__* etc. -- are never written back.
+// Writing those 400s (e.g. "null value at ServerRedirectedEmbedUri").
 
-const SYSTEM_KEYS = new Set([
-  'Id', 'odata.etag', 'Created', 'Modified', 'Author', 'Editor',
-  'Attachments', 'ContentType', 'ContentTypeId', 'GUID',
-  '__metadata',
-]);
+const READONLY_BUILTINS = new Set(['Id', 'ID', 'Created', 'Modified', 'Author', 'Editor']);
 
-function stripSystemKeys(row) {
-  const clean = {};
+function writableFields(row, backupFields) {
+  const allowed = new Set(
+    (backupFields || []).map(f => f.title).filter(t => !READONLY_BUILTINS.has(t))
+  );
+  const out = {};
   for (const [k, v] of Object.entries(row)) {
-    if (SYSTEM_KEYS.has(k)) continue;
-    if (k.startsWith('OData__')) continue;
-    clean[k] = v;
+    if (allowed.has(k)) out[k] = v;
   }
-  return clean;
+  return out;
 }
 
 // -- Data restore (upsert by UUID) -------------------------------------------
@@ -158,7 +160,7 @@ export async function restoreData(siteApi, backup, listName) {
     let created = 0;
     let failed = 0;
     for (const row of items) {
-      const fields = stripSystemKeys(row);
+      const fields = writableFields(row, listBackup.fields);
       try {
         await listApi.createItem(fields);
         created++;
@@ -193,7 +195,7 @@ export async function restoreData(siteApi, backup, listName) {
   let failed = 0;
 
   for (const row of items) {
-    const fields = stripSystemKeys(row);
+    const fields = writableFields(row, listBackup.fields);
     const uuid = row.UUID;
     const live = uuid ? liveMap.get(uuid) : null;
 
