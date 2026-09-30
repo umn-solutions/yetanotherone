@@ -77,10 +77,12 @@ async function doScan() {
   const anyListExists = Object.values(result.scanResult).some(r => r.exists);
   btnBackupSite.disabled = !anyListExists;
 
-  const saHidden = await getSiteAssetsHidden();
-  btnToggleSiteAssets.disabled = false;
-  btnToggleSiteAssets.dataset.hidden = String(saHidden);
-  btnToggleSiteAssets.textContent = saHidden ? 'Show SiteAssets' : 'Hide SiteAssets';
+  if (btnToggleSiteAssets) {
+    const saHidden = await getSiteAssetsHidden();
+    btnToggleSiteAssets.disabled = false;
+    btnToggleSiteAssets.dataset.hidden = String(saHidden);
+    btnToggleSiteAssets.textContent = saHidden ? 'Show SiteAssets' : 'Hide SiteAssets';
+  }
 
   if (genEnabled) {
     const tasksExists = result.scanResult.Tasks?.exists ?? false;
@@ -293,7 +295,7 @@ btnSyncAll.addEventListener('click', doSyncAll);
 if (genEnabled) btnGenData.addEventListener('click', doGenerateData);
 
 // -- Hide/Show SiteAssets library --------------------------------------------
-btnToggleSiteAssets.addEventListener('click', async () => {
+btnToggleSiteAssets?.addEventListener('click', async () => {
   if (busy) return;
   busy = true;
   setButtonBusy(btnToggleSiteAssets, '...');
