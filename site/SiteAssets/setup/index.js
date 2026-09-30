@@ -9,7 +9,7 @@ import {
   syncList, fullSetup, syncAll,
   getSiteAssetsHidden, setSiteAssetsHidden,
 } from './actions.js'
-import { setQuickEdit, setFormsRedirect } from './views.js'
+import { setQuickEdit, setFormsRedirect, setAdminViewFields, adminViewFieldsFor } from './views.js'
 import { exportSiteBackup, exportListBackup, exportListCSV, exportListXLSX } from './backup.js'
 import { readBackupFile, restoreSite, restoreList } from './restore.js'
 
@@ -166,6 +166,7 @@ cardsEl.addEventListener('click', async (e) => {
   else if (action === 'toggle-hidden') await setListHidden(listName, !scanResult[listName]?.hidden);
   else if (action === 'toggle-quickedit') await setQuickEdit(listName, !!scanResult[listName]?.quickEditDisabled);
   else if (action === 'toggle-forms') await setFormsRedirect(listName, !scanResult[listName]?.formsRedirected, APP_URL);
+  else if (action === 'create-admin-view') await setAdminViewFields(listName, adminViewFieldsFor(SCHEMA[listName]));
   else if (action === 'export-backup') {
     await exportListBackup(siteApi, listName, scanResult, APP_URL);
     busy = false;

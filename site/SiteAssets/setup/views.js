@@ -91,7 +91,7 @@ export async function ensureAdminView(listName) {
       console.error('[views.ensureAdminView]', { listName, err: e });
       throw e;
     }
-    await spPOST(`${base}/views`, { data: { Title: 'Admin', PersonalView: true, TabularView: true } });
+    await spPOST(`${base}/views`, { data: { __metadata: { type: 'SP.View' }, Title: 'Admin', PersonalView: true, TabularView: true } });
     log('  [view] Created Admin view');
   }
 }
@@ -104,5 +104,59 @@ export async function addFieldToAdminView(listName, fieldName) {
   } catch (e) {
     console.error('[views.addFieldToAdminView]', { listName, fieldName, err: e });
     log('  [view] ! ' + fieldName + ' -- ' + (e.message || 'failed'), 'error');
+  }
+}
+
+// -- View field composition --------------------------------------------------
+// Native audit fields shown in views: Modified + Modified By (Editor).
+const NATIVE_MODIFIED_FIELDS = ['Modified', 'Editor'];
+
+// Admin view = all schema field internal names + the native Modified/Modified By.
+export function adminViewFieldsFor(schemaFields) {
+  const names = (schemaFields || []).map(f => f.title);
+  for (const n of NATIVE_MODIFIED_FIELDS) if (!names.includes(n)) names.push(n);
+  return names;
+}
+
+// Clear a view's fields then set them to exactly `fieldNames` (in order).
+// viewPath is the REST segment after the list: 'DefaultView' or
+// "views/getbytitle('Admin')". Per-field failures are logged, not fatal.
+async function setViewFields(listName, viewPath, fieldNames) {
+  const base = `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('${listName}')/${viewPath}/viewfields`;
+  await spPOST(`${base}/removeallviewfields`);
+  for (const f of fieldNames) {
+    try {
+      await spPOST(`${base}/addviewfield('${f}')`);
+      log('  [view] + ' + f);
+    } catch (e) {
+      console.error('[views.setViewFields]', { listName, viewPath, field: f, err: e });
+      log('  [view] ! ' + f + ' -- ' + (e.message || 'failed'), 'error');
+    }
+  }
+}
+
+// Default (AllItems) view -> only the given fields (default: Modified + Modified By).
+// Removing all fields first drops the linked Title (LinkTitle) column.
+export async function setDefaultViewFields(listName, fields = NATIVE_MODIFIED_FIELDS) {
+  log(`  [view] Setting default view fields on ${listName}...`, 'info');
+  try {
+    await setViewFields(listName, 'DefaultView', fields);
+    log(`  [view] Default view -> ${fields.join(', ')}`, 'success');
+  } catch (e) {
+    console.error('[views.setDefaultViewFields]', { listName, err: e });
+    log('  [view] ! default view fields -- ' + (e.message || 'failed'), 'error');
+  }
+}
+
+// Personal Admin view -> the given fields (schema + native). Creates it if absent.
+export async function setAdminViewFields(listName, fieldNames) {
+  log(`  [view] Populating Admin view on ${listName}...`, 'info');
+  try {
+    await ensureAdminView(listName);
+    await setViewFields(listName, "views/getbytitle('Admin')", fieldNames);
+    log(`  [view] Admin view -> ${fieldNames.length} fields`, 'success');
+  } catch (e) {
+    console.error('[views.setAdminViewFields]', { listName, err: e });
+    log('  [view] ! admin view fields -- ' + (e.message || 'failed'), 'error');
   }
 }

@@ -1,6 +1,6 @@
 import { spMERGE, spGET } from '../app/libs/nofbiz/nofbiz.base.js'
 import { log } from './log.js'
-import { setQuickEdit, setFormsRedirect, ensureAdminView, addFieldToAdminView } from './views.js'
+import { setQuickEdit, setFormsRedirect, ensureAdminView, addFieldToAdminView, setDefaultViewFields, setAdminViewFields, adminViewFieldsFor } from './views.js'
 
 export async function createList(siteApi, listName, schema, appUrl) {
   log('Creating list: ' + listName + '...', 'info');
@@ -37,13 +37,11 @@ export async function createList(siteApi, listName, schema, appUrl) {
     await setQuickEdit(listName, false);
     await setFormsRedirect(listName, true, appUrl);
     await setListHidden(listName, true);
-    if (createdFields.length > 0) {
-      log('Adding fields to Admin view...', 'info');
-      await ensureAdminView(listName);
-      for (const fieldName of createdFields) {
-        await addFieldToAdminView(listName, fieldName);
-      }
-    }
+
+    // Default (AllItems) view: only Modified + Modified By (strips linked Title).
+    await setDefaultViewFields(listName);
+    // Admin view (personal): all schema fields + native Modified / Modified By.
+    await setAdminViewFields(listName, adminViewFieldsFor(schema[listName]));
   } catch (e) {
     console.error('[actions.createList]', { listName, err: e });
     log('Failed to create list ' + listName + ': ' + e.message, 'error');
