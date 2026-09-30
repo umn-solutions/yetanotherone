@@ -129,7 +129,9 @@ function writableFields(row, backupFields) {
   );
   const out = {};
   for (const [k, v] of Object.entries(row)) {
-    if (allowed.has(k)) out[k] = v;
+    if (!allowed.has(k)) continue;
+    if (v === null || v === undefined) continue;               // empty field -> omit (toFieldValue rejects null)
+    out[k] = (typeof v === 'object') ? JSON.stringify(v) : v;  // arrays/objects -> JSON string (SP stores strings)
   }
   return out;
 }
