@@ -3,6 +3,11 @@ import { log } from './log.js'
 
 const REDIRECT_ACTION_PREFIX = 'SPARC_FormRedirect';
 
+// Empty-body POST actions (addviewfield / removeallviewfields) must NOT carry
+// spPOST's default odata=verbose Content-Type -- SharePoint tries to parse the
+// empty body as verbose OData and returns 400. Force nometadata for these.
+const ACTION_POST = { headers: { 'Accept': 'application/json;odata=nometadata', 'Content-Type': 'application/json;odata=nometadata' } };
+
 // Read a list's GUID (lowercased, braces stripped) for the redirect guard.
 async function getListId(listName) {
   const res = await spGET(`${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('${listName}')?$select=Id`);
@@ -99,7 +104,7 @@ export async function ensureAdminView(listName) {
 export async function addFieldToAdminView(listName, fieldName) {
   const url = `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('${listName}')/views/getbytitle('Admin')/ViewFields/addviewfield('${fieldName}')`;
   try {
-    await spPOST(url);
+    await spPOST(url, ACTION_POST);
     log('  [view] + ' + fieldName);
   } catch (e) {
     console.error('[views.addFieldToAdminView]', { listName, fieldName, err: e });
@@ -123,10 +128,10 @@ export function adminViewFieldsFor(schemaFields) {
 // "views/getbytitle('Admin')". Per-field failures are logged, not fatal.
 async function setViewFields(listName, viewPath, fieldNames) {
   const base = `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('${listName}')/${viewPath}/viewfields`;
-  await spPOST(`${base}/removeallviewfields`);
+  await spPOST(`${base}/removeallviewfields`, ACTION_POST);
   for (const f of fieldNames) {
     try {
-      await spPOST(`${base}/addviewfield('${f}')`);
+      await spPOST(`${base}/addviewfield('${f}')`, ACTION_POST);
       log('  [view] + ' + f);
     } catch (e) {
       console.error('[views.setViewFields]', { listName, viewPath, field: f, err: e });
