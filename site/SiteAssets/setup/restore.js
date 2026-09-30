@@ -1,7 +1,6 @@
 import { log } from './log.js'
 import { createList, createField, fixIndex, setListHidden } from './actions.js'
 import { setQuickEdit, setFormsRedirect } from './views.js'
-import { scanSite } from './scan.js'
 
 // -- File reading & validation -----------------------------------------------
 

@@ -1,6 +1,31 @@
-import { spGET, spMERGE, spPOST } from '../app/libs/nofbiz/nofbiz.base.js'
+import { spGET, spMERGE, spPOST, spDELETE } from '../app/libs/nofbiz/nofbiz.base.js'
 import { log } from './log.js'
-import { loadJSOM, execQuery } from './jsom.js'
+
+const REDIRECT_ACTION_PREFIX = 'SPARC_FormRedirect';
+
+// Read a list's GUID (lowercased, braces stripped) for the redirect guard.
+async function getListId(listName) {
+  const res = await spGET(`${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('${listName}')?$select=Id`);
+  const id = String(res?.Id ?? res?.d?.Id ?? '').replace(/[{}]/g, '').toLowerCase();
+  if (!id) throw new Error('could not read list Id');
+  return id;
+}
+
+// Guarded redirect injected via a web-scoped ScriptLink custom action: fires
+// only on the target list's New/Edit form pages, sends the user to the app.
+function redirectScriptBlock(listId, appUrl) {
+  return [
+    '(function(){try{',
+    ' var c=window._spPageContextInfo||{};',
+    ' var lid=(c.pageListId||"").replace(/[{}]/g,"").toLowerCase();',
+    ' if(lid!==' + JSON.stringify(listId) + ')return;',
+    ' var p=(location.pathname||"").toLowerCase();',
+    ' if(p.indexOf("/newform.aspx")>-1||p.indexOf("/editform.aspx")>-1){',
+    '  window.location.replace(' + JSON.stringify(appUrl) + ');',
+    ' }',
+    '}catch(e){console.warn("[SPARC_FormRedirect]",e);}})();',
+  ].join('');
+}
 
 export async function setQuickEdit(listName, enabled) {
   const url = `${_spPageContextInfo.webAbsoluteUrl}/_api/web/lists/getbytitle('${listName}')/DefaultView`;
@@ -16,26 +41,41 @@ export async function setQuickEdit(listName, enabled) {
   }
 }
 
-// Redirect the list's New/Edit forms to the app via the content type's form
-// URLs. list.DefaultNewFormUrl cannot do this (read-only over REST; only
-// accepts the list's own SPForms) -- ContentType.NewFormUrl/EditFormUrl is the
-// writable redirect knob and requires JSOM. See setup/jsom.js.
+// Redirect the list's New/Edit forms to the app via a web-scoped ScriptLink
+// custom action (pure REST). Chosen over list.DefaultNewFormUrl (read-only via
+// REST; only accepts the list's own SPForms) and ContentType.NewFormUrl (JSOM-
+// writable but makes SharePoint form-render the app page in list context, which
+// 500s once a real List GUID is on the URL). Keeping SharePoint's real forms
+// and bouncing off them on load avoids that. The action is named per list and
+// removed on restore, so the toggle is idempotent.
 export async function setFormsRedirect(listName, redirect, appUrl) {
-  const target = redirect ? appUrl : '';
+  const web = _spPageContextInfo.webAbsoluteUrl;
   try {
-    await loadJSOM();
-    const ctx = SP.ClientContext.get_current();
-    const cts = ctx.get_web().get_lists().getByTitle(listName).get_contentTypes();
-    ctx.load(cts);
-    await execQuery(ctx);
-    if (cts.get_count() === 0) throw new Error('list has no content types');
+    const listId = await getListId(listName);
+    const actionName = `${REDIRECT_ACTION_PREFIX}_${listId}`;
 
-    const ct = cts.itemAt(0); // primary/default content type
-    ct.set_newFormUrl(target);
-    ct.set_editFormUrl(target);
-    ct.update(false); // false = do not push to child content types
-    await execQuery(ctx);
-    log(`  [forms] ${redirect ? 'Redirected New/Edit forms to app' : 'Restored default New/Edit forms'} on ${listName}`);
+    // Remove any existing redirect action for this list first (idempotent).
+    const existing = await spGET(`${web}/_api/web/UserCustomActions?$select=Id,Name`);
+    const items = existing?.value ?? existing?.d?.results ?? [];
+    for (const a of items) {
+      if ((a.Name || '') === actionName) {
+        await spDELETE(`${web}/_api/web/UserCustomActions(guid'${a.Id}')`, { headers: { 'IF-MATCH': '*' } });
+      }
+    }
+
+    if (redirect) {
+      await spPOST(`${web}/_api/web/UserCustomActions`, {
+        data: {
+          __metadata: { type: 'SP.UserCustomAction' },
+          Title: REDIRECT_ACTION_PREFIX,
+          Name: actionName,
+          Location: 'ScriptLink',
+          ScriptBlock: redirectScriptBlock(listId, appUrl),
+          Sequence: 100,
+        },
+      });
+    }
+    log(`  [forms] ${redirect ? 'Redirected New/Edit forms to app (ScriptLink)' : 'Removed form redirect'} on ${listName}`);
   } catch (e) {
     console.error('[views.setFormsRedirect]', { listName, redirect, err: e });
     log(`  [forms] ! Failed to ${redirect ? 'redirect' : 'restore'} forms -- ` + (e.message || 'failed'), 'error');
@@ -47,7 +87,10 @@ export async function ensureAdminView(listName) {
   try {
     await spGET(`${base}/views/getbytitle('Admin')`);
   } catch (e) {
-    if (e.status && e.status !== 404) throw e;
+    if (e.status && e.status !== 404) {
+      console.error('[views.ensureAdminView]', { listName, err: e });
+      throw e;
+    }
     await spPOST(`${base}/views`, { data: { Title: 'Admin', PersonalView: true, TabularView: true } });
     log('  [view] Created Admin view');
   }
@@ -59,6 +102,7 @@ export async function addFieldToAdminView(listName, fieldName) {
     await spPOST(url);
     log('  [view] + ' + fieldName);
   } catch (e) {
+    console.error('[views.addFieldToAdminView]', { listName, fieldName, err: e });
     log('  [view] ! ' + fieldName + ' -- ' + (e.message || 'failed'), 'error');
   }
 }
