@@ -35,7 +35,7 @@ export function renderCards(scanResult, cardsEl) {
       html += `<button class="btn btn-secondary btn-sm" data-action="toggle-quickedit" data-list="${listName}">${qeLabel}</button>`;
       const formsLabel = result.formsRedirected ? 'Restore Forms' : 'Redirect Forms';
       html += `<button class="btn btn-secondary btn-sm" data-action="toggle-forms" data-list="${listName}">${formsLabel}</button>`;
-      html += `<button class="btn btn-secondary btn-sm" data-action="create-admin-view" data-list="${listName}">Create Admin View</button>`;
+      html += `<button class="btn btn-secondary btn-sm" data-action="setup-views" data-list="${listName}">Setup Views</button>`;
       html += `<button class="btn btn-secondary btn-sm" data-action="export-backup" data-list="${listName}">Export .txt</button>`;
       html += `<button class="btn btn-secondary btn-sm" data-action="export-csv" data-list="${listName}">Export CSV</button>`;
       html += `<button class="btn btn-secondary btn-sm" data-action="export-xlsx" data-list="${listName}">Export XLSX</button>`;
