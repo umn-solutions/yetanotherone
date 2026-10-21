@@ -29,6 +29,13 @@
   z-index: calc(var(--z-modal) + 1);
 }
 
+/* Assigned-teams list inside the mentor dialog -- cap height and scroll
+   so a mentor with many teams doesn't push the dialog off-screen. */
+.admin-mentor-teams-list {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
 /* Savings target dialog -- form (year, implemented target, hard/soft savings, derived total).
    No ComboBox, so it must NOT use overflow-visible. Cap the shell height and
    scroll the body while header/footer stay fixed (same pattern as form modal). */
