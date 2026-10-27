@@ -226,16 +226,17 @@ export function extractCategoryLabels(field) {
 
 /**
  * Internal: resolves a raw simulador value to { active, value }.
- * "Active" means the value is non-empty, non-null, and parses to a finite non-zero number.
- * A value of 0 (including a cleared NumberInput, which syncs Number('')===0) is treated as
- * INACTIVE so producao falls back to its raw As-Is/To-Be inputs; negative values remain active.
+ * "Active" means the value is non-empty, non-null, and parses to a finite number (0 included).
+ * Only empty string / null / undefined / non-numeric (NaN/Infinity) are INACTIVE.
+ * A typed 0 and a cleared (empty-string) field are distinguishable: NumberInput early-returns on
+ * an empty raw value and leaves the FormField as '', so '' stays inactive while a typed 0 is active.
  * @param {*} rawVal
  * @returns {{ active: boolean, value: number }}
  */
 function resolveSimulador(rawVal) {
   if (rawVal === null || rawVal === undefined || rawVal === '') return { active: false, value: 0 };
   const n = parseFloat(rawVal);
-  if (!isFinite(n) || n === 0) return { active: false, value: 0 };
+  if (!isFinite(n)) return { active: false, value: 0 };
   return { active: true, value: n };
 }
 
@@ -316,7 +317,7 @@ function getToBePhase(payload) {
 
 /**
  * Validates that every enabled category has both a complete As-Is phase and a
- * complete To-Be phase (all input fields present and > 0) before the mentor
+ * complete To-Be phase (all input fields present and numeric, 0 allowed) before the mentor
  * advances the initiative to the gestor (mentorSavingsValidation).
  * For the qualidade category, requires non-empty description text instead.
  * For the producao category with an active Simulador Financeiro override, the
@@ -367,7 +368,7 @@ export function assertToBeComplete(financials) {
     const asIsPayload = payload && payload.asIs;
     const asIsIncomplete = !asIsPayload || inputKeys.some(ik => {
       const v = asIsPayload[ik];
-      return v == null || v === '' || !(parseFloat(v) > 0);
+      return v == null || v === '' || !Number.isFinite(parseFloat(v));
     });
     if (asIsIncomplete) {
       throw new SystemError(
@@ -381,7 +382,7 @@ export function assertToBeComplete(financials) {
     const toBe = getToBePhase(payload);
     const toBeIncomplete = !toBe || inputKeys.some(ik => {
       const v = toBe[ik];
-      return v == null || v === '' || !(parseFloat(v) > 0);
+      return v == null || v === '' || !Number.isFinite(parseFloat(v));
     });
     if (toBeIncomplete) {
       throw new SystemError(
