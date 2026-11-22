@@ -22,15 +22,12 @@ jobs:
         with:
           submodules: true
           lfs: false
-      - name: Install OIDC Client from Core Package
-        run: npm install @actions/core@1.6.0 @actions/http-client
       - name: Get Id Token
         uses: actions/github-script@v6
         id: idtoken
         with:
            script: |
-               const coredemo = require('@actions/core')
-               return await coredemo.getIDToken()
+               return await core.getIDToken()
            result-encoding: string
       - name: Build And Deploy
         id: builddeploy
@@ -40,9 +37,10 @@ jobs:
           action: "upload"
           ###### Repository/Build Configurations - These values can be configured to match your app requirements. ######
           # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
-          app_location: "./site" # App source code path
+          app_location: "/" # Repo root, so the app is served under /site (matches webAbsoluteUrl)
           api_location: "" # Api source code path - optional
-          output_location: "." # Built app content directory - optional
+          output_location: "" # No build output; deploy app_location as-is
+          skip_app_build: true # Plain static files; skip Oryx detection
           github_id_token: ${{ steps.idtoken.outputs.result }}
           ###### End of Repository/Build Configurations ######
 
