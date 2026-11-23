@@ -22,27 +22,6 @@
   }
 }
 
-/* Final validation label badge variants */
-.pace-chip--final-place {
-  background-color: #e0f5f0;
-  color: #0d6e56;
-  border: 1px solid #a3d9cc;
-}
-
-.pace-chip--final-finance {
-  background-color: #e6f0fb;
-  color: #1a4d8f;
-  border: 1px solid #a3c4ee;
-}
-
-/* Status cell wrapper (status chip + optional label chip) */
-.pace-status-cell {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  align-items: center;
-}
-
 /* Mentor contacts + Power BI cards — flex column, text spacing, centered button */
 .pace-mentor-contacts,
 .pace-powerbi {

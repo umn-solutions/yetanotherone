@@ -274,29 +274,10 @@
 	line-height: 1.4;
 }
 
-.pace-chip--active {
-	background: #e8f5e9;
-	color: #2e7d32;
-}
-
-.pace-chip--pending {
-	background: var(--color-warning-bg);
-	color: #92400e;
-}
-
-.pace-chip--done {
-	background: #e0f2f1;
-	color: #00695c;
-}
-
 .pace-chip--inactive {
-	background: #f3f4f6;
-	color: #6b7280;
-}
-
-.pace-chip--revision {
-	background: var(--color-danger-bg);
-	color: #b91c1c;
+	background: transparent;
+	color: var(--pt-ink-soft, #4A5A4A);
+	border: 1px solid var(--pt-border, #E1E6D6);
 }
 
 .pace-chip--conf {
@@ -304,6 +285,37 @@
 	color: #6d28d9;
 	font-size: 0.72rem;
 	padding: 2px 8px;
+}
+
+.pace-chip--st-rascunho            { background: rgba(107,114,128,0.14); color: #6B7280; }
+.pace-chip--st-submetido           { background: rgba(8,145,178,0.14);   color: #0891B2; }
+.pace-chip--st-validado-mentor     { background: rgba(79,141,217,0.14);  color: #4F8DD9; }
+.pace-chip--st-em-execucao         { background: rgba(232,153,35,0.14);  color: #E89923; }
+.pace-chip--st-em-validacao-mentor { background: rgba(156,91,209,0.14);  color: #9C5BD1; }
+.pace-chip--st-em-validacao-gestor { background: rgba(13,148,136,0.14);  color: #0D9488; }
+.pace-chip--st-em-validacao-mm     { background: rgba(192,38,211,0.14);  color: #C026D3; }
+.pace-chip--st-implementado        { background: rgba(0,150,57,0.14);    color: #009639; }
+.pace-chip--st-em-revisao          { background: rgba(184,134,11,0.14);  color: #B8860B; }
+.pace-chip--st-rejeitado           { background: rgba(192,57,43,0.14);   color: #C0392B; }
+.pace-chip--st-cancelado           { background: rgba(139,94,60,0.14);   color: #8B5E3C; }
+
+.pace-chip--final-place {
+	background: rgba(79,70,229,0.14);
+	color: #4F46E5;
+	border: 1px solid rgba(79,70,229,0.35);
+}
+
+.pace-chip--final-finance {
+	background: rgba(30,58,138,0.14);
+	color: #1E3A8A;
+	border: 1px solid rgba(30,58,138,0.35);
+}
+
+.pace-status-cell {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	align-items: center;
 }
 
 /* --- Pending items --- */
@@ -1725,8 +1737,8 @@
 /* equipa: 9 cols */
 .pace-table--equipa { --table-cols: minmax(180px, 1fr) minmax(110px, 130px) minmax(120px, 140px) minmax(110px, 130px) minmax(120px, 140px) minmax(120px, 140px) minmax(100px, 120px) minmax(90px, 110px) auto; }
 
-/* catalogo implementados: Iniciativa+Descricao | Colaborador | Equipa | Gestor | Data Implementacao (5 cols) */
-.pace-table--catalogo { --table-cols: minmax(240px, 2.5fr) minmax(140px, 1fr) minmax(120px, 1fr) minmax(140px, 1fr) minmax(140px, 1fr); }
+/* catalogo implementados: Iniciativa+Descricao | Colaborador | Equipa | Gestor | Validacao Final | Data Implementacao (6 cols) */
+.pace-table--catalogo { --table-cols: minmax(240px, 2.5fr) minmax(140px, 1fr) minmax(120px, 1fr) minmax(140px, 1fr) minmax(130px, 1fr) minmax(140px, 1fr); }
 
 /* catalogo arquivo: Iniciativa+Descricao | Estado | Colaborador | Equipa (4 cols) */
 .pace-table--arquivo { --table-cols: minmax(240px, 2.5fr) minmax(110px, 0.9fr) minmax(140px, 1fr) minmax(120px, 1fr); }
@@ -5613,12 +5625,23 @@ html:has(> body.disable-scroll) {
   border: 1px solid transparent;
 }
 
-.pt-v2 .pace-chip--active   { background-color: rgba(79, 141, 217, 0.14);  color: var(--pt-phase-plan); }
-.pt-v2 .pace-chip--pending  { background-color: rgba(232, 153, 35, 0.14);  color: var(--pt-status-warn); }
-.pt-v2 .pace-chip--revision { background-color: rgba(232, 153, 35, 0.14);  color: var(--pt-status-warn); }
-.pt-v2 .pace-chip--done     { background-color: rgba(0, 150, 57, 0.14);    color: var(--pt-bnpp-green); }
-.pt-v2 .pace-chip--inactive { background-color: rgba(45, 148, 66, 0.12);   color: var(--pt-green-deep); }
-.pt-v2 .pace-chip--conf     { background-color: rgba(192, 40, 125, 0.12);  color: #c0287d; }
+.pt-v2 .pace-chip.pace-chip--inactive { background-color: transparent; color: var(--pt-ink-soft); border-color: var(--pt-border); }
+.pt-v2 .pace-chip--conf               { background-color: rgba(192, 40, 125, 0.12); color: #c0287d; }
+
+.pt-v2 .pace-chip.pace-chip--st-rascunho            { background-color: rgba(107,114,128,0.14); color: #6B7280; }
+.pt-v2 .pace-chip.pace-chip--st-submetido           { background-color: rgba(8,145,178,0.14);   color: #0891B2; }
+.pt-v2 .pace-chip.pace-chip--st-validado-mentor     { background-color: rgba(79,141,217,0.14);  color: var(--pt-phase-plan); }
+.pt-v2 .pace-chip.pace-chip--st-em-execucao         { background-color: rgba(232,153,35,0.14);  color: var(--pt-phase-do); }
+.pt-v2 .pace-chip.pace-chip--st-em-validacao-mentor { background-color: rgba(156,91,209,0.14);  color: var(--pt-phase-check); }
+.pt-v2 .pace-chip.pace-chip--st-em-validacao-gestor { background-color: rgba(13,148,136,0.14);  color: #0D9488; }
+.pt-v2 .pace-chip.pace-chip--st-em-validacao-mm     { background-color: rgba(192,38,211,0.14);  color: #C026D3; }
+.pt-v2 .pace-chip.pace-chip--st-implementado        { background-color: rgba(0,150,57,0.14);    color: var(--pt-status-ok); }
+.pt-v2 .pace-chip.pace-chip--st-em-revisao          { background-color: rgba(184,134,11,0.14);  color: #B8860B; }
+.pt-v2 .pace-chip.pace-chip--st-rejeitado           { background-color: rgba(192,57,43,0.14);   color: var(--pt-status-danger); }
+.pt-v2 .pace-chip.pace-chip--st-cancelado           { background-color: rgba(139,94,60,0.14);   color: #8B5E3C; }
+
+.pt-v2 .pace-chip.pace-chip--final-place   { background-color: rgba(79,70,229,0.14);  color: #4F46E5; border-color: rgba(79,70,229,0.35); }
+.pt-v2 .pace-chip.pace-chip--final-finance { background-color: rgba(30,58,138,0.14);  color: #1E3A8A; border-color: rgba(30,58,138,0.35); }
 
 /* -- Section titles -- */
 

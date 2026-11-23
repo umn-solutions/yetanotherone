@@ -13,7 +13,7 @@ import {
   __dayjs,
 } from '../libs/nofbiz/nofbiz.base.js';
 
-import { STATUS, statusLabel, chipClass, getNextFlowStatus, STATUS_LABELS, isTerminalStatus } from './status-helpers.js';
+import { STATUS, buildStatusChips, getNextFlowStatus, STATUS_LABELS, isTerminalStatus } from './status-helpers.js';
 import { getTeamLabel, getTeamName, isMentorUser } from './roles.js';
 import { mentorName, gestorName } from './format-helpers.js';
 import { getByInitiative as getFinancials } from './financials-api.js';
@@ -101,7 +101,7 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
 
   // -- Header chips --
   const headerChips = [
-    new Text(statusLabel(status), { type: 'span', class: `pace-chip ${chipClass(status)}` }),
+    ...buildStatusChips(initiative),
     new Text(getTeamName(initiative.ImpactedTeamOUID) || '', { type: 'span', class: 'pace-chip pace-chip--inactive' }),
   ];
 
@@ -297,101 +297,101 @@ export async function openInitiativeDetail(initiative, context, onSuccess, { can
     // Comment, Transfer, Share have no status change -> no description shown
   };
 
-  // -- Progress timeline and comments (skipped for catalogo -- archived items) --
+  // -- Progress timeline (all contexts) --
   let progressSection = null;
   let commentsSection = null;
 
-  if (context !== 'catalogo') {
-    // -- Merged progress timeline (from events, excludes comments) --
-    let events = [];
-    try {
-      events = await getEvents(initiative.UUID);
-    } catch (error) { console.error('[openInitiativeDetail] getEvents failed', error); /* non-critical */ }
+  // -- Merged progress timeline (from events, excludes comments) --
+  let events = [];
+  try {
+    events = await getEvents(initiative.UUID);
+  } catch (error) { console.error('[openInitiativeDetail] getEvents failed', error); /* non-critical */ }
 
-    events.sort((a, b) => (a.Date || '').localeCompare(b.Date || ''));
+  events.sort((a, b) => (a.Date || '').localeCompare(b.Date || ''));
 
-    const workflowEvents = events.filter(ev => ev.EventType !== EVENT_TYPES.COMMENT && ev.EventType !== EVENT_TYPES.SHARE);
-    const nextStatus = getNextFlowStatus(status);
+  const workflowEvents = events.filter(ev => ev.EventType !== EVENT_TYPES.COMMENT && ev.EventType !== EVENT_TYPES.SHARE);
+  const nextStatus = getNextFlowStatus(status);
 
-    const flowStepNodes = workflowEvents.map((ev, i) => {
-      let actorObj = ev.Actor || {};
-      if (typeof actorObj === 'string') {
-        try { actorObj = JSON.parse(actorObj); } catch (_) { actorObj = {}; }
-      }
-      const actorName = actorObj.displayName || 'Sistema';
-      const dateStr = ev.Date ? __dayjs(ev.Date).format('DD/MM/YYYY HH:mm') : '';
-      const baseLabel = EVENT_TYPE_LABELS[ev.EventType] || ev.EventType;
-      // For MentorManagerValidation, show the persisted label if available; fall back to computed.
-      const label = (ev.EventType === EVENT_TYPES.MENTOR_MANAGER_VALIDATION && (ev.ValidationLabel || resolveFinalValidationLabel(initiative, financials)))
-        ? (ev.ValidationLabel || resolveFinalValidationLabel(initiative, financials))
-        : baseLabel;
+  const flowStepNodes = workflowEvents.map((ev, i) => {
+    let actorObj = ev.Actor || {};
+    if (typeof actorObj === 'string') {
+      try { actorObj = JSON.parse(actorObj); } catch (_) { actorObj = {}; }
+    }
+    const actorName = actorObj.displayName || 'Sistema';
+    const dateStr = ev.Date ? __dayjs(ev.Date).format('DD/MM/YYYY HH:mm') : '';
+    const baseLabel = EVENT_TYPE_LABELS[ev.EventType] || ev.EventType;
+    // For MentorManagerValidation, show the persisted label if available; fall back to computed.
+    const label = (ev.EventType === EVENT_TYPES.MENTOR_MANAGER_VALIDATION && (ev.ValidationLabel || resolveFinalValidationLabel(initiative, financials)))
+      ? (ev.ValidationLabel || resolveFinalValidationLabel(initiative, financials))
+      : baseLabel;
 
-      const stepContent = [
-        new Container([
-          new Text(label, { type: 'span', class: 'pace-flow-label' }),
-          new Text(dateStr, { type: 'span', class: 'pace-flow-date' }),
-        ], { class: 'pace-flow-step-header' }),
-      ];
+    const stepContent = [
+      new Container([
+        new Text(label, { type: 'span', class: 'pace-flow-label' }),
+        new Text(dateStr, { type: 'span', class: 'pace-flow-date' }),
+      ], { class: 'pace-flow-step-header' }),
+    ];
 
-      const eventStatus = EVENT_TO_STATUS[ev.EventType];
-      const eventDescription = eventStatus ? STATUS_DESCRIPTIONS[eventStatus] : null;
-      if (eventDescription) {
-        const commaIdx = eventDescription.indexOf(',');
-        const headEnd = commaIdx >= 0 ? commaIdx : eventDescription.length;
-        const head = eventDescription.slice(0, headEnd);
-        const tail = eventDescription.slice(headEnd);
-        stepContent.push(new Container([
-          new Text(head, { type: 'span', class: 'pace-flow-description__head' }),
-          ...(tail ? [new Text(tail, { type: 'span' })] : []),
-        ], { as: 'span', class: 'pace-flow-description' }));
-      }
-
-      if (actorName !== 'Sistema') {
-        stepContent.push(new Text(actorName, { type: 'span', class: 'pace-flow-actor' }));
-      }
-
-      if (ev.Comment) {
-        stepContent.push(new Text(ev.Comment, { type: 'p', class: 'pace-flow-comment' }));
-      }
-
-      const step = new Container([
-        new Container([
-          new Text(String(i + 1), { type: 'span' }),
-        ], { class: 'pace-flow-dot pace-flow-dot--done' }),
-        new Container(stepContent, { class: 'pace-flow-step-content' }),
-      ], { class: 'pace-flow-step' });
-
-      if (i < workflowEvents.length - 1 || nextStatus) {
-        const connectorClass = (i < workflowEvents.length - 1)
-          ? 'pace-flow-connector pace-flow-connector--done'
-          : 'pace-flow-connector';
-        return new Container([
-          step,
-          new Container([], { class: connectorClass }),
-        ], { as: 'span', class: 'pace-flow-step-wrap' });
-      }
-      return step;
-    });
-
-    if (nextStatus) {
-      flowStepNodes.push(
-        new Container([
-          new Container([], { class: 'pace-flow-dot pace-flow-dot--next' }),
-          new Container([
-            new Text(STATUS_LABELS[nextStatus], { type: 'span', class: 'pace-flow-label' }),
-          ], { class: 'pace-flow-step-content' }),
-        ], { class: 'pace-flow-step' })
-      );
+    const eventStatus = EVENT_TO_STATUS[ev.EventType];
+    const eventDescription = eventStatus ? STATUS_DESCRIPTIONS[eventStatus] : null;
+    if (eventDescription) {
+      const commaIdx = eventDescription.indexOf(',');
+      const headEnd = commaIdx >= 0 ? commaIdx : eventDescription.length;
+      const head = eventDescription.slice(0, headEnd);
+      const tail = eventDescription.slice(headEnd);
+      stepContent.push(new Container([
+        new Text(head, { type: 'span', class: 'pace-flow-description__head' }),
+        ...(tail ? [new Text(tail, { type: 'span' })] : []),
+      ], { as: 'span', class: 'pace-flow-description' }));
     }
 
-    progressSection = workflowEvents.length > 0 || nextStatus
-      ? new Container([
-          new Text('Progresso', { type: 'h3', class: 'pace-sec-title' }),
-          new Container(flowStepNodes, { class: 'pace-flow' }),
-        ])
-      : null;
+    if (actorName !== 'Sistema') {
+      stepContent.push(new Text(actorName, { type: 'span', class: 'pace-flow-actor' }));
+    }
 
-    // -- Comments section --
+    if (ev.Comment) {
+      stepContent.push(new Text(ev.Comment, { type: 'p', class: 'pace-flow-comment' }));
+    }
+
+    const step = new Container([
+      new Container([
+        new Text(String(i + 1), { type: 'span' }),
+      ], { class: 'pace-flow-dot pace-flow-dot--done' }),
+      new Container(stepContent, { class: 'pace-flow-step-content' }),
+    ], { class: 'pace-flow-step' });
+
+    if (i < workflowEvents.length - 1 || nextStatus) {
+      const connectorClass = (i < workflowEvents.length - 1)
+        ? 'pace-flow-connector pace-flow-connector--done'
+        : 'pace-flow-connector';
+      return new Container([
+        step,
+        new Container([], { class: connectorClass }),
+      ], { as: 'span', class: 'pace-flow-step-wrap' });
+    }
+    return step;
+  });
+
+  if (nextStatus) {
+    flowStepNodes.push(
+      new Container([
+        new Container([], { class: 'pace-flow-dot pace-flow-dot--next' }),
+        new Container([
+          new Text(STATUS_LABELS[nextStatus], { type: 'span', class: 'pace-flow-label' }),
+        ], { class: 'pace-flow-step-content' }),
+      ], { class: 'pace-flow-step' })
+    );
+  }
+
+  progressSection = workflowEvents.length > 0 || nextStatus
+    ? new Container([
+        new Text('Progresso', { type: 'h3', class: 'pace-sec-title' }),
+        new Container(flowStepNodes, { class: 'pace-flow' }),
+      ])
+    : null;
+
+  // -- Comments section (skipped for catalogo -- implemented/archived items are read-only) --
+  if (context !== 'catalogo') {
     let comments = [];
     try {
       comments = await getComments(initiative.UUID);

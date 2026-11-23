@@ -18,6 +18,7 @@ import {
   STATUS,
   statusLabel,
   renderStatusCell,
+  renderFinalValidationChip,
 } from '../../utils/status-helpers.js';
 import {
   ownerName,
@@ -88,10 +89,18 @@ export default defineRoute((config) => {
     columns: [
       sharedColumns[0],
       ...sharedColumns.slice(2),
+      { label: 'Validação Final', sortAccessor: (i) => i.FinalValidationLabel || '' },
       { label: 'Data de Implementação', sortAccessor: (i) => (i.ImplementedDate ? __dayjs(i.ImplementedDate).valueOf() : 0) },
     ],
     buildRow: (item) => {
       const cells = buildSharedCells(item);
+      // cells[0]=TitleBtn, [1]=DescText, [2]=Colaborador, [3]=Equipa, [4]=Gestor
+      const finalChip = renderFinalValidationChip(item);
+      cells.push(
+        finalChip
+          ? new Container([finalChip], { class: 'pace-status-cell' })
+          : new Text('---', { type: 'span' })
+      );
       cells.push(
         new Text(
           item.ImplementedDate ? __dayjs(item.ImplementedDate).format('DD/MM/YYYY') : '---',

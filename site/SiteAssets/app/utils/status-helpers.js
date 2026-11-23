@@ -122,21 +122,57 @@ export function areBaseFieldsLocked(status, previousStatus) {
   return true;
 }
 
+/** Maps each status value to its unique CSS modifier class. */
+const STATUS_CHIP_CLASS = {
+  [STATUS.RASCUNHO]:            'pace-chip--st-rascunho',
+  [STATUS.SUBMETIDO]:           'pace-chip--st-submetido',
+  [STATUS.VALIDADO_MENTOR]:     'pace-chip--st-validado-mentor',
+  [STATUS.EM_EXECUCAO]:         'pace-chip--st-em-execucao',
+  [STATUS.EM_VALIDACAO_MENTOR]: 'pace-chip--st-em-validacao-mentor',
+  [STATUS.EM_VALIDACAO_GESTOR]: 'pace-chip--st-em-validacao-gestor',
+  [STATUS.EM_VALIDACAO_MM]:     'pace-chip--st-em-validacao-mm',
+  [STATUS.IMPLEMENTADO]:        'pace-chip--st-implementado',
+  [STATUS.EM_REVISAO]:          'pace-chip--st-em-revisao',
+  [STATUS.REJEITADO]:           'pace-chip--st-rejeitado',
+  [STATUS.CANCELADO]:           'pace-chip--st-cancelado',
+};
+
 /**
- * Returns the CSS class for a status chip.
+ * Returns the CSS modifier class for a status chip.
+ * Unknown status returns empty string (renders with neutral base chip styles).
  * @param {string} status
  * @returns {string}
  */
 export function chipClass(status) {
-  if (status === STATUS.IMPLEMENTADO) return 'pace-chip--done';
-  if (status === STATUS.CANCELADO || status === STATUS.RASCUNHO) return 'pace-chip--inactive';
-  if (status === STATUS.EM_REVISAO || status === STATUS.REJEITADO) return 'pace-chip--revision';
-  if (
-    status === STATUS.SUBMETIDO ||
-    status === STATUS.EM_VALIDACAO_MENTOR ||
-    status === STATUS.EM_VALIDACAO_MM
-  ) return 'pace-chip--pending';
-  return 'pace-chip--active';
+  return STATUS_CHIP_CLASS[status] || '';
+}
+
+/**
+ * Returns the final-validation chip Text component for an IMPLEMENTADO initiative,
+ * or null if the initiative is not IMPLEMENTADO or has no FinalValidationLabel.
+ * @param {Object} initiative
+ * @returns {Text|null}
+ */
+export function renderFinalValidationChip(initiative) {
+  if (initiative.Status !== STATUS.IMPLEMENTADO) return null;
+  const label = initiative.FinalValidationLabel;
+  if (!label) return null;
+  const labelClass = label === MENTOR_MANAGER_LABELS.PLACE
+    ? 'pace-chip pace-chip--final-place'
+    : 'pace-chip pace-chip--final-finance';
+  return new Text(label, { type: 'span', class: labelClass });
+}
+
+/**
+ * Returns the array of status chip(s) for an initiative: always the status chip,
+ * plus the final-validation chip when the initiative is IMPLEMENTADO and has a label.
+ * @param {Object} initiative
+ * @returns {Text[]}
+ */
+export function buildStatusChips(initiative) {
+  const statusChip = new Text(statusLabel(initiative.Status), { type: 'span', class: `pace-chip ${chipClass(initiative.Status)}` });
+  const finalChip = renderFinalValidationChip(initiative);
+  return finalChip ? [statusChip, finalChip] : [statusChip];
 }
 
 /**
@@ -148,19 +184,5 @@ export function chipClass(status) {
  * @returns {Container}
  */
 export function renderStatusCell(initiative) {
-  const status = initiative.Status;
-  const chips = [
-    new Text(statusLabel(status), { type: 'span', class: `pace-chip ${chipClass(status)}` }),
-  ];
-
-  const label = status === STATUS.IMPLEMENTADO ? initiative.FinalValidationLabel : null;
-  if (label) {
-    const labelClass = label === MENTOR_MANAGER_LABELS.PLACE
-      ? 'pace-chip pace-chip--final-place'
-      : 'pace-chip pace-chip--final-finance';
-
-    chips.push(new Text(label, { type: 'span', class: labelClass }));
-  }
-
-  return new Container(chips, { class: 'pace-status-cell' });
+  return new Container(buildStatusChips(initiative), { class: 'pace-status-cell' });
 }
