@@ -287,29 +287,7 @@
 	padding: 2px 8px;
 }
 
-.pace-chip--st-rascunho            { background: rgba(107,114,128,0.14); color: #6B7280; }
-.pace-chip--st-submetido           { background: rgba(8,145,178,0.14);   color: #0891B2; }
-.pace-chip--st-validado-mentor     { background: rgba(79,141,217,0.14);  color: #4F8DD9; }
-.pace-chip--st-em-execucao         { background: rgba(232,153,35,0.14);  color: #E89923; }
-.pace-chip--st-em-validacao-mentor { background: rgba(156,91,209,0.14);  color: #9C5BD1; }
-.pace-chip--st-em-validacao-gestor { background: rgba(13,148,136,0.14);  color: #0D9488; }
-.pace-chip--st-em-validacao-mm     { background: rgba(192,38,211,0.14);  color: #C026D3; }
-.pace-chip--st-implementado        { background: rgba(0,150,57,0.14);    color: #009639; }
-.pace-chip--st-em-revisao          { background: rgba(184,134,11,0.14);  color: #B8860B; }
-.pace-chip--st-rejeitado           { background: rgba(192,57,43,0.14);   color: #C0392B; }
-.pace-chip--st-cancelado           { background: rgba(139,94,60,0.14);   color: #8B5E3C; }
-
-.pace-chip--final-place {
-	background: rgba(79,70,229,0.14);
-	color: #4F46E5;
-	border: 1px solid rgba(79,70,229,0.35);
-}
-
-.pace-chip--final-finance {
-	background: rgba(30,58,138,0.14);
-	color: #1E3A8A;
-	border: 1px solid rgba(30,58,138,0.35);
-}
+/* Status chip colors -- defined via tokens in :root; rules in the pt-v2 section below */
 
 .pace-status-cell {
 	display: flex;
@@ -2339,6 +2317,36 @@
   --pt-status-warn:     #E89923;
   --pt-status-danger:   #C0392B;
   --pt-status-info:     #4F8DD9;
+
+  /* Status chips -- muted, brand-harmonized (OKLCH L~0.50, C~0.10, even hue spacing); fg >= 4.6:1 on its bg */
+  --pt-st-rascunho:                 #5D665F;
+  --pt-st-rascunho-bg:              #ECEDEC;
+  --pt-st-submetido:                #1F6A96;
+  --pt-st-submetido-bg:             #E4EDF2;
+  --pt-st-validado-mentor:          #007570;
+  --pt-st-validado-mentor-bg:       #E0EEEE;
+  --pt-st-em-execucao:              #8F5D14;
+  --pt-st-em-execucao-bg:           #F2ECE3;
+  --pt-st-em-validacao-mentor:      #715391;
+  --pt-st-em-validacao-mentor-bg:   #EEEAF2;
+  --pt-st-em-validacao-gestor:      #884B75;
+  --pt-st-em-validacao-gestor-bg:   #F1E9EE;
+  --pt-st-em-validacao-mm:          #4F5E9C;
+  --pt-st-em-validacao-mm-bg:       #EAECF3;
+  --pt-st-implementado:             #2F7434;
+  --pt-st-implementado-bg:          #E6EEE7;
+  --pt-st-em-revisao:               #914F2F;
+  --pt-st-em-revisao-bg:            #F2EAE6;
+  --pt-st-rejeitado:                #A03F3C;
+  --pt-st-rejeitado-bg:             #F4E8E8;
+  --pt-st-cancelado:                #6E6055;
+  --pt-st-cancelado-bg:             #EEECEB;
+  --pt-st-final-place:              #587025;
+  --pt-st-final-place-bg:           #EBEEE5;
+  --pt-st-final-place-border:       #C5CDB3;
+  --pt-st-final-finance:            #776518;
+  --pt-st-final-finance-bg:         #EFEDE3;
+  --pt-st-final-finance-border:     #CFC9AE;
 
   /* --------------------------------------------------------------------------
    * A03 — Radii (mock-8_2 verbatim) + pill (used throughout, not in :root)
@@ -5628,20 +5636,22 @@ html:has(> body.disable-scroll) {
 .pt-v2 .pace-chip.pace-chip--inactive { background-color: transparent; color: var(--pt-ink-soft); border-color: var(--pt-border); }
 .pt-v2 .pace-chip--conf               { background-color: rgba(192, 40, 125, 0.12); color: #c0287d; }
 
-.pt-v2 .pace-chip.pace-chip--st-rascunho            { background-color: rgba(107,114,128,0.14); color: #6B7280; }
-.pt-v2 .pace-chip.pace-chip--st-submetido           { background-color: rgba(8,145,178,0.14);   color: #0891B2; }
-.pt-v2 .pace-chip.pace-chip--st-validado-mentor     { background-color: rgba(79,141,217,0.14);  color: var(--pt-phase-plan); }
-.pt-v2 .pace-chip.pace-chip--st-em-execucao         { background-color: rgba(232,153,35,0.14);  color: var(--pt-phase-do); }
-.pt-v2 .pace-chip.pace-chip--st-em-validacao-mentor { background-color: rgba(156,91,209,0.14);  color: var(--pt-phase-check); }
-.pt-v2 .pace-chip.pace-chip--st-em-validacao-gestor { background-color: rgba(13,148,136,0.14);  color: #0D9488; }
-.pt-v2 .pace-chip.pace-chip--st-em-validacao-mm     { background-color: rgba(192,38,211,0.14);  color: #C026D3; }
-.pt-v2 .pace-chip.pace-chip--st-implementado        { background-color: rgba(0,150,57,0.14);    color: var(--pt-status-ok); }
-.pt-v2 .pace-chip.pace-chip--st-em-revisao          { background-color: rgba(184,134,11,0.14);  color: #B8860B; }
-.pt-v2 .pace-chip.pace-chip--st-rejeitado           { background-color: rgba(192,57,43,0.14);   color: var(--pt-status-danger); }
-.pt-v2 .pace-chip.pace-chip--st-cancelado           { background-color: rgba(139,94,60,0.14);   color: #8B5E3C; }
+/* Collapsed: .pace-chip.pace-chip--st-x (0,2,0) placed after .pt-v2 .pace-chip base (0,2,0, line ~5614)
+   wins by source order inside .pt-v2 and applies directly outside it. One rule set covers both contexts. */
+.pace-chip.pace-chip--st-rascunho            { color: var(--pt-st-rascunho);            background-color: var(--pt-st-rascunho-bg); }
+.pace-chip.pace-chip--st-submetido           { color: var(--pt-st-submetido);           background-color: var(--pt-st-submetido-bg); }
+.pace-chip.pace-chip--st-validado-mentor     { color: var(--pt-st-validado-mentor);     background-color: var(--pt-st-validado-mentor-bg); }
+.pace-chip.pace-chip--st-em-execucao         { color: var(--pt-st-em-execucao);         background-color: var(--pt-st-em-execucao-bg); }
+.pace-chip.pace-chip--st-em-validacao-mentor { color: var(--pt-st-em-validacao-mentor); background-color: var(--pt-st-em-validacao-mentor-bg); }
+.pace-chip.pace-chip--st-em-validacao-gestor { color: var(--pt-st-em-validacao-gestor); background-color: var(--pt-st-em-validacao-gestor-bg); }
+.pace-chip.pace-chip--st-em-validacao-mm     { color: var(--pt-st-em-validacao-mm);     background-color: var(--pt-st-em-validacao-mm-bg); }
+.pace-chip.pace-chip--st-implementado        { color: var(--pt-st-implementado);        background-color: var(--pt-st-implementado-bg); }
+.pace-chip.pace-chip--st-em-revisao          { color: var(--pt-st-em-revisao);          background-color: var(--pt-st-em-revisao-bg); }
+.pace-chip.pace-chip--st-rejeitado           { color: var(--pt-st-rejeitado);           background-color: var(--pt-st-rejeitado-bg); }
+.pace-chip.pace-chip--st-cancelado           { color: var(--pt-st-cancelado);           background-color: var(--pt-st-cancelado-bg); }
 
-.pt-v2 .pace-chip.pace-chip--final-place   { background-color: rgba(79,70,229,0.14);  color: #4F46E5; border-color: rgba(79,70,229,0.35); }
-.pt-v2 .pace-chip.pace-chip--final-finance { background-color: rgba(30,58,138,0.14);  color: #1E3A8A; border-color: rgba(30,58,138,0.35); }
+.pace-chip.pace-chip--final-place   { color: var(--pt-st-final-place);   background-color: var(--pt-st-final-place-bg);   border: 1px solid var(--pt-st-final-place-border); }
+.pace-chip.pace-chip--final-finance { color: var(--pt-st-final-finance); background-color: var(--pt-st-final-finance-bg); border: 1px solid var(--pt-st-final-finance-border); }
 
 /* -- Section titles -- */
 

@@ -42,7 +42,7 @@ import {
 } from './financial-forms.js';
 import { canViewFteCost } from './fte-cost-field.js';
 import { create, update, getByUUID as getInitiativeByUUID, generateInitiativeUID } from './initiatives-api.js';
-import { STATUS, canTransitionTo, areBaseFieldsLocked } from './status-helpers.js';
+import { STATUS, canTransitionTo, areBaseFieldsLocked, isTerminalStatus, statusLabel } from './status-helpers.js';
 import { create as createFinancials, getByInitiative as getFinancials, update as updateFinancials } from './financials-api.js';
 import { createEvent } from './initiative-events-api.js';
 import { finalizeSubmission, performResubmitTransition } from './workflow-actions.js';
@@ -50,6 +50,23 @@ import { buildWorkflowButtons } from './workflow-buttons.js';
 import { getMentorForTeam } from './mentor-teams-api.js';
 import { acquireOverlayOpen } from './overlay-guard.js';
 import { emailEquals } from './email-helpers.js';
+
+// PT labels for the edit-audit comment, keyed by persisted field name.
+// SavingCategory/SavingType are derived from EnabledCategories, so they are not listed.
+const BASE_FIELD_LABELS = {
+  Title: 'Título',
+  Description: 'Descrição do problema',
+  ImpactedTeamOUID: 'Equipa',
+  Tags: 'Tags',
+  Objective: 'Descrição da iniciativa',
+  IsConfidential: 'Confidencial',
+};
+const FINANCIAL_FIELD_LABELS = {
+  TimePeriod: 'Período de Medição',
+  EnabledCategories: 'Métricas',
+  FTEAnnualCost: 'Custo Anual por FTE',
+  ...Object.fromEntries(CATEGORY_KEYS.map(k => [CATEGORY_FIELD_NAMES[k], CATEGORY_LABELS[k]])),
+};
 
 /**
  * Opens a Modal form for creating a new initiative.
@@ -169,13 +186,19 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
   const schema = new FormSchema({ title: titleField, team: teamField });
 
   // -- Multi-category state --
-  // Determine editability based on initiative status (RASCUNHO for new)
   const currentStatus = initiative?.Status || STATUS.RASCUNHO;
-  const editability = getPhaseEditability(currentStatus);
 
-  // Base fields lock past SUBMETIDO. Exception: EM_REVISAO with PreviousStatus=SUBMETIDO
-  // unlocks them again (mentor sent back before approving — full edit allowed).
-  const baseFieldsLocked = isEdit && areBaseFieldsLocked(currentStatus, initiative?.PreviousStatus) && !isMentorUser();
+  // Status gates (apply to everyone): base fields lock past SUBMETIDO (except EM_REVISAO
+  // with PreviousStatus=SUBMETIDO); financial phases lock past EM_VALIDACAO_MENTOR.
+  const statusEditability = getPhaseEditability(currentStatus);
+  const baseStatusLocked = isEdit && areBaseFieldsLocked(currentStatus, initiative?.PreviousStatus);
+
+  // Mentor override: mentor/mentor-manager edits every field at any non-terminal status,
+  // i.e. until the Mentor Manager validation moves it to IMPLEMENTADO. Saves that change a
+  // status-gated field are logged as MENTOR_OVERRIDE_EDIT events (see logEditEvent).
+  const mentorOverride = isEdit && isMentorUser() && !isTerminalStatus(currentStatus);
+  const editability = mentorOverride ? { asIs: true, toBe: true } : statusEditability;
+  const baseFieldsLocked = baseStatusLocked && !mentorOverride;
 
   // Hydrate from existing financials, or start empty
   const categoryStates = financials
@@ -245,6 +268,38 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     return fields;
   };
 
+  // -- Edit audit --
+  // Persisted-shape snapshot taken at open (edit mode only); diffed on each successful
+  // persist so the event lists exactly which fields changed. Advanced after each persist
+  // so a retried workflow action does not log the same change twice.
+  let savedSnapshot = isEdit ? { ...collectBaseFields(), ...collectFinancialFields() } : null;
+
+  const changedLabels = (current, labels) => Object.keys(labels)
+    .filter(k => k in current && JSON.stringify(current[k]) !== JSON.stringify(savedSnapshot[k]))
+    .map(k => labels[k]);
+
+  // Best-effort: data is already committed when this runs, so it never throws.
+  // MENTOR_OVERRIDE_EDIT when a mentor changed a field the status gate would lock;
+  // otherwise EDIT_APPROVER for approver edits; otherwise nothing.
+  const logEditEvent = async (current) => {
+    const baseChanged = changedLabels(current, BASE_FIELD_LABELS);
+    const finChanged = changedLabels(current, FINANCIAL_FIELD_LABELS);
+    savedSnapshot = { ...savedSnapshot, ...current };
+    const allChanged = [...baseChanged, ...finChanged];
+    if (!allChanged.length) return;
+    const gatedChanged = (baseStatusLocked && baseChanged.length > 0) || (!statusEditability.asIs && finChanged.length > 0);
+    const eventType = (mentorOverride && gatedChanged)
+      ? EVENT_TYPES.MENTOR_OVERRIDE_EDIT
+      : (asApprover ? EVENT_TYPES.EDIT_APPROVER : null);
+    if (!eventType) return;
+    const comment = `Fase: ${statusLabel(currentStatus)}. Campos alterados: ${allChanged.join(', ')}.`;
+    try {
+      await createEvent(initiative.UUID, eventType, currentStatus, currentStatus, comment);
+    } catch (err) {
+      console.error('[logEditEvent] createEvent failed (non-fatal, edits saved)', { uuid: initiative.UUID, eventType, err });
+    }
+  };
+
   const overlay = new Container(
     [new Loader(new Text('A processar...', { type: 'p' }), { animation: 'pulse' })],
     { class: 'pace-submission-overlay pt-v2', containerSelector: 'body' }
@@ -277,6 +332,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     const saving = Toast.loading('A guardar...');
     try {
       const baseFields = collectBaseFields();
+      const finFields = userTouchedFinancials() ? collectFinancialFields() : null;
       try {
         await update(initiative.Id, { ...baseFields, Status: initiative.Status }, initiative['odata.etag']);
       } catch (err) {
@@ -289,8 +345,7 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
         return false;
       }
 
-      if (userTouchedFinancials()) {
-        const finFields = collectFinancialFields();
+      if (finFields) {
         if (financials) {
           try {
             await updateFinancials(financials.Id, finFields, financials['odata.etag']);
@@ -333,6 +388,8 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
         console.warn('[persistFormEdits] financials refresh failed (non-critical)', err);
       }
 
+      await logEditEvent({ ...baseFields, ...(finFields || {}) });
+
       saving.dismiss();
       return true;
     } catch (err) {
@@ -363,9 +420,6 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
       if (isEdit) {
         const saved = await persistFormEdits();
         if (!saved) return;
-        if (asApprover) {
-          await createEvent(initiative.UUID, EVENT_TYPES.EDIT_APPROVER, initiative.Status, initiative.Status);
-        }
         Toast.success('Alterações guardadas');
         modal.close();
         if (onSuccess) onSuccess();
