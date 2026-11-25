@@ -106,20 +106,38 @@ export function statusLabel(status) {
 }
 
 /**
- * Returns true when base fields (Title, Description, ImpactedTeamOUID, Tags,
- * IsConfidential, Objective) should be rendered read-only.
- * Base fields are editable only while the initiative is in RASCUNHO or SUBMETIDO,
- * OR in EM_REVISAO when the revision was triggered before mentor approval
- * (PreviousStatus === SUBMETIDO). Once VALIDADO_MENTOR or any later status is
- * reached they are locked for everyone, including validator approvers.
+ * Returns true once the mentor has approved the project scope (base fields),
+ * i.e. any status other than RASCUNHO / SUBMETIDO / EM_REVISAO-with-PreviousStatus-SUBMETIDO.
+ * This no longer controls the edit lock; it marks base-field edits that must be audited
+ * as POST_APPROVAL_EDIT events.
  * @param {string} status
  * @param {string} [previousStatus] - Required when status === EM_REVISAO
  * @returns {boolean}
  */
-export function areBaseFieldsLocked(status, previousStatus) {
+export function isPastProjectApproval(status, previousStatus) {
   if (status === STATUS.RASCUNHO || status === STATUS.SUBMETIDO) return false;
   if (status === STATUS.EM_REVISAO && previousStatus === STATUS.SUBMETIDO) return false;
   return true;
+}
+
+/** Statuses where the owner and collaborators may edit every field (base fields + metrics). */
+const COLLABORATOR_EDIT_STATUSES = [
+  STATUS.RASCUNHO,
+  STATUS.SUBMETIDO,
+  STATUS.VALIDADO_MENTOR,
+  STATUS.EM_EXECUCAO,
+  STATUS.EM_REVISAO,
+];
+
+/**
+ * True while the owner/collaborators may still edit the initiative: up to the moment they
+ * request savings validation (EM_VALIDACAO_MENTOR). Single source of truth for both the
+ * owner Editar button (workflow-buttons.js) and the base-field lock (new-initiative.js).
+ * @param {string} status
+ * @returns {boolean}
+ */
+export function isCollaboratorEditStatus(status) {
+  return COLLABORATOR_EDIT_STATUSES.includes(status);
 }
 
 /** Maps each status value to its unique CSS modifier class. */

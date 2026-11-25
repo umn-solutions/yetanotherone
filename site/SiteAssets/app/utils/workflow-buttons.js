@@ -1,6 +1,6 @@
 import { Button } from '../libs/nofbiz/nofbiz.base.js';
 
-import { STATUS, isTerminalStatus } from './status-helpers.js';
+import { STATUS, isTerminalStatus, isCollaboratorEditStatus } from './status-helpers.js';
 import { canAccess, canManageAccess } from './roles.js';
 import {
   submitInitiative,
@@ -84,6 +84,21 @@ export function buildWorkflowButtons({
     : fn;
 
   if (context === 'pessoal' && writeAccess) {
+    // Owner/collaborator edit button. Gated by the shared status rule so the button and
+    // the form's field lock (new-initiative.js) never disagree.
+    const pushOwnerEdit = (label = 'Editar') => {
+      if (excludeEdit || !canAccess('editar') || !isCollaboratorEditStatus(status)) return;
+      const editBtn = new Button(label, {
+        variant: 'secondary',
+        onClickHandler: () => {
+          closable.close();
+          openEditInitiativeModal(initiative, onSuccess, { context, currentEmail, hasWriteAccess: writeAccess });
+        },
+      });
+      buttons.push(editBtn);
+      ownerEditPushed = true;
+    };
+
     if (status === STATUS.RASCUNHO) {
       if (!excludeEdit && canAccess('submeter')) {
         const submitBtn = new Button('Submeter', {
@@ -92,17 +107,7 @@ export function buildWorkflowButtons({
         });
         buttons.push(submitBtn);
       }
-      if (!excludeEdit && canAccess('editar')) {
-        const editBtn = new Button('Editar', {
-          variant: 'secondary',
-          onClickHandler: () => {
-            closable.close();
-            openEditInitiativeModal(initiative, onSuccess, { context, currentEmail, hasWriteAccess: writeAccess });
-          },
-        });
-        buttons.push(editBtn);
-        ownerEditPushed = true;
-      }
+      pushOwnerEdit();
       if (!approvalsOnly && canAccess('eliminar_proprio')) {
         const deleteBtn = new Button('Eliminar', {
           variant: 'danger',
@@ -113,17 +118,7 @@ export function buildWorkflowButtons({
         ownerDeletePushed = true;
       }
     } else if (status === STATUS.SUBMETIDO) {
-      if (!excludeEdit && canAccess('editar')) {
-        const editBtn = new Button('Editar', {
-          variant: 'secondary',
-          onClickHandler: () => {
-            closable.close();
-            openEditInitiativeModal(initiative, onSuccess, { context, currentEmail, hasWriteAccess: writeAccess });
-          },
-        });
-        buttons.push(editBtn);
-        ownerEditPushed = true;
-      }
+      pushOwnerEdit();
       if (!approvalsOnly && canAccess('cancelar_proprio')) {
         const cancelBtn = new Button('Cancelar', {
           variant: 'danger',
@@ -139,6 +134,7 @@ export function buildWorkflowButtons({
         onClickHandler: runAction(() => startExecution(initiative, startBtn, handleSuccess)),
       });
       buttons.push(startBtn);
+      pushOwnerEdit();
       if (!approvalsOnly && canAccess('cancelar_proprio')) {
         const cancelBtn = new Button('Cancelar', {
           variant: 'danger',
@@ -154,17 +150,7 @@ export function buildWorkflowButtons({
         onClickHandler: runAction(() => declareSavings(initiative, savingsBtn, handleSuccess)),
       });
       buttons.push(savingsBtn);
-      if (!excludeEdit && canAccess('editar')) {
-        const editBtn = new Button('Editar', {
-          variant: 'secondary',
-          onClickHandler: () => {
-            closable.close();
-            openEditInitiativeModal(initiative, handleSuccess, { context, currentEmail, hasWriteAccess: writeAccess });
-          },
-        });
-        buttons.push(editBtn);
-        ownerEditPushed = true;
-      }
+      pushOwnerEdit();
       if (!approvalsOnly && canAccess('cancelar_proprio')) {
         const cancelBtn = new Button('Cancelar', {
           variant: 'danger',
@@ -175,13 +161,7 @@ export function buildWorkflowButtons({
         ownerCancelPushed = true;
       }
     } else if (status === STATUS.EM_REVISAO) {
-      const reviewBtn = (!excludeEdit && canAccess('editar')) ? new Button('Rever', {
-        variant: 'secondary',
-        onClickHandler: () => {
-          closable.close();
-          openEditInitiativeModal(initiative, handleSuccess, { context, currentEmail, hasWriteAccess: writeAccess });
-        },
-      }) : null;
+      pushOwnerEdit('Rever');
       const resubmitBtn = (!excludeEdit && canAccess('editar')) ? new Button('Re-submeter', {
         variant: 'primary',
         onClickHandler: runAction(() => resubmitInitiative(initiative, resubmitBtn, handleSuccess)),
@@ -191,7 +171,6 @@ export function buildWorkflowButtons({
         isOutlined: true,
         onClickHandler: runAction(() => cancelInitiative(initiative, cancelBtn, handleSuccess)),
       }) : null;
-      if (reviewBtn) { buttons.push(reviewBtn); ownerEditPushed = true; }
       if (resubmitBtn) buttons.push(resubmitBtn);
       if (cancelBtn) { buttons.push(cancelBtn); ownerCancelPushed = true; }
     } else if (

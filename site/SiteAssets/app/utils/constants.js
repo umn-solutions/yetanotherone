@@ -24,6 +24,7 @@ export const EVENT_TYPES = {
   OWNER_IMPLEMENTATION: 'OwnerImplementation',
   EDIT_APPROVER: 'EditApprover',
   MENTOR_OVERRIDE_EDIT: 'MentorOverrideEdit',
+  POST_APPROVAL_EDIT: 'PostApprovalEdit',
 };
 
 /**
@@ -51,6 +52,7 @@ export const EVENT_TYPE_LABELS = {
   Share:                   'Partilhado',
   EditApprover:            'Editado por Validador',
   MentorOverrideEdit:      'Editado pelo Mentor (campos bloqueados)',
+  PostApprovalEdit:        'Editado após Aprovação do Mentor',
 };
 
 // -- Final validation label constants --

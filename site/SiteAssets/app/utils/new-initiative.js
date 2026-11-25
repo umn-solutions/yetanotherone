@@ -42,7 +42,7 @@ import {
 } from './financial-forms.js';
 import { canViewFteCost } from './fte-cost-field.js';
 import { create, update, getByUUID as getInitiativeByUUID, generateInitiativeUID } from './initiatives-api.js';
-import { STATUS, canTransitionTo, areBaseFieldsLocked, isTerminalStatus, statusLabel } from './status-helpers.js';
+import { STATUS, canTransitionTo, isPastProjectApproval, isCollaboratorEditStatus, isTerminalStatus, statusLabel } from './status-helpers.js';
 import { create as createFinancials, getByInitiative as getFinancials, update as updateFinancials } from './financials-api.js';
 import { createEvent } from './initiative-events-api.js';
 import { finalizeSubmission, performResubmitTransition } from './workflow-actions.js';
@@ -188,14 +188,18 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
   // -- Multi-category state --
   const currentStatus = initiative?.Status || STATUS.RASCUNHO;
 
-  // Status gates (apply to everyone): base fields lock past SUBMETIDO (except EM_REVISAO
-  // with PreviousStatus=SUBMETIDO); financial phases lock past EM_VALIDACAO_MENTOR.
+  // Status gates (apply to everyone except the mentor override below): base fields stay
+  // editable while collaborators may edit (up to requesting savings validation);
+  // financial phases lock past EM_VALIDACAO_MENTOR.
   const statusEditability = getPhaseEditability(currentStatus);
-  const baseStatusLocked = isEdit && areBaseFieldsLocked(currentStatus, initiative?.PreviousStatus);
+  const baseStatusLocked = isEdit && !isCollaboratorEditStatus(currentStatus);
 
-  // Mentor override: mentor/mentor-manager edits every field at any non-terminal status,
-  // i.e. until the Mentor Manager validation moves it to IMPLEMENTADO. Saves that change a
-  // status-gated field are logged as MENTOR_OVERRIDE_EDIT events (see logEditEvent).
+  // Base fields were already approved by the mentor (project approval passed). Editing them
+  // is still allowed up to EM_VALIDACAO_MENTOR, but logged as POST_APPROVAL_EDIT.
+  const pastProjectApproval = isEdit && isPastProjectApproval(currentStatus, initiative?.PreviousStatus);
+
+  // Mentor override: mentor/mentor-manager edits every field at any non-terminal status.
+  // Saves that change a field the status gates would lock are logged as MENTOR_OVERRIDE_EDIT.
   const mentorOverride = isEdit && isMentorUser() && !isTerminalStatus(currentStatus);
   const editability = mentorOverride ? { asIs: true, toBe: true } : statusEditability;
   const baseFieldsLocked = baseStatusLocked && !mentorOverride;
@@ -279,18 +283,20 @@ function buildInitiativeModal(initiative, financials, onSuccess, prefillData = n
     .map(k => labels[k]);
 
   // Best-effort: data is already committed when this runs, so it never throws.
-  // MENTOR_OVERRIDE_EDIT when a mentor changed a field the status gate would lock;
-  // otherwise EDIT_APPROVER for approver edits; otherwise nothing.
+  // Three cases (by precedence): MENTOR_OVERRIDE_EDIT when a mentor changed a
+  // status-locked field; POST_APPROVAL_EDIT when anyone edited a base field after
+  // mentor project approval; EDIT_APPROVER for all other approver edits.
   const logEditEvent = async (current) => {
     const baseChanged = changedLabels(current, BASE_FIELD_LABELS);
     const finChanged = changedLabels(current, FINANCIAL_FIELD_LABELS);
     savedSnapshot = { ...savedSnapshot, ...current };
     const allChanged = [...baseChanged, ...finChanged];
     if (!allChanged.length) return;
-    const gatedChanged = (baseStatusLocked && baseChanged.length > 0) || (!statusEditability.asIs && finChanged.length > 0);
-    const eventType = (mentorOverride && gatedChanged)
-      ? EVENT_TYPES.MENTOR_OVERRIDE_EDIT
-      : (asApprover ? EVENT_TYPES.EDIT_APPROVER : null);
+    const lockedChanged = (baseStatusLocked && baseChanged.length > 0) || (!statusEditability.asIs && finChanged.length > 0);
+    let eventType = null;
+    if (mentorOverride && lockedChanged) eventType = EVENT_TYPES.MENTOR_OVERRIDE_EDIT;
+    else if (pastProjectApproval && baseChanged.length > 0) eventType = EVENT_TYPES.POST_APPROVAL_EDIT;
+    else if (asApprover) eventType = EVENT_TYPES.EDIT_APPROVER;
     if (!eventType) return;
     const comment = `Fase: ${statusLabel(currentStatus)}. Campos alterados: ${allChanged.join(', ')}.`;
     try {
